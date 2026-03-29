@@ -170,7 +170,7 @@ Each price check cycle should evaluate **both directions**:
 ### CSV Diff Output
 
 Price check cycles should produce an actionable diff:
-- **New listings to add** — `below_threshold` → above threshold
+- **New listings to add** — `gift` → above threshold
 - **Listings to remove** — active listing → below threshold
 - **Price changes** — existing listings that need price adjustment (>2% drift)
 
@@ -285,7 +285,7 @@ With automation handling listing grunt work, time investment drops to minutes.
 
 - [TCGPlayer Fees](https://help.tcgplayer.com/hc/en-us/articles/201357836-TCGplayer-Fees)
 - [Fee Calculation Examples](https://help.tcgplayer.com/hc/en-us/articles/360047732673-Fee-Calculation-Examples)
-- Local extracted summary: [`docs/research/tcgplayer-fees/tcgplayer-fees-summary.md`](research/tcgplayer-fees/tcgplayer-fees-summary.md)
+- Local extracted summary: [`tcgplayer-fees-summary.md`](tcgplayer-fees-summary.md)
 
 ---
 

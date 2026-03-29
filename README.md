@@ -152,11 +152,11 @@ tcgplayer-automation/
 │       └── vite.config.ts
 ├── docs/
 │   ├── PROJECT_PLAN.md         # Full project plan with task breakdowns
-│   ├── Postman-TCGP/           # Postman collection for API testing
 │   └── research/               # Planning phase research
 │       ├── README.md
 │       ├── sample-app-exports/ # Sample CSV + TXT from TCGPlayer mobile app
-│       ├── tcgplayer-api/      # API closure documentation
+│       ├── tcgplayer-api/      # TCGPlayer API research & Postman collection
+│       │   └── postman-tcgp/   # Postman collection for API testing
 │       ├── tcgplayer-fees/     # Fee analysis + profitability modeling
 │       └── alternatives/       # CardTrader, CrystalCommerce, eBay research
 └── scripts/
