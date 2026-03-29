@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -20,6 +21,12 @@ coverage/
 *.lcov
 .nyc_output/
 
+# Vite
+packages/web/.vite/
+
+# Docker
+pgdata/
+
 # IDE
 .vscode/
 .idea/
@@ -30,6 +37,7 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Logs
 logs/
@@ -40,7 +48,10 @@ tmp/
 temp/
 *.tmp
 
-# Database
+# Database (local files only — Drizzle migrations ARE committed)
 *.sqlite
 *.sqlite3
 *.db
+
+# Forge handoff (temporary context files)
+.forge-handoff-*
