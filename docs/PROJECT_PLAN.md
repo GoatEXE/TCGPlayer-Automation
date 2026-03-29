@@ -78,7 +78,7 @@ Represents a physical card you own and want to sell.
 | `condition`      | enum       | NM, LP, MP, HP, DMG                               |
 | `quantity`       | int        | How many duplicates of this specific card          |
 | `source`         | enum       | `csv_import` / `manual_entry`                     |
-| `status`         | enum       | `pending` / `matched` / `listed` / `needs_attention` / `error` |
+| `status`         | enum       | `pending` / `matched` / `listed` / `needs_attention` / `gift` / `error` |
 | `rawCsvData`     | jsonb?     | Original CSV row for debugging                    |
 | `createdAt`      | timestamp  |                                                   |
 | `updatedAt`      | timestamp  |                                                   |
@@ -257,14 +257,37 @@ packages/server/src/lib/tcgplayer/
 
 **Deliverable:** Parse TCGPlayer mobile app CSV exports and upsert cards into the database.
 
+**Confirmed CSV Format:** 16 columns:
+```
+TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
+```
+
+**Key Columns:**
+- `TCGplayer Id` — Product/SKU ID (allows skipping catalog search)
+- `Product Line` — "Riftbound: League of Legends Trading Card Game"
+- `Set Name` — e.g., "Origins"
+- `Add to Quantity` — Actual card count (use this, not `Total Quantity`)
+- `TCG Market Price` — Current market price (useful for validation)
+
 **Tasks:**
-- [ ] Obtain a sample CSV export from the TCGPlayer mobile app to understand column structure
-- [ ] Build CSV parser using `papaparse` or `csv-parse`
-- [ ] Map CSV columns to `Card` schema fields
+- [x] Sample CSV obtained — 16-column format with TCGplayer Id, Product Line, Set Name, Product Name, Title, Number, Rarity, Condition, pricing fields, Add to Quantity, Photo URL
+- [ ] Build CSV parser using `papaparse` or `csv-parse` with column-name-aware mapping
+- [ ] Map CSV columns to `Card` schema fields:
+  - `TCGplayer Id` → `tcgplayerId`
+  - `Product Name` → `name`
+  - `Set Name` → `setName`
+  - `Number` → `number`
+  - `Rarity` → `rarity`
+  - `Condition` → `condition`
+  - `Add to Quantity` → `quantity`
+  - `TCG Market Price` → use for initial price calculation
 - [ ] Handle duplicates (same card + condition = increment quantity, not new row)
 - [ ] Store raw CSV row in `rawCsvData` for debugging
 - [ ] Return import summary: `{ imported: N, duplicatesUpdated: N, errors: [...] }`
 - [ ] Create API endpoint: `POST /api/cards/import` (multipart file upload)
+- [ ] Support TXT import format: `"{quantity} {card name} [{set code}] {number}"` — requires catalog lookup to resolve TCGPlayer IDs
+- [ ] Build TXT parser with regex: `^(\d+)\s+(.+?)\s+\[(\w+)\]\s+(.+)$`
+- [ ] Create API endpoint: `POST /api/cards/import-txt` (text file or paste)
 
 ### 4.5 Manual Card Entry UI
 
@@ -296,6 +319,10 @@ packages/server/src/lib/tcgplayer/
 - [ ] Create API endpoint: `POST /api/listings/create-all` (list all matched cards)
 - [ ] Add error handling and partial failure support
 - [ ] Handle cards with no market price data — skip listing, set card status to `needs_attention`, trigger notification, queue for retry on next price check cycle
+- [ ] Cards with market price < $0.05: mark as `gift` — these are freebies to include in orders to encourage positive reviews
+- [ ] Cards with market price >= $0.05: eligible for listing at 98% market price
+- [ ] No hard minimum listing floor — list everything $0.05+ to maximize inventory for order consolidation
+- [ ] Track profitability per ORDER (after $0.30 fee split), not per individual card
 - [ ] Build simple "review and confirm" UI step — show user what will be listed at what price before pushing
 
 ### 4.7 Basic API Endpoints (Full Phase 1 Summary)
@@ -342,6 +369,7 @@ packages/server/src/lib/tcgplayer/
 **Tasks:**
 - [ ] Set up BullMQ with a Redis container (add to `docker-compose.yml`)
 - [ ] Create repeating job: "check-prices" — runs every 12 hours by default (configurable via env var)
+- [ ] Make price check interval configurable via environment variable (e.g., `PRICE_CHECK_INTERVAL_HOURS`, default: 12) and expose in the web UI settings
 - [ ] Job fetches all active listings, batches them into groups of ~50 (to stay within rate limits)
 - [ ] For each batch, fetch market prices from TCGPlayer
 - [ ] Record each check in `PriceHistory`
@@ -356,6 +384,9 @@ packages/server/src/lib/tcgplayer/
 - [ ] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
 - [ ] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [ ] Add a floor price option per card (optional, default: none) to prevent listing below a minimum
+- [ ] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
+- [ ] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market
+- [ ] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes
 
 ### 5.3 Monitoring UI
 
@@ -500,7 +531,7 @@ Fast, disk-efficient, good workspace support. No strong opinion here — npm or 
 ### Resolved Decisions
 
 1. **No market price handling:** Do NOT list the card. Mark it as `needs_attention` in the UI, send a Telegram notification ("Card X couldn't be listed: no market price data"), and on the next price check cycle, re-attempt to find a market price. If a price is found, auto-list it at 98% market. This combines graceful skipping, user notification, and automatic retry.
-2. **Minimum price:** No floor price. Follow the market value as-is.
+2. **Minimum listing price:** Cards under $0.05 → gift pool (freebies for positive reviews). Everything $0.05+ gets listed. No hard floor — consolidation strategy prioritizes inventory breadth. Re-evaluated each price check cycle — auto-listed if market price rises above threshold. See `docs/research/tcgplayer-fees/FEE_ANALYSIS.md` for profitability analysis.
 3. **Hosting/access:** Local network only, no external access. Telegram integration will use **polling mode** (not webhooks) to avoid needing inbound connections.
 4. **Seller account:** Dustin does not have one yet; will apply. This is a known dependency for Phase 1 POC validation.
 
