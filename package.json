@@ -1,0 +1,14 @@
+{
+  "name": "tcgplayer-automation",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './packages/*' dev",
+    "build": "pnpm --filter './packages/*' build",
+    "test": "pnpm --filter './packages/*' test",
+    "test:watch": "pnpm --filter './packages/*' test:watch",
+    "lint": "pnpm --filter './packages/*' lint"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
