@@ -377,20 +377,66 @@ NODE_ENV=development
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 9+
-- Docker & Docker Compose
+- Docker & Docker Compose (only requirement for running the app)
+- Node.js 20+ and pnpm 9+ (optional, for local development without Docker)
 
-### Getting Started
+### Quick Start (Docker — Recommended)
 
+The project uses a single `docker-compose.yml` file controlled by the `COMPOSE_PROFILES` variable in `.env`:
+
+**Development mode (default):**
 ```bash
-# Clone and install dependencies
+# Clone and configure
 git clone <repo-url>
 cd tcgplayer-automation
+cp .env.example .env
+
+# .env contains COMPOSE_PROFILES=dev by default
+# Start with hot reload, exposed DB port, Vite dev server
+docker compose up
+
+# API:      http://localhost:3000
+# Frontend: http://localhost:5173 (Vite dev server with hot reload)
+# Database: localhost:5432 (exposed for pgAdmin, DBeaver, etc.)
+```
+
+**Production mode:**
+```bash
+cp .env.example .env
+
+# Edit .env and set:
+# COMPOSE_PROFILES=prod
+
+# Build and start everything
+docker compose up -d
+
+# App available at http://localhost:3000
+# - Frontend served at /
+# - API at /health, /api/*
+# - Database is internal (not exposed)
+```
+
+**Switching modes:**
+Just update `COMPOSE_PROFILES` in `.env` and restart:
+```bash
+# Edit .env: change COMPOSE_PROFILES=dev to COMPOSE_PROFILES=prod
+docker compose down
+docker compose up -d
+```
+
+### Local Development (Without Docker)
+
+If you prefer to run services locally without Docker:
+
+```bash
+# Install dependencies
 pnpm install
 
-# Start the database
+# Start PostgreSQL (via Docker, or use local install)
 docker compose up db -d
+
+# Update .env to use localhost instead of 'db' hostname
+# DATABASE_URL=postgresql://tcgplayer:tcgplayer@localhost:5432/tcgplayer
 
 # Run database migrations
 pnpm --filter server db:migrate
@@ -402,28 +448,30 @@ pnpm dev
 # Frontend: http://localhost:5173
 ```
 
-### Production Deployment
+### Key Docker Commands
 
 ```bash
-# Build and start the full stack
-docker compose up --build -d
-
-# App available at http://<server-ip>:3000
+docker compose up -d              # Start in background (production mode)
+docker compose up                 # Start with logs in foreground
+docker compose down               # Stop and remove containers
+docker compose down -v            # Stop and remove volumes (destroys DB data)
+docker compose logs -f app        # Follow application logs
+docker compose logs -f db         # Follow database logs
+docker compose build              # Rebuild images after code changes
+docker compose restart app        # Restart just the app service
 ```
 
-### Key Scripts
+### Key Scripts (Local Development)
 
 ```bash
 pnpm dev              # Start API + frontend concurrently (hot reload)
 pnpm build            # Build server + web for production
 pnpm test             # Run all tests
 pnpm test:watch       # Watch mode during development
-pnpm test:coverage    # Generate coverage report
 
 # Database
 pnpm --filter server db:migrate    # Run Drizzle migrations
 pnpm --filter server db:studio     # Open Drizzle Studio (visual DB inspector)
-pnpm --filter server db:seed       # Seed dev data
 ```
 
 ---

@@ -18,37 +18,44 @@ The rollout is phased intentionally. Phase 1 serves double duty as both MVP func
 
 ## 2. Architecture Overview
 
+**Production:**
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Docker Compose                        │
 │                                                         │
-│  ┌──────────────┐     ┌──────────────┐                  │
-│  │   Frontend    │────▶│  API Server  │                  │
-│  │  (Vite+React) │     │  (Fastify)   │                  │
-│  │  :5173        │     │  :3000       │                  │
-│  └──────────────┘     └──────┬───────┘                  │
-│                              │                           │
-│                 ┌────────────┼────────────┐              │
-│                 │            │            │              │
-│                 ▼            ▼            ▼              │
-│          ┌──────────┐ ┌──────────┐ ┌──────────────┐     │
-│          │PostgreSQL│ │Scheduler │ │TCGPlayer API │     │
-│          │  :5432   │ │(BullMQ)  │ │  (external)  │     │
-│          └──────────┘ └──────────┘ └──────────────┘     │
-│                                          │              │
-│                                          ▼              │
-│                                   ┌──────────────┐      │
-│                                   │ Telegram Bot │      │
-│                                   │  (external)  │      │
-│                                   └──────────────┘      │
+│              ┌───────────────────────┐                  │
+│              │    API Server (app)    │                  │
+│              │  Fastify + Static Web  │                  │
+│              │        :3000           │                  │
+│              └──────────┬─────────────┘                  │
+│                         │                                │
+│           ┌─────────────┼─────────────┐                  │
+│           │             │             │                  │
+│           ▼             ▼             ▼                  │
+│    ┌──────────┐  ┌──────────┐  ┌──────────────┐         │
+│    │PostgreSQL│  │Scheduler │  │TCGPlayer API │         │
+│    │   (db)   │  │(BullMQ)  │  │  (external)  │         │
+│    │ internal │  │ Phase 2  │  └──────────────┘         │
+│    └──────────┘  └──────────┘         │                 │
+│                                        ▼                 │
+│                                 ┌──────────────┐         │
+│                                 │ Telegram Bot │         │
+│                                 │  (external)  │         │
+│                                 └──────────────┘         │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Development (COMPOSE_PROFILES=dev in .env):**
+- Vite dev server runs separately at :5173 with hot reload
+- Fastify API server at :3000
+- PostgreSQL exposed at :5432 for dev tools (Drizzle Studio, etc.)
+- Source code mounted as volumes for live reload
 
 **Data flow:**
 
 1. **Ingest:** User uploads CSV or enters card manually via Web UI → API Server parses and stores cards in PostgreSQL
 2. **List:** API Server reads unprocessed cards → calls TCGPlayer Seller API to create listings at 98% market price → stores listing metadata in DB
-3. **Monitor:** BullMQ scheduler triggers price check jobs → API Server fetches current market prices → adjusts listings that have drifted
+3. **Monitor:** BullMQ scheduler triggers price check jobs (Phase 2) → API Server fetches current market prices → adjusts listings that have drifted
 4. **Sell:** TCGPlayer order webhook or polling → API Server records sale → sends Telegram notification → dashboard displays status
 
 ---
@@ -342,21 +349,45 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 ### 4.8 Docker Compose Setup
 
-**Deliverable:** `docker-compose up` starts the full stack.
+**Deliverable:** `docker-compose up` starts the full stack — database + application server with built frontend.
 
 ```yaml
 # Services:
-#   app      — Node.js server (Fastify) serving API + static frontend build
-#   db       — PostgreSQL 16 with named volume
-#   migrate  — One-shot container that runs Drizzle migrations on startup
+#   db   — PostgreSQL 16 with named volume (internal only, not exposed in production)
+#   app  — Node.js server (Fastify) serving API + static frontend build
 ```
 
+**Multi-stage Dockerfile:**
+1. **deps** — Install all dependencies (dev + prod)
+2. **build-web** — Build React frontend (Vite)
+3. **build-server** — Build server TypeScript → JavaScript
+4. **prod-deps** — Install only production dependencies
+5. **production** — Final runtime image with built code + prod deps only
+
+**Key Features:**
+- Single `docker-compose.yml` with profiles controlled by `COMPOSE_PROFILES` in `.env`
+- Production mode (`COMPOSE_PROFILES=prod`): DB not exposed, serves built frontend, restart policy enabled
+- Development mode (`COMPOSE_PROFILES=dev`): hot reload via bind mounts, DB exposed on port 5432, Vite dev server on 5173
+- `@fastify/static` serves built frontend at `/` in production
+- SPA fallback: all non-API routes serve `index.html` (client-side routing)
+- Health check on DB before starting app
+- `.env` file loaded for user configuration (Telegram tokens, pricing params, etc.)
+- `restart: unless-stopped` for production reliability
+
 **Tasks:**
-- [ ] Multi-stage Dockerfile: build server → build frontend → runtime image
-- [ ] `docker-compose.yml` with `app`, `db`, and `migrate` services
-- [ ] Environment variable passthrough for TCGPlayer API keys, DB URL, etc.
-- [ ] Development override: `docker-compose.override.yml` with hot reload via bind mounts
+- [x] Multi-stage Dockerfile: deps → build-web → build-server → prod-deps → production
+- [x] Install `@fastify/static` for serving frontend
+- [x] Configure Fastify to serve `packages/web/dist/` with SPA fallback
+- [x] Single `docker-compose.yml` with profiles for dev and prod modes
+- [x] Use `COMPOSE_PROFILES` env variable in `.env` to control mode
+- [x] Development profile: hot reload, exposed DB port, Vite dev server
+- [x] Production profile: built image, internal DB, restart policy
+- [x] Environment variable passthrough via `.env` file
+- [x] Update `.dockerignore` to exclude unnecessary files
+- [x] Update `.env.example` to document profile usage
+- [x] Update README.md with Docker-first workflow
 - [ ] Verify clean `docker compose up` from scratch works
+- [ ] Add database migration service or run migrations in app startup (Phase 1.2)
 
 ---
 

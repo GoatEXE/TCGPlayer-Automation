@@ -1,19 +1,83 @@
 services:
+  # Production database (no exposed ports)
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: tcgplayer
-      POSTGRES_PASSWORD: tcgplayer
-      POSTGRES_DB: tcgplayer
+      POSTGRES_USER: ${POSTGRES_USER:-tcgplayer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tcgplayer}
+      POSTGRES_DB: ${POSTGRES_DB:-tcgplayer}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tcgplayer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles: ["prod"]
+
+  # Development database (port exposed for local tools)
+  db-dev:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tcgplayer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tcgplayer}
+      POSTGRES_DB: ${POSTGRES_DB:-tcgplayer}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tcgplayer"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tcgplayer}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    profiles: ["dev"]
+
+  # Production app (built image, serves frontend)
+  app:
+    build:
+      context: .
+      target: production
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db:5432/${POSTGRES_DB:-tcgplayer}
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: ["prod"]
+
+  # Development app (hot reload, source mounts)
+  app-dev:
+    build:
+      context: .
+      target: deps
+    ports:
+      - "${PORT:-3000}:3000"
+      - "5173:5173"  # Vite dev server
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db-dev:5432/${POSTGRES_DB:-tcgplayer}
+      NODE_ENV: development
+      PORT: 3000
+      HOST: 0.0.0.0
+    env_file:
+      - .env
+    volumes:
+      - ./packages/server/src:/app/packages/server/src
+      - ./packages/web/src:/app/packages/web/src
+      - ./packages/server/drizzle:/app/packages/server/drizzle
+    command: pnpm dev
+    depends_on:
+      db-dev:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["dev"]
 
 volumes:
   pgdata:
