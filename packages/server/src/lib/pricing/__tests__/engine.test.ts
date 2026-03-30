@@ -37,7 +37,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(0.05); // 0.05 * 0.98 = 0.049, rounds to 0.05
     expect(result.reason).toContain('98%');
   });
@@ -50,7 +50,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(0.98);
     expect(result.reason).toContain('98%');
   });
@@ -63,7 +63,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(0.48); // 0.49 * 0.98 = 0.4802, rounds to 0.48
     expect(result.reason).toContain('98%');
   });
@@ -76,7 +76,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(2.93); // 2.99 * 0.98 = 2.9302, rounds to 2.93
     expect(result.reason).toContain('98%');
   });
@@ -89,7 +89,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(0.95);
     expect(result.reason).toContain('95%');
   });
@@ -128,7 +128,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(98.0);
     expect(result.reason).toContain('98%');
   });
@@ -140,7 +140,7 @@ describe('calculatePrice', () => {
 
     const result = calculatePrice(input);
 
-    expect(result.status).toBe('listed');
+    expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(0.98); // default 0.98 multiplier
   });
 });

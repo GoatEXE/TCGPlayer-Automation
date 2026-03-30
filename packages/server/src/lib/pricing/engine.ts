@@ -39,7 +39,7 @@ export function calculatePrice(input: PricingInput): PricingResult {
 
   return {
     listingPrice,
-    status: 'listed',
-    reason: `Priced at ${multiplierPercent}% of market`,
+    status: 'matched',
+    reason: `Priced at ${multiplierPercent}% of market — ready to list`,
   };
 }

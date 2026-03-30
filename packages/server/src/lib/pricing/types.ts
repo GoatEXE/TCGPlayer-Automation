@@ -6,6 +6,6 @@ export interface PricingInput {
 
 export interface PricingResult {
   listingPrice: number | null; // null if can't price
-  status: 'listed' | 'gift' | 'needs_attention';
+  status: 'matched' | 'gift' | 'needs_attention';
   reason: string; // human-readable explanation
 }
