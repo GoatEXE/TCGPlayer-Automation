@@ -8,6 +8,20 @@
       "when": 1774814147183,
       "tag": "0000_jittery_justin_hammer",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774830855575,
+      "tag": "0001_dark_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774833884989,
+      "tag": "0002_bent_gunslinger",
+      "breakpoints": true
     }
   ]
 }

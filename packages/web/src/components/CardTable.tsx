@@ -59,9 +59,17 @@ export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProp
     }
   };
 
-  const formatPrice = (price: string | null) => {
+  const formatPrice = (price: string | null, isFoil?: boolean) => {
     if (!price) return '—';
-    return `$${parseFloat(price).toFixed(2)}`;
+    const formattedPrice = `$${parseFloat(price).toFixed(2)}`;
+    if (isFoil) {
+      return (
+        <span title="Price based on Foil variant (no Normal pricing available)">
+          {formattedPrice} ✨
+        </span>
+      );
+    }
+    return formattedPrice;
   };
 
   const formatDate = (dateStr: string) => {
@@ -146,7 +154,7 @@ export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProp
               <td>{card.rarity || '—'}</td>
               <td>{card.condition}</td>
               <td className="quantity">{card.quantity}</td>
-              <td className="price">{formatPrice(card.marketPrice)}</td>
+              <td className="price">{formatPrice(card.marketPrice, card.isFoilPrice)}</td>
               <td className="price">{formatPrice(card.listingPrice)}</td>
               <td className="date">{formatDate(card.updatedAt)}</td>
               <td className="actions">

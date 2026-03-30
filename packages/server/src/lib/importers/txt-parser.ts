@@ -56,6 +56,7 @@ export function parseTxt(content: string): ImportResult {
 
     const card: ImportedCard = {
       tcgplayerId: null,
+      tcgProductId: null,
       productLine: PRODUCT_LINE,
       setName,
       productName: cardName.trim(),

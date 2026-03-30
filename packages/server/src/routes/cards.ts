@@ -1,14 +1,16 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { eq, desc, isNotNull, sql, ilike } from 'drizzle-orm';
+import { eq, desc, isNotNull, sql, ilike, and, or, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
 import { calculatePrice } from '../lib/pricing/index.js';
+import { TCGTrackingClient } from '../lib/tcgtracking/client.js';
 import type { ImportedCard } from '../lib/importers/index.js';
 import type { Card } from '../db/schema/cards.js';
 
 interface ImportResponse {
   imported: number;
+  updated: number;
   errors: string[];
   cards: Card[];
 }
@@ -38,8 +40,14 @@ interface UpdateCardBody {
   condition?: string;
 }
 
+interface FetchPricesResponse {
+  updated: number;
+  notFound: number;
+  errors: string[];
+}
+
 export async function cardsRoutes(fastify: FastifyInstance) {
-  // POST /import - Import cards from CSV or TXT
+  // POST /import - Import cards from CSV or TXT with duplicate handling
   fastify.post<{ Reply: ImportResponse }>('/import', async (request, reply) => {
     try {
       const data = await request.file();
@@ -63,35 +71,102 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'Invalid file type. Only .csv and .txt files are supported' });
       }
 
-      // Process each imported card through pricing engine
-      const cardsToInsert = importResult.cards.map((importedCard: ImportedCard) => {
+      const processedCards: Card[] = [];
+      let importedCount = 0;
+      let updatedCount = 0;
+
+      // Process each imported card - check for duplicates and either insert or update
+      for (const importedCard of importResult.cards) {
         const marketPrice = importedCard.snapshotMarketPrice;
         const pricingResult = calculatePrice({ marketPrice });
 
-        return {
-          tcgplayerId: importedCard.tcgplayerId,
-          productLine: importedCard.productLine,
-          setName: importedCard.setName,
-          productName: importedCard.productName,
-          title: importedCard.title,
-          number: importedCard.number,
-          rarity: importedCard.rarity,
-          condition: importedCard.condition,
-          quantity: importedCard.quantity,
-          status: pricingResult.status,
-          marketPrice: marketPrice?.toString() ?? null,
-          listingPrice: pricingResult.listingPrice?.toString() ?? null,
-          photoUrl: importedCard.photoUrl,
-        };
-      });
+        // Check if card already exists
+        let existingCards: Card[];
+        
+        if (importedCard.tcgplayerId) {
+          // For CSV imports with tcgplayerId: match on tcgplayerId + condition
+          existingCards = await db
+            .select()
+            .from(cards)
+            .where(
+              and(
+                eq(cards.tcgplayerId, importedCard.tcgplayerId),
+                eq(cards.condition, importedCard.condition)
+              )
+            );
+        } else {
+          // For TXT imports without tcgplayerId: match on productName + setName + number + condition
+          const conditions = [
+            eq(cards.productName, importedCard.productName),
+            eq(cards.condition, importedCard.condition),
+          ];
 
-      // Insert all cards into database
-      const insertedCards = await db.insert(cards).values(cardsToInsert).returning();
+          // Add setName condition (handle null)
+          if (importedCard.setName) {
+            conditions.push(eq(cards.setName, importedCard.setName));
+          } else {
+            conditions.push(isNull(cards.setName));
+          }
+
+          // Add number condition (handle null)
+          if (importedCard.number) {
+            conditions.push(eq(cards.number, importedCard.number));
+          } else {
+            conditions.push(isNull(cards.number));
+          }
+
+          existingCards = await db
+            .select()
+            .from(cards)
+            .where(and(...conditions));
+        }
+
+        if (existingCards.length > 0) {
+          // Card exists - increment quantity
+          const existingCard = existingCards[0];
+          const newQuantity = existingCard.quantity + importedCard.quantity;
+
+          const [updatedCard] = await db
+            .update(cards)
+            .set({
+              quantity: newQuantity,
+              updatedAt: new Date(),
+            })
+            .where(eq(cards.id, existingCard.id))
+            .returning();
+
+          processedCards.push(updatedCard);
+          updatedCount++;
+        } else {
+          // Card doesn't exist - insert new
+          const cardData = {
+            tcgplayerId: importedCard.tcgplayerId,
+            tcgProductId: importedCard.tcgProductId,
+            productLine: importedCard.productLine,
+            setName: importedCard.setName,
+            productName: importedCard.productName,
+            title: importedCard.title,
+            number: importedCard.number,
+            rarity: importedCard.rarity,
+            condition: importedCard.condition,
+            quantity: importedCard.quantity,
+            status: pricingResult.status,
+            marketPrice: marketPrice?.toString() ?? null,
+            listingPrice: pricingResult.listingPrice?.toString() ?? null,
+            photoUrl: importedCard.photoUrl,
+          };
+
+          const [insertedCard] = await db.insert(cards).values(cardData).returning();
+          processedCards.push(insertedCard);
+          importedCount++;
+        }
+      }
 
       return reply.code(201).send({
-        imported: insertedCards.length,
+        imported: importedCount,
+        updated: updatedCount,
         errors: importResult.errors,
-        cards: insertedCards,
+        cards: processedCards,
       });
     } catch (error) {
       fastify.log.error(error);
@@ -313,6 +388,125 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to reprice cards' });
+    }
+  });
+
+  // POST /fetch-prices - Fetch latest prices from TCGTracking API
+  fastify.post<{ Reply: FetchPricesResponse }>('/fetch-prices', async (request, reply) => {
+    try {
+      const client = new TCGTrackingClient();
+      
+      // Fetch all Riftbound sets
+      const sets = await client.getSets();
+      
+      if (sets.length === 0) {
+        return reply.code(500).send({ 
+          error: 'Failed to fetch sets from TCGTracking' 
+        });
+      }
+
+      // Get all cards from our database
+      const allCards = await db.select().from(cards);
+
+      let updated = 0;
+      let notFound = 0;
+      const errors: string[] = [];
+
+      // Fetch pricing for each set and update matching cards
+      for (const set of sets) {
+        try {
+          const pricingData = await client.getPricing(set.id);
+          
+          if (!pricingData || !pricingData.prices) {
+            fastify.log.warn(`No pricing data for set ${set.name} (${set.id})`);
+            continue;
+          }
+
+          // Process each card in our database
+          for (const card of allCards) {
+            if (!card.tcgProductId) {
+              // Skip cards without TCG Product ID
+              continue;
+            }
+
+            const productId = card.tcgProductId.toString();
+            const productPricing = pricingData.prices[productId];
+
+            if (!productPricing) {
+              // Card not found in this set's pricing
+              continue;
+            }
+
+            // Determine which condition to use based on card's condition
+            let conditionKey = 'Normal'; // Default
+            if (card.condition.toLowerCase().includes('foil')) {
+              conditionKey = 'Foil';
+            }
+
+            let conditionPricing = productPricing.tcg[conditionKey];
+            let isFoilFallback = false;
+
+            // Fallback to Foil pricing if Normal is not available
+            if ((!conditionPricing || !conditionPricing.market) && conditionKey === 'Normal') {
+              const foilPricing = productPricing.tcg['Foil'];
+              if (foilPricing && foilPricing.market) {
+                conditionPricing = foilPricing;
+                isFoilFallback = true;
+              }
+            }
+
+            if (!conditionPricing || !conditionPricing.market) {
+              // No market price for this condition
+              notFound++;
+              continue;
+            }
+
+            // Update card with new market price
+            const newMarketPrice = conditionPricing.market;
+            const pricingResult = calculatePrice({ marketPrice: newMarketPrice });
+
+            // Build notes field
+            let notesValue = card.notes || '';
+            const foilNoteLine = 'Price from Foil (no Normal pricing available)';
+            
+            if (isFoilFallback) {
+              // Add foil note if not present
+              if (!notesValue.includes(foilNoteLine)) {
+                notesValue = notesValue ? `${notesValue}\n${foilNoteLine}` : foilNoteLine;
+              }
+            } else {
+              // Remove foil note if present (Normal price became available)
+              notesValue = notesValue.split('\n').filter(line => line !== foilNoteLine).join('\n');
+            }
+
+            await db
+              .update(cards)
+              .set({
+                marketPrice: newMarketPrice.toString(),
+                listingPrice: pricingResult.listingPrice?.toString() ?? null,
+                status: pricingResult.status,
+                isFoilPrice: isFoilFallback,
+                notes: notesValue || null,
+                updatedAt: new Date(),
+              })
+              .where(eq(cards.id, card.id));
+
+            updated++;
+          }
+        } catch (error) {
+          const errorMsg = `Error fetching pricing for set ${set.name}: ${error}`;
+          fastify.log.error(errorMsg);
+          errors.push(errorMsg);
+        }
+      }
+
+      // Count cards that weren't updated (no pricing found)
+      notFound = allCards.filter(card => card.tcgProductId).length - updated;
+
+      return reply.send({ updated, notFound, errors });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to fetch prices' });
     }
   });
 }

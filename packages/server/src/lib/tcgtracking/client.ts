@@ -1,4 +1,4 @@
-import type { TCGTrackingSet, TCGTrackingPrice, TCGTrackingPriceResponse } from './types';
+import type { TCGTrackingSet, TCGTrackingSetsResponse, TCGTrackingPriceResponse } from './types';
 
 const DEFAULT_BASE_URL = 'https://tcgtracking.com/tcgapi/v1';
 const RIFTBOUND_CATEGORY_ID = 89;
@@ -21,44 +21,44 @@ export class TCGTrackingClient {
         return [];
       }
 
-      const data = await response.json();
+      const data = await response.json() as TCGTrackingSetsResponse;
 
       // Validate response shape
-      if (!Array.isArray(data)) {
-        console.warn('TCGTracking getSets returned unexpected format (not an array)');
+      if (!data.sets || !Array.isArray(data.sets)) {
+        console.warn('TCGTracking getSets returned unexpected format (missing sets array)');
         return [];
       }
 
-      return data as TCGTrackingSet[];
+      return data.sets;
     } catch (error) {
       console.error('Error fetching sets from TCGTracking:', error);
       return [];
     }
   }
 
-  async getPricing(setSlug: string): Promise<TCGTrackingPrice[]> {
-    const url = `${this.baseUrl}/${RIFTBOUND_CATEGORY_ID}/sets/${setSlug}/pricing`;
+  async getPricing(setId: number): Promise<TCGTrackingPriceResponse | null> {
+    const url = `${this.baseUrl}/${RIFTBOUND_CATEGORY_ID}/sets/${setId}/pricing`;
     
     try {
       const response = await fetch(url);
       
       if (!response.ok) {
         console.error(`TCGTracking API error: ${response.status} ${response.statusText}`);
-        return [];
+        return null;
       }
 
-      const data = await response.json();
+      const data = await response.json() as TCGTrackingPriceResponse;
 
-      // Validate response shape - expecting { prices: [...] }
-      if (!data || typeof data !== 'object' || !Array.isArray(data.prices)) {
-        console.warn('TCGTracking getPricing returned unexpected format (missing prices array)');
-        return [];
+      // Validate response shape - expecting { set_id, updated, prices: {...} }
+      if (!data || typeof data !== 'object' || !data.prices) {
+        console.warn('TCGTracking getPricing returned unexpected format (missing prices object)');
+        return null;
       }
 
-      return (data as TCGTrackingPriceResponse).prices;
+      return data;
     } catch (error) {
-      console.error(`Error fetching pricing for set ${setSlug} from TCGTracking:`, error);
-      return [];
+      console.error(`Error fetching pricing for set ${setId} from TCGTracking:`, error);
+      return null;
     }
   }
 }

@@ -1,5 +1,6 @@
 export interface ImportedCard {
   tcgplayerId: number | null; // from CSV only (SKU ID)
+  tcgProductId: number | null; // extracted from photo URL (product ID for price matching)
   productLine: string; // "Riftbound: League of Legends Trading Card Game"
   setName: string; // "Origins"
   productName: string; // card name

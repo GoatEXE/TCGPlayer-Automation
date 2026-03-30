@@ -94,13 +94,14 @@ Also invalid
     expect(result.cards[0].productLine).toBe('Riftbound: League of Legends Trading Card Game');
   });
 
-  it('sets tcgplayerId, rarity, photoUrl, and snapshotMarketPrice to null', () => {
+  it('sets tcgplayerId, tcgProductId, rarity, photoUrl, and snapshotMarketPrice to null', () => {
     const txtContent = `1 Test Card [OGN] 001/298`;
 
     const result = parseTxt(txtContent);
 
     const card = result.cards[0];
     expect(card.tcgplayerId).toBeNull();
+    expect(card.tcgProductId).toBeNull();
     expect(card.rarity).toBeNull();
     expect(card.photoUrl).toBeNull();
     expect(card.snapshotMarketPrice).toBeNull();
@@ -129,6 +130,7 @@ Also invalid
     // Verify first card
     expect(result.cards[0]).toEqual({
       tcgplayerId: null,
+      tcgProductId: null,
       productLine: 'Riftbound: League of Legends Trading Card Game',
       setName: 'Origins',
       productName: "Targon's Peak",

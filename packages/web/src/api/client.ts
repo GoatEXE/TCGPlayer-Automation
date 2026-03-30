@@ -5,18 +5,21 @@ import type {
   GetCardsResponse,
   ImportResult,
   RepriceAllResult,
+  FetchPricesResult,
 } from './types';
 
 const API_BASE = '/api';
 
 class ApiClient {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
+    // Only set Content-Type for requests with a body
+    if (options?.body) {
+      headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    }
     const response = await fetch(`${API_BASE}${endpoint}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
       ...options,
+      headers,
     });
 
     if (!response.ok) {
@@ -80,6 +83,12 @@ class ApiClient {
 
   async repriceAll(): Promise<RepriceAllResult> {
     return this.request<RepriceAllResult>('/cards/reprice-all', {
+      method: 'POST',
+    });
+  }
+
+  async fetchPrices(): Promise<FetchPricesResult> {
+    return this.request<FetchPricesResult>('/cards/fetch-prices', {
       method: 'POST',
     });
   }

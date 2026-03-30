@@ -1,0 +1,1 @@
+ALTER TABLE "cards" ADD COLUMN "tcg_product_id" integer;

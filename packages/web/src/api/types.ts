@@ -12,6 +12,7 @@ export interface Card {
   status: 'pending' | 'matched' | 'listed' | 'needs_attention' | 'gift' | 'error';
   marketPrice: string | null;
   listingPrice: string | null;
+  isFoilPrice: boolean;
   photoUrl: string | null;
   notes: string | null;
   importedAt: string;
@@ -44,12 +45,19 @@ export interface GetCardsResponse {
 
 export interface ImportResult {
   imported: number;
+  updated: number;
   errors: string[];
   cards: Card[];
 }
 
 export interface RepriceAllResult {
   updated: number;
+}
+
+export interface FetchPricesResult {
+  updated: number;
+  notFound: number;
+  errors: string[];
 }
 
 export interface ApiError {

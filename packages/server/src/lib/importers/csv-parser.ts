@@ -56,6 +56,7 @@ export function parseCsv(content: string): ImportResult {
 
       const card: ImportedCard = {
         tcgplayerId: parseInt(tcgplayerIdStr, 10),
+        tcgProductId: extractProductId(photoUrl || null),
         productLine,
         setName,
         productName,
@@ -80,6 +81,16 @@ export function parseCsv(content: string): ImportResult {
     errors,
     totalRows: dataLines.filter(line => line.trim()).length,
   };
+}
+
+/**
+ * Extract TCGPlayer product ID from photo URL
+ * Example: https://tcgplayer-cdn.tcgplayer.com/product/652954_in_400x400.jpg -> 652954
+ */
+function extractProductId(photoUrl: string | null): number | null {
+  if (!photoUrl) return null;
+  const match = photoUrl.match(/\/product\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
 }
 
 /**

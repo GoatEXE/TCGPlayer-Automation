@@ -26,7 +26,7 @@ describe('ApiClient', () => {
       const result = await api.getCards();
 
       expect(global.fetch).toHaveBeenCalledWith('/api/cards', {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {},
       });
       expect(result).toEqual(mockResponse);
     });
@@ -68,7 +68,7 @@ describe('ApiClient', () => {
       const result = await api.getStats();
 
       expect(global.fetch).toHaveBeenCalledWith('/api/cards/stats', {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {},
       });
       expect(result).toEqual(mockStats);
     });
@@ -133,7 +133,7 @@ describe('ApiClient', () => {
         '/api/cards/1',
         expect.objectContaining({
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {},
         })
       );
       expect(result).toEqual({ success: true });
@@ -151,7 +151,7 @@ describe('ApiClient', () => {
         '/api/cards/1/reprice',
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {},
         })
       );
     });
@@ -167,7 +167,7 @@ describe('ApiClient', () => {
         '/api/cards/reprice-all',
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {},
         })
       );
       expect(result).toEqual({ updated: 42 });
@@ -182,7 +182,7 @@ describe('ApiClient', () => {
       const result = await api.healthCheck();
 
       expect(global.fetch).toHaveBeenCalledWith('/api/health', {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {},
       });
       expect(result).toEqual(mockHealth);
     });

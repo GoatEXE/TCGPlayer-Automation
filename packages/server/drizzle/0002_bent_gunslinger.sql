@@ -1,0 +1,1 @@
+ALTER TABLE "cards" ADD COLUMN "is_foil_price" boolean DEFAULT false NOT NULL;

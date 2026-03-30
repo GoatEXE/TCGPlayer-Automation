@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TCGTrackingClient } from '../client';
-import type { TCGTrackingSet, TCGTrackingPrice } from '../types';
+import type { TCGTrackingSet, TCGTrackingSetsResponse, TCGTrackingPriceResponse } from '../types';
 
 describe('TCGTrackingClient', () => {
   let client: TCGTrackingClient;
@@ -13,10 +13,45 @@ describe('TCGTrackingClient', () => {
 
   describe('getSets', () => {
     it('should parse sets response correctly', async () => {
-      const mockResponse = [
-        { name: 'Origins', slug: 'origins', productCount: 298 },
-        { name: 'Test Set', slug: 'test-set', productCount: 100 },
-      ];
+      const mockResponse: TCGTrackingSetsResponse = {
+        category_id: 89,
+        category_name: 'Riftbound',
+        generated_at: '2026-03-28T09:30:39-04:00',
+        sets: [
+          { 
+            id: 24344,
+            name: 'Origins',
+            abbreviation: 'OGN',
+            is_supplemental: false,
+            published_on: '2025-10-31',
+            modified_on: '2026-03-06 20:26:58',
+            product_count: 298,
+            sku_count: 2626,
+            products_modified: '2026-02-26T03:30:58-05:00',
+            pricing_modified: '2026-03-28T08:04:25-04:00',
+            skus_modified: '2026-03-28T09:30:39-04:00',
+            api_url: '/tcgapi/v1/89/sets/24344',
+            pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+            skus_url: '/tcgapi/v1/89/sets/24344/skus',
+          },
+          { 
+            id: 24519,
+            name: 'Test Set',
+            abbreviation: 'TST',
+            is_supplemental: false,
+            published_on: '2026-02-13',
+            modified_on: '2026-03-27 14:42:21',
+            product_count: 100,
+            sku_count: 500,
+            products_modified: null,
+            pricing_modified: null,
+            skus_modified: null,
+            api_url: '/tcgapi/v1/89/sets/24519',
+            pricing_url: '/tcgapi/v1/89/sets/24519/pricing',
+            skus_url: '/tcgapi/v1/89/sets/24519/skus',
+          },
+        ],
+      };
 
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
@@ -26,9 +61,10 @@ describe('TCGTrackingClient', () => {
       const sets = await client.getSets();
 
       expect(global.fetch).toHaveBeenCalledWith('https://test.example.com/89/sets');
-      expect(sets).toEqual(mockResponse);
+      expect(sets).toEqual(mockResponse.sets);
       expect(sets).toHaveLength(2);
       expect(sets[0].name).toBe('Origins');
+      expect(sets[0].id).toBe(24344);
     });
 
     it('should handle network errors gracefully', async () => {
@@ -80,11 +116,21 @@ describe('TCGTrackingClient', () => {
 
   describe('getPricing', () => {
     it('should parse pricing response correctly', async () => {
-      const mockResponse = {
-        prices: [
-          { productId: 1, name: 'Card A', marketPrice: 1.50, lowPrice: 1.20, midPrice: 1.40 },
-          { productId: 2, name: 'Card B', marketPrice: 0.25, lowPrice: 0.20, midPrice: 0.22 },
-        ],
+      const mockResponse: TCGTrackingPriceResponse = {
+        set_id: 24344,
+        updated: '2026-03-28T08:04:25-04:00',
+        prices: {
+          '12345': {
+            tcg: {
+              Normal: { low: 1.20, market: 1.50 },
+            },
+          },
+          '67890': {
+            tcg: {
+              Foil: { low: 0.20, market: 0.25 },
+            },
+          },
+        },
       };
 
       (global.fetch as any).mockResolvedValueOnce({
@@ -92,19 +138,25 @@ describe('TCGTrackingClient', () => {
         json: async () => mockResponse,
       });
 
-      const prices = await client.getPricing('origins');
+      const prices = await client.getPricing(24344);
 
-      expect(global.fetch).toHaveBeenCalledWith('https://test.example.com/89/sets/origins/pricing');
-      expect(prices).toEqual(mockResponse.prices);
-      expect(prices).toHaveLength(2);
-      expect(prices[0].marketPrice).toBe(1.50);
+      expect(global.fetch).toHaveBeenCalledWith('https://test.example.com/89/sets/24344/pricing');
+      expect(prices).toEqual(mockResponse);
+      expect(prices?.set_id).toBe(24344);
+      expect(prices?.prices['12345'].tcg.Normal.market).toBe(1.50);
     });
 
-    it('should handle null market prices', async () => {
-      const mockResponse = {
-        prices: [
-          { productId: 1, name: 'Card A', marketPrice: null, lowPrice: null, midPrice: null },
-        ],
+    it('should handle market prices with only low', async () => {
+      const mockResponse: TCGTrackingPriceResponse = {
+        set_id: 24344,
+        updated: '2026-03-28T08:04:25-04:00',
+        prices: {
+          '12345': {
+            tcg: {
+              Normal: { low: 0.01 }, // No market price
+            },
+          },
+        },
       };
 
       (global.fetch as any).mockResolvedValueOnce({
@@ -112,10 +164,10 @@ describe('TCGTrackingClient', () => {
         json: async () => mockResponse,
       });
 
-      const prices = await client.getPricing('origins');
+      const prices = await client.getPricing(24344);
 
-      expect(prices).toHaveLength(1);
-      expect(prices[0].marketPrice).toBeNull();
+      expect(prices?.prices['12345'].tcg.Normal.low).toBe(0.01);
+      expect(prices?.prices['12345'].tcg.Normal.market).toBeUndefined();
     });
 
     it('should handle network errors gracefully', async () => {
@@ -123,9 +175,9 @@ describe('TCGTrackingClient', () => {
       
       (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
 
-      const prices = await client.getPricing('origins');
+      const prices = await client.getPricing(24344);
 
-      expect(prices).toEqual([]);
+      expect(prices).toBeNull();
       expect(consoleErrorSpy).toHaveBeenCalled();
       
       consoleErrorSpy.mockRestore();
@@ -139,9 +191,9 @@ describe('TCGTrackingClient', () => {
         json: async () => ({ unexpected: 'format' }),
       });
 
-      const prices = await client.getPricing('origins');
+      const prices = await client.getPricing(24344);
 
-      expect(prices).toEqual([]);
+      expect(prices).toBeNull();
       
       consoleWarnSpy.mockRestore();
     });

@@ -19,6 +19,7 @@ export function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [repricingAll, setRepricingAll] = useState(false);
+  const [fetchingPrices, setFetchingPrices] = useState(false);
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -101,6 +102,27 @@ export function App() {
     }
   };
 
+  const handleFetchPrices = async () => {
+    if (!confirm('Fetch latest prices from TCGTracking? This may take a few minutes.')) return;
+
+    setFetchingPrices(true);
+    try {
+      const result = await api.fetchPrices();
+      const message = `✅ Updated ${result.updated} cards\n${result.notFound} cards not found in TCGTracking`;
+      if (result.errors.length > 0) {
+        alert(`${message}\n\n⚠️ Errors:\n${result.errors.join('\n')}`);
+      } else {
+        alert(message);
+      }
+      fetchCards();
+      fetchStats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to fetch prices');
+    } finally {
+      setFetchingPrices(false);
+    }
+  };
+
   const handleStatusFilter = (status: StatusFilter) => {
     setStatusFilter(status);
     setCurrentPage(1);
@@ -134,13 +156,23 @@ export function App() {
         <section className="cards-section">
           <div className="section-header">
             <h2>Card Inventory</h2>
-            <button
-              onClick={handleRepriceAll}
-              disabled={repricingAll || cards.length === 0}
-              className="button-primary"
-            >
-              {repricingAll ? '⏳ Re-pricing...' : '💰 Re-price All'}
-            </button>
+            <div className="button-group">
+              <button
+                onClick={handleFetchPrices}
+                disabled={fetchingPrices}
+                className="button-primary"
+                title="Fetch latest market prices from TCGTracking API"
+              >
+                {fetchingPrices ? '⏳ Fetching...' : '🔄 Fetch Latest Prices'}
+              </button>
+              <button
+                onClick={handleRepriceAll}
+                disabled={repricingAll || cards.length === 0}
+                className="button-primary"
+              >
+                {repricingAll ? '⏳ Re-pricing...' : '💰 Re-price All'}
+              </button>
+            </div>
           </div>
 
           <div className="filters">

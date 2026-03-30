@@ -179,6 +179,11 @@ body {
   font-size: 1.25rem;
 }
 
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .button-primary {
   background: var(--color-primary);
   color: white;

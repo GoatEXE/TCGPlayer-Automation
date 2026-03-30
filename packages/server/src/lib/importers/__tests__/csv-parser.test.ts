@@ -15,6 +15,7 @@ describe('CSV Parser', () => {
     
     const card = result.cards[0];
     expect(card.tcgplayerId).toBe(8927752);
+    expect(card.tcgProductId).toBe(653083);
     expect(card.productLine).toBe('Riftbound: League of Legends Trading Card Game');
     expect(card.setName).toBe('Origins');
     expect(card.productName).toBe("Targon's Peak");
@@ -125,6 +126,7 @@ describe('CSV Parser', () => {
     // Verify first card
     expect(result.cards[0]).toEqual({
       tcgplayerId: 8927752,
+      tcgProductId: 653083,
       productLine: 'Riftbound: League of Legends Trading Card Game',
       setName: 'Origins',
       productName: "Targon's Peak",
@@ -140,9 +142,42 @@ describe('CSV Parser', () => {
     // Verify second card has quantity 6
     expect(result.cards[1].quantity).toBe(6);
     expect(result.cards[1].productName).toBe('Chaos Rune');
+    expect(result.cards[1].tcgProductId).toBe(652954);
 
     // Verify third card
     expect(result.cards[2].quantity).toBe(3);
     expect(result.cards[2].productName).toBe('Brazen Buccaneer');
+    expect(result.cards[2].tcgProductId).toBe(652772);
+  });
+
+  it('extracts tcgProductId from photo URL', () => {
+    const csvContent = `TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
+8926802,Riftbound: League of Legends Trading Card Game,Origins,Chaos Rune,,166/298,Common,Near Mint,0.03167,,,,,6,,https://tcgplayer-cdn.tcgplayer.com/product/652954_in_400x400.jpg`;
+
+    const result = parseCsv(csvContent);
+
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0].tcgProductId).toBe(652954);
+    expect(result.cards[0].tcgplayerId).toBe(8926802); // SKU ID is different
+  });
+
+  it('handles tcgProductId as null when photo URL is missing', () => {
+    const csvContent = `TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
+8926802,Riftbound: League of Legends Trading Card Game,Origins,Chaos Rune,,166/298,Common,Near Mint,0.03167,,,,,6,,`;
+
+    const result = parseCsv(csvContent);
+
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0].tcgProductId).toBeNull();
+  });
+
+  it('handles tcgProductId as null when photo URL format is unrecognized', () => {
+    const csvContent = `TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
+8926802,Riftbound: League of Legends Trading Card Game,Origins,Chaos Rune,,166/298,Common,Near Mint,0.03167,,,,,6,,https://example.com/invalid-url.jpg`;
+
+    const result = parseCsv(csvContent);
+
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0].tcgProductId).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, numeric, timestamp, pgEnum, boolean } from 'drizzle-orm/pg-core';
 
 export const cardStatusEnum = pgEnum('card_status', [
   'pending',
@@ -12,6 +12,7 @@ export const cardStatusEnum = pgEnum('card_status', [
 export const cards = pgTable('cards', {
   id: serial('id').primaryKey(),
   tcgplayerId: integer('tcgplayer_id'),
+  tcgProductId: integer('tcg_product_id'),
   productLine: text('product_line').notNull().default('Riftbound'),
   setName: text('set_name'),
   productName: text('product_name').notNull(),
@@ -23,6 +24,7 @@ export const cards = pgTable('cards', {
   status: cardStatusEnum('status').notNull().default('pending'),
   marketPrice: numeric('market_price', { precision: 10, scale: 2 }),
   listingPrice: numeric('listing_price', { precision: 10, scale: 2 }),
+  isFoilPrice: boolean('is_foil_price').notNull().default(false),
   photoUrl: text('photo_url'),
   notes: text('notes'),
   importedAt: timestamp('imported_at', { withTimezone: true }).defaultNow(),

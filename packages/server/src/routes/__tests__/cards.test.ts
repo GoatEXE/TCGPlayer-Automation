@@ -33,9 +33,22 @@ vi.mock('../../lib/pricing/index.js', () => ({
   calculatePrice: vi.fn(),
 }));
 
+// Mock the TCGTracking client
+const mockGetSets = vi.fn();
+const mockGetPricing = vi.fn();
+vi.mock('../../lib/tcgtracking/client.js', () => {
+  return {
+    TCGTrackingClient: class {
+      getSets = mockGetSets;
+      getPricing = mockGetPricing;
+    },
+  };
+});
+
 import { db } from '../../db/index.js';
 import { parseCsv, parseTxt } from '../../lib/importers/index.js';
 import { calculatePrice } from '../../lib/pricing/index.js';
+import { TCGTrackingClient } from '../../lib/tcgtracking/client.js';
 
 describe('POST /api/cards/import', () => {
   let app: FastifyInstance;
@@ -120,6 +133,7 @@ describe('POST /api/cards/import', () => {
     expect(response.statusCode).toBe(201);
     const body = JSON.parse(response.body);
     expect(body).toHaveProperty('imported', 1);
+    expect(body).toHaveProperty('updated', 0);
     expect(body).toHaveProperty('errors');
     expect(body).toHaveProperty('cards');
     expect(body.cards).toHaveLength(1);
@@ -198,6 +212,7 @@ describe('POST /api/cards/import', () => {
     expect(response.statusCode).toBe(201);
     const body = JSON.parse(response.body);
     expect(body).toHaveProperty('imported', 1);
+    expect(body).toHaveProperty('updated', 0);
   });
 
   it('should return 400 for invalid file type', async () => {
@@ -651,5 +666,895 @@ describe('POST /api/cards/reprice-all', () => {
     const body = JSON.parse(response.body);
     expect(body.updated).toBe(2);
     expect(calculatePrice).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('POST /api/cards/import - Duplicate Handling', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = Fastify();
+    await app.register(multipart);
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should increment quantity when importing duplicate card with same tcgplayerId and condition', async () => {
+    const mockImportedCards = [
+      {
+        tcgplayerId: 12345,
+        productLine: 'Riftbound',
+        setName: 'Origins',
+        productName: 'Duplicate Card',
+        title: null,
+        number: '1/298',
+        rarity: 'Common',
+        condition: 'Near Mint',
+        quantity: 2,
+        snapshotMarketPrice: 1.50,
+        photoUrl: null,
+      },
+    ];
+
+    const existingCard = {
+      id: 1,
+      tcgplayerId: 12345,
+      productLine: 'Riftbound',
+      setName: 'Origins',
+      productName: 'Duplicate Card',
+      title: null,
+      number: '1/298',
+      rarity: 'Common',
+      condition: 'Near Mint',
+      quantity: 3,
+      status: 'listed' as const,
+      marketPrice: '1.50',
+      listingPrice: '1.47',
+      photoUrl: null,
+      notes: null,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const mockPricingResult = {
+      listingPrice: 1.47,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(parseCsv).mockReturnValue({
+      source: 'csv',
+      cards: mockImportedCards,
+      errors: [],
+      totalRows: 1,
+    });
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    // Mock select to find existing card
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([existingCard]),
+      }),
+    } as any);
+
+    // Mock update to increment quantity
+    const updatedCard = { ...existingCard, quantity: 5, updatedAt: new Date() };
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([updatedCard]),
+        }),
+      }),
+    } as any);
+
+    const csvContent = '2,12345,Riftbound,Origins,Duplicate Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,3.00,2,';
+    const form = new FormData();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    form.append('file', blob, 'cards.csv');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/import',
+      payload: form,
+      headers: form.getHeaders ? form.getHeaders() : {},
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body);
+    expect(body.imported).toBe(0);
+    expect(body.updated).toBe(1);
+    expect(body.cards).toHaveLength(1);
+    expect(body.cards[0].quantity).toBe(5); // 3 + 2 = 5
+  });
+
+  it('should insert new card when no duplicate exists', async () => {
+    const mockImportedCards = [
+      {
+        tcgplayerId: 99999,
+        productLine: 'Riftbound',
+        setName: 'Origins',
+        productName: 'New Card',
+        title: null,
+        number: '99/298',
+        rarity: 'Rare',
+        condition: 'Near Mint',
+        quantity: 1,
+        snapshotMarketPrice: 5.00,
+        photoUrl: null,
+      },
+    ];
+
+    const mockPricingResult = {
+      listingPrice: 4.90,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    const mockInsertedCard = {
+      id: 2,
+      tcgplayerId: 99999,
+      productLine: 'Riftbound',
+      setName: 'Origins',
+      productName: 'New Card',
+      title: null,
+      number: '99/298',
+      rarity: 'Rare',
+      condition: 'Near Mint',
+      quantity: 1,
+      status: 'matched' as const,
+      marketPrice: '5.00',
+      listingPrice: '4.90',
+      photoUrl: null,
+      notes: null,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(parseCsv).mockReturnValue({
+      source: 'csv',
+      cards: mockImportedCards,
+      errors: [],
+      totalRows: 1,
+    });
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    // Mock select to find no existing card
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    } as any);
+
+    // Mock insert for new card
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([mockInsertedCard]),
+      }),
+    } as any);
+
+    const csvContent = '1,99999,Riftbound,Origins,New Card,,99/298,Rare,Near Mint,5.00,4.80,4.85,4.80,5.00,1,';
+    const form = new FormData();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    form.append('file', blob, 'cards.csv');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/import',
+      payload: form,
+      headers: form.getHeaders ? form.getHeaders() : {},
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body);
+    expect(body.imported).toBe(1);
+    expect(body.updated).toBe(0);
+    expect(body.cards).toHaveLength(1);
+  });
+
+  it('should handle mix of new and duplicate cards', async () => {
+    const mockImportedCards = [
+      {
+        tcgplayerId: 12345,
+        productLine: 'Riftbound',
+        setName: 'Origins',
+        productName: 'Duplicate Card',
+        title: null,
+        number: '1/298',
+        rarity: 'Common',
+        condition: 'Near Mint',
+        quantity: 2,
+        snapshotMarketPrice: 1.50,
+        photoUrl: null,
+      },
+      {
+        tcgplayerId: 99999,
+        productLine: 'Riftbound',
+        setName: 'Origins',
+        productName: 'New Card',
+        title: null,
+        number: '99/298',
+        rarity: 'Rare',
+        condition: 'Near Mint',
+        quantity: 1,
+        snapshotMarketPrice: 5.00,
+        photoUrl: null,
+      },
+    ];
+
+    const existingCard = {
+      id: 1,
+      tcgplayerId: 12345,
+      condition: 'Near Mint',
+      quantity: 3,
+      updatedAt: new Date(),
+    };
+
+    const mockPricingResult = {
+      listingPrice: 1.47,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(parseCsv).mockReturnValue({
+      source: 'csv',
+      cards: mockImportedCards,
+      errors: [],
+      totalRows: 2,
+    });
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    // First select call finds existing card, second finds nothing
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([existingCard]),
+          }),
+        } as any;
+      }
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      } as any;
+    });
+
+    const updatedCard = { ...existingCard, quantity: 5 };
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([updatedCard]),
+        }),
+      }),
+    } as any);
+
+    const newCard = {
+      id: 2,
+      tcgplayerId: 99999,
+      quantity: 1,
+      importedAt: new Date(),
+    };
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([newCard]),
+      }),
+    } as any);
+
+    const csvContent = '2,12345,Riftbound,Origins,Duplicate Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,3.00,2,\n1,99999,Riftbound,Origins,New Card,,99/298,Rare,Near Mint,5.00,4.80,4.85,4.80,5.00,1,';
+    const form = new FormData();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    form.append('file', blob, 'cards.csv');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/import',
+      payload: form,
+      headers: form.getHeaders ? form.getHeaders() : {},
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body);
+    expect(body.imported).toBe(1);
+    expect(body.updated).toBe(1);
+    expect(body.cards).toHaveLength(2);
+  });
+
+  it('should match TXT imports on productName+setName+number+condition when no tcgplayerId', async () => {
+    const mockImportedCards = [
+      {
+        tcgplayerId: null,
+        productLine: 'Riftbound',
+        setName: 'Origins',
+        productName: 'TXT Card',
+        title: null,
+        number: null,
+        rarity: null,
+        condition: 'Near Mint',
+        quantity: 2,
+        snapshotMarketPrice: null,
+        photoUrl: null,
+      },
+    ];
+
+    const existingCard = {
+      id: 3,
+      tcgplayerId: null,
+      productName: 'TXT Card',
+      setName: 'Origins',
+      number: null,
+      condition: 'Near Mint',
+      quantity: 1,
+      updatedAt: new Date(),
+    };
+
+    const mockPricingResult = {
+      listingPrice: null,
+      status: 'needs_attention' as const,
+      reason: 'No market price',
+    };
+
+    vi.mocked(parseTxt).mockReturnValue({
+      source: 'txt',
+      cards: mockImportedCards,
+      errors: [],
+      totalRows: 1,
+    });
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([existingCard]),
+      }),
+    } as any);
+
+    const updatedCard = { ...existingCard, quantity: 3 };
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([updatedCard]),
+        }),
+      }),
+    } as any);
+
+    const txtContent = '2 TXT Card [Origins]';
+    const form = new FormData();
+    const blob = new Blob([txtContent], { type: 'text/plain' });
+    form.append('file', blob, 'cards.txt');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/import',
+      payload: form,
+      headers: form.getHeaders ? form.getHeaders() : {},
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body);
+    expect(body.imported).toBe(0);
+    expect(body.updated).toBe(1);
+    expect(body.cards[0].quantity).toBe(3);
+  });
+});
+
+describe('POST /api/cards/fetch-prices', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetSets.mockClear();
+    mockGetPricing.mockClear();
+    app = Fastify();
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should fetch prices from TCGTracking and update matching cards', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {
+        '12345': {
+          tcg: {
+            Normal: { low: 1.40, market: 1.50 },
+          },
+        },
+        '67890': {
+          tcg: {
+            Normal: { low: 5.00, market: 5.50 },
+          },
+        },
+      },
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8926802,
+        tcgProductId: 12345,
+        productName: 'Card 1',
+        condition: 'Near Mint',
+        marketPrice: '1.00',
+        listingPrice: '0.98',
+        status: 'listed' as const,
+      },
+      {
+        id: 2,
+        tcgplayerId: 8927752,
+        tcgProductId: 67890,
+        productName: 'Card 2',
+        condition: 'Near Mint',
+        marketPrice: '4.00',
+        listingPrice: '3.92',
+        status: 'listed' as const,
+      },
+      {
+        id: 3,
+        tcgplayerId: 8925412,
+        tcgProductId: 99999,
+        productName: 'Card 3',
+        condition: 'Near Mint',
+        marketPrice: null,
+        listingPrice: null,
+        status: 'needs_attention' as const,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    const mockPricingResult1 = {
+      listingPrice: 1.47,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    const mockPricingResult2 = {
+      listingPrice: 5.39,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(calculatePrice)
+      .mockReturnValueOnce(mockPricingResult1)
+      .mockReturnValueOnce(mockPricingResult2);
+
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    if (response.statusCode !== 200) {
+      console.error('Response body:', response.body);
+    }
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(2);
+    expect(body.notFound).toBe(1);
+    expect(body.errors).toEqual([]);
+  });
+
+  it('should handle cards not found in TCGTracking pricing', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {},
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8926802,
+        tcgProductId: 12345,
+        productName: 'Card 1',
+        condition: 'Near Mint',
+        marketPrice: '1.00',
+        listingPrice: '0.98',
+        status: 'listed' as const,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(0);
+    expect(body.notFound).toBe(1);
+  });
+
+  it('should fall back to Foil pricing when Normal pricing is not available', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {
+        '652802': {
+          tcg: {
+            Foil: { low: 0.10, market: 0.24 },
+          },
+        },
+      },
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8926802,
+        tcgProductId: 652802,
+        productName: 'Jinx - Demolitionist',
+        condition: 'Near Mint',
+        marketPrice: null,
+        listingPrice: null,
+        isFoilPrice: false,
+        notes: null,
+        status: 'needs_attention' as const,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    const mockPricingResult = {
+      listingPrice: 0.24,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    let updateCallArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateCallArgs = args;
+        return {
+          where: vi.fn().mockResolvedValue(undefined),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(1);
+    expect(body.notFound).toBe(0);
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.24 });
+    expect(updateCallArgs.isFoilPrice).toBe(true);
+    expect(updateCallArgs.notes).toContain('Price from Foil (no Normal pricing available)');
+  });
+
+  it('should prefer Normal pricing over Foil when both are available', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {
+        '652954': {
+          tcg: {
+            Foil: { low: 0.55, market: 9.13 },
+            Normal: { low: 0.05, market: 0.20 },
+          },
+        },
+      },
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8927752,
+        tcgProductId: 652954,
+        productName: 'Card with Both Pricing',
+        condition: 'Near Mint',
+        marketPrice: null,
+        listingPrice: null,
+        isFoilPrice: false,
+        notes: null,
+        status: 'needs_attention' as const,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    const mockPricingResult = {
+      listingPrice: 0.20,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    let updateCallArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateCallArgs = args;
+        return {
+          where: vi.fn().mockResolvedValue(undefined),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(1);
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.20 }); // Should use Normal price
+    expect(updateCallArgs.isFoilPrice).toBe(false);
+    expect(updateCallArgs.notes === null || !updateCallArgs.notes.includes('Price from Foil')).toBe(true);
+  });
+
+  it('should clear foil fallback flag when Normal pricing becomes available', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {
+        '652802': {
+          tcg: {
+            Normal: { low: 0.15, market: 0.25 },
+          },
+        },
+      },
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8926802,
+        tcgProductId: 652802,
+        productName: 'Previously Foil Priced Card',
+        condition: 'Near Mint',
+        marketPrice: '0.24',
+        listingPrice: '0.24',
+        isFoilPrice: true,
+        notes: 'Price from Foil (no Normal pricing available)',
+        status: 'matched' as const,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    const mockPricingResult = {
+      listingPrice: 0.25,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    let updateCallArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateCallArgs = args;
+        return {
+          where: vi.fn().mockResolvedValue(undefined),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(1);
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.25 });
+    expect(updateCallArgs.isFoilPrice).toBe(false);
+    expect(updateCallArgs.notes).toBe(null); // Foil note should be removed (returns null when empty)
+  });
+
+  it('should update cards that drop below $0.05 to gift status', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {
+        '12345': {
+          tcg: {
+            Normal: { low: 0.01, market: 0.03 },
+          },
+        },
+      },
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8926802,
+        tcgProductId: 12345,
+        productName: 'Cheap Card',
+        condition: 'Near Mint',
+        marketPrice: '0.10',
+        listingPrice: '0.10',
+        status: 'listed' as const,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    const mockPricingResult = {
+      listingPrice: null,
+      status: 'gift' as const,
+      reason: 'Market price below minimum threshold',
+    };
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(1);
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.03 });
   });
 });
