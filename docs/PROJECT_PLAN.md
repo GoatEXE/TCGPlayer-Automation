@@ -2,17 +2,25 @@
 
 > **Author:** Plan Drafter (AI-assisted)
 > **Date:** 2026-03-28
-> **Status:** Draft — awaiting Dustin's review before implementation begins
+> **Last Updated:** 2026-03-29
+> **Status:** Phase 1 — In Progress
+> - Phase 1.1 (Scaffolding): ✅ COMPLETE
+> - Phase 1.2 (Database Setup): ✅ COMPLETE
+> - Phase 1.3 (Core Libraries): ✅ COMPLETE
+> - Phase 1.4 (API + Dashboard): ✅ COMPLETE
+> - Phase 1.5 (Remaining): 🚧 IN PROGRESS — duplicate handling, live pricing, listing workflow
 
 ---
 
 ## 1. Executive Summary
 
-This project builds a self-hosted web application that automates selling duplicate Riftbound TCG cards on TCGPlayer. The core workflow is: import cards you want to sell (via CSV or manual entry), automatically list them on TCGPlayer at 98% of market price, monitor and adjust prices on a lazy schedule, and track sales through a dashboard with Telegram notifications.
+This project builds a self-hosted web application that assists with selling duplicate Riftbound TCG cards on TCGPlayer. The core workflow is: import cards you want to sell (via CSV or manual entry), automatically calculate optimal listing prices at 98% of market price, generate listing CSV exports for bulk upload to TCGPlayer seller portal, monitor and adjust prices on a lazy schedule, and track sales through a dashboard with Telegram notifications.
 
-The application is built with Node.js/TypeScript, React for the frontend, PostgreSQL for persistence, and is fully Dockerized for deployment on an Ubuntu Linux server. It communicates with the TCGPlayer Seller API for catalog lookups, inventory management, and order tracking.
+The application is built with Node.js/TypeScript, React for the frontend, PostgreSQL for persistence, and is fully Dockerized for deployment on an Ubuntu Linux server. It uses the TCGTracking API (free, no authentication) for market price data and catalog lookups.
 
-The rollout is phased intentionally. Phase 1 serves double duty as both MVP functionality (card ingestion + automated listing) and as a proof-of-concept to validate TCGPlayer API access early — before investing in dashboard polish and monitoring infrastructure. Phases 2 and 3 layer on price monitoring and a full sales dashboard respectively.
+**Note on TCGPlayer API:** As of 2026, TCGPlayer's Seller API is closed to new applicants. This project adapts to a **Level 1 seller workflow** — the app generates pricing recommendations and CSV exports, but actual listing is done manually via TCGPlayer's seller portal.
+
+The rollout is phased intentionally. Phase 1 delivers MVP functionality (card ingestion + pricing + export generation). Phases 2 and 3 layer on automated price monitoring and a full sales dashboard respectively.
 
 ---
 
@@ -89,6 +97,14 @@ Represents a physical card you own and want to sell.
 | `rawCsvData`     | jsonb?     | Original CSV row for debugging                    |
 | `createdAt`      | timestamp  |                                                   |
 | `updatedAt`      | timestamp  |                                                   |
+
+**Card Status Flow:**
+- `pending` → Card imported but not yet priced
+- `matched` → Card has market price, calculated listing price, ready to list
+- `listed` → Card is actually listed for sale on TCGPlayer (manual workflow at Level 1)
+- `gift` → Market price < $0.05, marked for inclusion as freebie in orders
+- `needs_attention` → No market price found, requires manual review or retry
+- `error` → Processing error occurred
 
 ### Listing
 
@@ -208,57 +224,47 @@ tcgplayer-automation/
 Keeps the server and frontend independently buildable/testable, but avoids the overhead of separate repos. npm/pnpm workspaces handle linking. The Dockerfile uses a multi-stage build — server stage builds the API, web stage builds the static frontend, final stage serves both.
 
 **Tasks:**
-- [ ] Initialize pnpm workspace with `packages/server` and `packages/web`
-- [ ] Configure TypeScript (strict mode, path aliases)
+- [x] Initialize pnpm workspace with `packages/server` and `packages/web`
+- [x] Configure TypeScript (strict mode, path aliases)
 - [ ] Set up ESLint + Prettier (minimal config, not over-engineered)
-- [ ] Set up Vitest for both `packages/server` and `packages/web`
-- [ ] Configure test scripts in root `package.json`
-- [ ] Create `.env.example` with all required env vars documented
-- [ ] Verify `pnpm dev` starts both server and frontend concurrently
+- [x] Set up Vitest for both `packages/server` and `packages/web`
+- [x] Configure test scripts in root `package.json`
+- [x] Create `.env.example` with all required env vars documented
+- [x] Verify `pnpm dev` starts both server and frontend concurrently
 
 ### 4.2 Database Setup + Schema
 
 **Deliverable:** PostgreSQL running in Docker, schema applied via Drizzle migrations.
 
 **Tasks:**
-- [ ] Add PostgreSQL 16 to `docker-compose.yml` with a named volume
-- [ ] Install Drizzle ORM + drizzle-kit in `packages/server`
-- [ ] Define Drizzle schema for `Card`, `Listing`, `PriceHistory`, `Sale`, `Shipment`
-- [ ] Generate and run initial migration
-- [ ] Add `drizzle-kit studio` for visual DB inspection during dev
+- [x] Add PostgreSQL 16 to `docker-compose.yml` with a named volume
+- [x] Install Drizzle ORM + drizzle-kit in `packages/server`
+- [x] Define Drizzle schema for `Card` (other entities are Phase 2/3)
+- [x] Generate and run initial migration
+- [x] Add `drizzle-kit studio` for visual DB inspection during dev
 - [ ] Create seed script (`scripts/seed.ts`) with sample cards
 
 ### 4.3 TCGPlayer API Client
 
-**Deliverable:** Typed client library wrapping the TCGPlayer Seller API.
+> **⚠️ N/A — TCGPlayer API is closed to new applicants.**
+> 
+> As of 2026, TCGPlayer has closed their Seller API to new applications. This project uses the following alternatives:
+> - **Price data:** TCGTracking API (free, no authentication required)
+> - **Catalog lookup:** TCGTracking API
+> - **Listing management:** Manual via TCGPlayer seller portal (Level 1 seller workflow)
+> 
+> This section is preserved for reference but all tasks are marked N/A.
 
-**Key endpoints needed (Phase 1):**
-- `POST /token` — OAuth bearer token (client credentials flow)
-- `GET /catalog/products` — Search products by name
-- `GET /pricing/product/{productIds}/marketprices` — Get market prices
-- `GET /catalog/skus` — Get SKUs for a product (condition + printing combos)
-- `POST /inventory` — Create/update inventory listings
-- `GET /inventory` — Read current inventory
-
-**Implementation:**
-```
-packages/server/src/lib/tcgplayer/
-├── client.ts          # Axios/fetch wrapper with auth token management
-├── auth.ts            # Token acquisition + refresh + caching
-├── catalog.ts         # Product search, SKU lookup
-├── pricing.ts         # Market price fetching
-├── inventory.ts       # Listing CRUD
-└── types.ts           # TypeScript types for API responses
-```
+**Original Deliverable (N/A):** Typed client library wrapping the TCGPlayer Seller API.
 
 **Tasks:**
-- [ ] Implement OAuth token acquisition with automatic refresh
-- [ ] Build catalog search — find product by name + set + number
-- [ ] Build market price fetcher — get current market/low prices
-- [ ] Build inventory management — create listing, update price, remove listing
-- [ ] Add rate limiting / retry logic (TCGPlayer rate limits: ~300 req/min per their docs)
-- [ ] Write integration tests (can be run against real API with test credentials)
-- [ ] **Milestone: Validate API access** — manually run a catalog search and confirm we get results back
+- [N/A] Implement OAuth token acquisition with automatic refresh
+- [N/A] Build catalog search — find product by name + set + number
+- [N/A] Build market price fetcher — get current market/low prices
+- [N/A] Build inventory management — create listing, update price, remove listing
+- [N/A] Add rate limiting / retry logic
+- [N/A] Write integration tests
+- [N/A] **Milestone: Validate API access**
 
 ### 4.4 CSV Import Service
 
@@ -278,8 +284,8 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Tasks:**
 - [x] Sample CSV obtained — 16-column format with TCGplayer Id, Product Line, Set Name, Product Name, Title, Number, Rarity, Condition, pricing fields, Add to Quantity, Photo URL
-- [ ] Build CSV parser using `papaparse` or `csv-parse` with column-name-aware mapping
-- [ ] Map CSV columns to `Card` schema fields:
+- [x] Build CSV parser using `papaparse` or `csv-parse` with column-name-aware mapping
+- [x] Map CSV columns to `Card` schema fields:
   - `TCGplayer Id` → `tcgplayerId`
   - `Product Name` → `name`
   - `Set Name` → `setName`
@@ -289,22 +295,22 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
   - `Add to Quantity` → `quantity`
   - `TCG Market Price` → use for initial price calculation
 - [ ] Handle duplicates (same card + condition = increment quantity, not new row)
-- [ ] Store raw CSV row in `rawCsvData` for debugging
-- [ ] Return import summary: `{ imported: N, duplicatesUpdated: N, errors: [...] }`
-- [ ] Create API endpoint: `POST /api/cards/import` (multipart file upload)
-- [ ] Support TXT import format: `"{quantity} {card name} [{set code}] {number}"` — requires catalog lookup to resolve TCGPlayer IDs
-- [ ] Build TXT parser with regex: `^(\d+)\s+(.+?)\s+\[(\w+)\]\s+(.+)$`
-- [ ] Create API endpoint: `POST /api/cards/import-txt` (text file or paste)
+- [x] Store raw CSV row in `rawCsvData` for debugging
+- [x] Return import summary: `{ imported: N, duplicatesUpdated: N, errors: [...] }`
+- [x] Create API endpoint: `POST /api/cards/import` (multipart file upload)
+- [x] Support TXT import format: `"{quantity} {card name} [{set code}] {number}"` — requires catalog lookup to resolve TCGPlayer IDs
+- [x] Build TXT parser with regex: `^(\d+)\s+(.+?)\s+\[(\w+)\]\s+(.+)$`
+- [x] ~~Create API endpoint: `POST /api/cards/import-txt`~~ Combined with `POST /api/cards/import` (auto-detects format)
 
 ### 4.5 Manual Card Entry UI
 
-**Deliverable:** Web form to add cards one at a time, with TCGPlayer catalog search for matching.
+**Deliverable:** Web form to add cards one at a time.
 
 **Tasks:**
-- [ ] Build card search component — user types card name, autocomplete searches TCGPlayer catalog
+- [N/A] Build card search component — user types card name, autocomplete searches TCGPlayer catalog (no API access)
 - [ ] Build card entry form — select card from search results, pick condition, enter quantity
 - [ ] Create API endpoint: `POST /api/cards` (single card creation)
-- [ ] Create API endpoint: `GET /api/cards/search?q=` (proxies to TCGPlayer catalog search)
+- [N/A] Create API endpoint: `GET /api/cards/search?q=` (no TCGPlayer catalog access)
 - [ ] Show list of pending/unmatched cards with option to manually match
 
 ### 4.6 Listing Creation Pipeline
@@ -320,32 +326,37 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 6. Handle errors gracefully — mark card as `error` with details, don't block the batch
 
 **Tasks:**
-- [ ] Implement pricing calculation function (98% of market, rounded to nearest penny)
-- [ ] Build batch listing service that processes a set of matched cards
-- [ ] Create API endpoint: `POST /api/listings/create` (trigger listing for selected cards)
-- [ ] Create API endpoint: `POST /api/listings/create-all` (list all matched cards)
+- [x] Implement pricing calculation function (98% of market, rounded to nearest penny)
+- [N/A] Build batch listing service that processes a set of matched cards (manual listing at Level 1)
+- [N/A] Create API endpoint: `POST /api/listings/create` (no API access for automated listing)
+- [N/A] Create API endpoint: `POST /api/listings/create-all` (no API access for automated listing)
 - [ ] Add error handling and partial failure support
-- [ ] Handle cards with no market price data — skip listing, set card status to `needs_attention`, trigger notification, queue for retry on next price check cycle
-- [ ] Cards with market price < $0.05: mark as `gift` — these are freebies to include in orders to encourage positive reviews
-- [ ] Cards with market price >= $0.05: eligible for listing at 98% market price
-- [ ] No hard minimum listing floor — list everything $0.05+ to maximize inventory for order consolidation
-- [ ] Track profitability per ORDER (after $0.30 fee split), not per individual card
+- [x] Handle cards with no market price data — skip listing, set card status to `needs_attention`, trigger notification, queue for retry on next price check cycle
+- [x] Cards with market price < $0.05: mark as `gift` — these are freebies to include in orders to encourage positive reviews
+- [x] Cards with market price >= $0.05: eligible for listing at 98% market price
+- [x] No hard minimum listing floor — list everything $0.05+ to maximize inventory for order consolidation
+- [x] Track profitability per ORDER (after $0.30 fee split), not per individual card
 - [ ] Build simple "review and confirm" UI step — show user what will be listed at what price before pushing
 
 ### 4.7 Basic API Endpoints (Full Phase 1 Summary)
 
-| Method | Path                       | Description                             |
-| ------ | -------------------------- | --------------------------------------- |
-| GET    | `/api/cards`               | List all cards (paginated, filterable)  |
-| POST   | `/api/cards`               | Add single card manually                |
-| POST   | `/api/cards/import`        | Upload CSV file for import              |
-| GET    | `/api/cards/search`        | Search TCGPlayer catalog                |
-| PATCH  | `/api/cards/:id`           | Update card details                     |
-| DELETE | `/api/cards/:id`           | Remove card                             |
-| GET    | `/api/listings`            | List all listings                       |
-| POST   | `/api/listings/create`     | Create listings for selected cards      |
-| POST   | `/api/listings/create-all` | Create listings for all matched cards   |
-| GET    | `/api/health`              | Health check                            |
+| Method | Path                       | Status | Description                             |
+| ------ | -------------------------- | ------ | --------------------------------------- |
+| GET    | `/api/cards`               | ✅     | List all cards (paginated, filterable)  |
+| POST   | `/api/cards`               | 📋     | Add single card manually                |
+| POST   | `/api/cards/import`        | ✅     | Upload CSV/TXT file for import          |
+| GET    | `/api/cards/search`        | N/A    | Search TCGPlayer catalog (no API)       |
+| PATCH  | `/api/cards/:id`           | ✅     | Update card details                     |
+| DELETE | `/api/cards/:id`           | ✅     | Remove card                             |
+| GET    | `/api/cards/stats`         | ✅     | Status counts (pending/matched/gift)    |
+| POST   | `/api/cards/:id/reprice`   | ✅     | Re-price single card                    |
+| POST   | `/api/cards/reprice-all`   | ✅     | Bulk re-price all cards                 |
+| GET    | `/api/listings`            | 📋     | List all listings                       |
+| POST   | `/api/listings/create`     | N/A    | Create listings (no API, manual)        |
+| POST   | `/api/listings/create-all` | N/A    | Create listings (no API, manual)        |
+| GET    | `/api/health`              | ✅     | Health check                            |
+
+**Legend:** ✅ Complete | 📋 TODO | N/A Not Applicable
 
 ### 4.8 Docker Compose Setup
 
@@ -386,8 +397,21 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Update `.dockerignore` to exclude unnecessary files
 - [x] Update `.env.example` to document profile usage
 - [x] Update README.md with Docker-first workflow
-- [ ] Verify clean `docker compose up` from scratch works
-- [ ] Add database migration service or run migrations in app startup (Phase 1.2)
+- [x] Verify clean `docker compose up` from scratch works
+- [ ] Add database migration service or run migrations in app startup
+
+### 4.9 Remaining Phase 1 Work
+
+**Status:** 🚧 IN PROGRESS
+
+**Tasks:**
+- [ ] Handle duplicates (same card + condition = increment quantity, not new row)
+- [ ] Build "review and confirm" UI — preview what to list before committing
+- [ ] Add ability to mark cards as "listed" from the dashboard
+- [ ] Auto-run migrations on startup
+- [ ] Wire up live TCGTracking price fetching (replace snapshot prices from CSV)
+- [ ] ESLint + Prettier setup (nice to have)
+- [ ] Seed script for dev data (nice to have)
 
 ---
 
@@ -561,10 +585,11 @@ Fast, disk-efficient, good workspace support. No strong opinion here — npm or 
 
 ### Resolved Decisions
 
-1. **No market price handling:** Do NOT list the card. Mark it as `needs_attention` in the UI, send a Telegram notification ("Card X couldn't be listed: no market price data"), and on the next price check cycle, re-attempt to find a market price. If a price is found, auto-list it at 98% market. This combines graceful skipping, user notification, and automatic retry.
-2. **Minimum listing price:** Cards under $0.05 → gift pool (freebies for positive reviews). Everything $0.05+ gets listed. No hard floor — consolidation strategy prioritizes inventory breadth. Re-evaluated each price check cycle — auto-listed if market price rises above threshold. See `docs/research/tcgplayer-fees/FEE_ANALYSIS.md` for profitability analysis.
-3. **Hosting/access:** Local network only, no external access. Telegram integration will use **polling mode** (not webhooks) to avoid needing inbound connections.
-4. **Seller account:** Dustin does not have one yet; will apply. This is a known dependency for Phase 1 POC validation.
+1. **TCGPlayer API closure:** TCGPlayer Seller API is closed to new applicants as of 2026. **Workaround:** Price data comes from TCGTracking API (free, no auth). Listing is manual via TCGPlayer seller portal (Level 1 seller workflow). This app generates CSV exports and pricing recommendations; actual listing is done by hand.
+2. **No market price handling:** Do NOT list the card. Mark it as `needs_attention` in the UI, send a Telegram notification ("Card X couldn't be listed: no market price data"), and on the next price check cycle, re-attempt to find a market price. If a price is found, auto-list it at 98% market. This combines graceful skipping, user notification, and automatic retry.
+3. **Minimum listing price:** Cards under $0.05 → gift pool (freebies for positive reviews). Everything $0.05+ gets listed. No hard floor — consolidation strategy prioritizes inventory breadth. Re-evaluated each price check cycle — auto-listed if market price rises above threshold. See `docs/research/tcgplayer-fees/FEE_ANALYSIS.md` for profitability analysis.
+4. **Hosting/access:** Local network only, no external access. Telegram integration will use **polling mode** (not webhooks) to avoid needing inbound connections.
+5. **Seller account:** Dustin does not have one yet; will apply. This is a known dependency for Phase 1 POC validation.
 
 ### Open Questions (To Resolve Before or During Phase 1)
 
@@ -647,16 +672,18 @@ docker compose up --build -d
 
 ## 11. Phase Milestones Summary
 
-| Phase | Milestone | Key Deliverable | Est. Effort |
-| ----- | --------- | --------------- | ----------- |
-| 1.1 | Scaffolding | Runnable project skeleton | Small |
-| 1.2 | Database | Schema + migrations working | Small |
-| 1.3 | TCGPlayer Client | API client with auth + catalog + pricing | Medium |
-| 1.4 | CSV Import | Upload and parse CSV → cards in DB | Small |
-| 1.5 | Manual Entry | Web form to search + add cards | Medium |
-| 1.6 | Listing Pipeline | Cards → live TCGPlayer listings | Medium |
-| 1.7 | Docker Setup | Full `docker compose up` deployment | Small |
-| **1** | **MVP Complete** | **Cards imported and listed on TCGPlayer** | **—** |
+| Phase | Milestone | Key Deliverable | Status |
+| ----- | --------- | --------------- | ------ |
+| 1.1 | Scaffolding | Runnable project skeleton | ✅ COMPLETE |
+| 1.2 | Database | Schema + migrations working | ✅ COMPLETE |
+| 1.3 | ~~TCGPlayer Client~~ | ~~API client with auth + catalog + pricing~~ | N/A (API closed) |
+| 1.4 | CSV Import | Upload and parse CSV → cards in DB | ✅ COMPLETE |
+| 1.5 | Manual Entry | Web form to search + add cards | 📋 TODO |
+| 1.6 | Listing Pipeline | Cards → live TCGPlayer listings | ⚠️ Manual workflow (no API) |
+| 1.7 | Docker Setup | Full `docker compose up` deployment | ✅ COMPLETE |
+| 1.8 | API Endpoints | Core CRUD + import + pricing | ✅ COMPLETE |
+| 1.9 | Dashboard | Card management UI | ✅ COMPLETE |
+| **1** | **MVP Complete** | **Cards imported and priced for listing** | 🚧 IN PROGRESS |
 | 2.1 | Price Scheduler | BullMQ + Redis + repeating job | Medium |
 | 2.2 | Auto-Adjust | Price drift detection + update | Medium |
 | 2.3 | Monitoring UI | Price history views + manual refresh | Small |
