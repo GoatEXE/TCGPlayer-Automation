@@ -1558,3 +1558,269 @@ describe('POST /api/cards/fetch-prices', () => {
     expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.03 });
   });
 });
+
+describe('POST /api/cards/mark-listed', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = Fastify();
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should mark matched cards as listed', async () => {
+    const mockCards = [
+      {
+        id: 1,
+        productName: 'Card 1',
+        status: 'matched' as const,
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        productName: 'Card 2',
+        status: 'matched' as const,
+        updatedAt: new Date(),
+      },
+    ];
+
+    // Mock select to return cards with matched status
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
+    } as any);
+
+    // Mock update to change status to listed
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/mark-listed',
+      payload: { cardIds: [1, 2] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(2);
+    expect(body.errors).toEqual([]);
+  });
+
+  it('should skip non-matched cards with error messages', async () => {
+    const mockCards = [
+      {
+        id: 1,
+        productName: 'Gift Card',
+        status: 'gift' as const,
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        productName: 'Listed Card',
+        status: 'listed' as const,
+        updatedAt: new Date(),
+      },
+    ];
+
+    // Mock select to return cards with non-matched status
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/mark-listed',
+      payload: { cardIds: [1, 2] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(0);
+    expect(body.errors).toHaveLength(2);
+    expect(body.errors[0]).toContain('Gift Card');
+    expect(body.errors[0]).toContain('gift');
+    expect(body.errors[1]).toContain('Listed Card');
+    expect(body.errors[1]).toContain('listed');
+  });
+
+  it('should handle mix of matched and non-matched cards', async () => {
+    const mockCards = [
+      {
+        id: 1,
+        productName: 'Matched Card',
+        status: 'matched' as const,
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        productName: 'Pending Card',
+        status: 'pending' as const,
+        updatedAt: new Date(),
+      },
+      {
+        id: 3,
+        productName: 'Another Matched',
+        status: 'matched' as const,
+        updatedAt: new Date(),
+      },
+    ];
+
+    // Mock select to return all cards
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
+    } as any);
+
+    // Mock update to change status to listed (only for matched cards)
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/mark-listed',
+      payload: { cardIds: [1, 2, 3] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(2);
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0]).toContain('Pending Card');
+  });
+
+  it('should return 400 for empty cardIds array', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/mark-listed',
+      payload: { cardIds: [] },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = JSON.parse(response.body);
+    expect(body.error).toBeDefined();
+  });
+
+  it('should return 400 for missing cardIds', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/mark-listed',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('POST /api/cards/:id/unlist', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = Fastify();
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should unlist a listed card and reprice it', async () => {
+    const mockCard = {
+      id: 1,
+      productName: 'Listed Card',
+      status: 'listed' as const,
+      marketPrice: '2.00',
+      listingPrice: '1.96',
+      updatedAt: new Date(),
+    };
+
+    // Mock select to find the card
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([mockCard]),
+      }),
+    } as any);
+
+    const mockPricingResult = {
+      listingPrice: 1.96,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    };
+
+    vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
+
+    const updatedCard = {
+      ...mockCard,
+      status: 'matched' as const,
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([updatedCard]),
+        }),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/1/unlist',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.id).toBe(1);
+    expect(body.status).toBe('matched');
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 2.0 });
+  });
+
+  it('should return 400 for non-listed card', async () => {
+    const mockCard = {
+      id: 1,
+      productName: 'Matched Card',
+      status: 'matched' as const,
+      updatedAt: new Date(),
+    };
+
+    // Mock select to find the card
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([mockCard]),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/1/unlist',
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = JSON.parse(response.body);
+    expect(body.error).toContain('Only listed cards can be unlisted');
+  });
+
+  it('should return 404 for non-existent card', async () => {
+    // Mock select to find no card
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/999/unlist',
+    });
+
+    expect(response.statusCode).toBe(404);
+    const body = JSON.parse(response.body);
+    expect(body.error).toBe('Card not found');
+  });
+});

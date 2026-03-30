@@ -7,16 +7,21 @@ interface CardTableProps {
   loading?: boolean;
   onReprice: (id: number) => void;
   onDelete: (id: number) => void;
+  onMarkListed: (cardIds: number[]) => void;
+  onUnlist: (id: number) => void;
 }
 
 type SortField = keyof Card | null;
 type SortDirection = 'asc' | 'desc';
 
-export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProps) {
+export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, onUnlist }: CardTableProps) {
   const [sortField, setSortField] = useState<SortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [repricingId, setRepricingId] = useState<number | null>(null);
+  const [unlistingId, setUnlistingId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [markingListed, setMarkingListed] = useState(false);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -58,6 +63,55 @@ export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProp
       setRepricingId(null);
     }
   };
+
+  const handleUnlist = async (id: number) => {
+    setUnlistingId(id);
+    try {
+      await onUnlist(id);
+    } finally {
+      setUnlistingId(null);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === matchedCards.length) {
+      // Deselect all
+      setSelectedIds(new Set());
+    } else {
+      // Select all matched cards
+      const matchedIds = matchedCards.map(card => card.id);
+      setSelectedIds(new Set(matchedIds));
+    }
+  };
+
+  const handleSelectCard = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleMarkListed = async () => {
+    if (selectedIds.size === 0) return;
+    
+    if (!confirm(`Mark ${selectedIds.size} card${selectedIds.size > 1 ? 's' : ''} as listed on TCGPlayer?`)) {
+      return;
+    }
+
+    setMarkingListed(true);
+    try {
+      await onMarkListed(Array.from(selectedIds));
+      setSelectedIds(new Set()); // Clear selection on success
+    } finally {
+      setMarkingListed(false);
+    }
+  };
+
+  // Filter cards that can be selected (only matched status)
+  const matchedCards = sortedCards.filter(card => card.status === 'matched');
 
   const formatPrice = (price: string | null, isFoil?: boolean) => {
     if (!price) return '—';
@@ -113,9 +167,35 @@ export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProp
 
   return (
     <div className="table-container">
+      {selectedIds.size > 0 && (
+        <div className="selection-actions">
+          <button
+            onClick={handleMarkListed}
+            disabled={markingListed}
+            className="button-primary mark-listed"
+          >
+            {markingListed ? '⏳ Marking...' : `📋 Mark ${selectedIds.size} as Listed`}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="button-secondary"
+          >
+            Clear Selection
+          </button>
+        </div>
+      )}
       <table className="card-table">
         <thead>
           <tr>
+            <th className="checkbox-column">
+              <input
+                type="checkbox"
+                checked={selectedIds.size === matchedCards.length && matchedCards.length > 0}
+                onChange={handleSelectAll}
+                disabled={matchedCards.length === 0}
+                title="Select all matched cards"
+              />
+            </th>
             <SortableHeader field="status">Status</SortableHeader>
             <SortableHeader field="productName">Name</SortableHeader>
             <SortableHeader field="setName">Set</SortableHeader>
@@ -130,11 +210,25 @@ export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProp
           </tr>
         </thead>
         <tbody>
-          {sortedCards.map((card) => (
-            <tr key={card.id}>
-              <td>
-                <StatusBadge status={card.status} />
-              </td>
+          {sortedCards.map((card) => {
+            const isMatched = card.status === 'matched';
+            const isListed = card.status === 'listed';
+            const isSelected = selectedIds.has(card.id);
+            
+            return (
+              <tr key={card.id} className={isListed ? 'listed-row' : ''}>
+                <td className="checkbox-column">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => handleSelectCard(card.id, e.target.checked)}
+                    disabled={!isMatched}
+                    title={isMatched ? 'Select for bulk listing' : 'Only matched cards can be selected'}
+                  />
+                </td>
+                <td>
+                  <StatusBadge status={card.status} />
+                </td>
               <td className="card-name">
                 {card.title || card.productName}
                 {card.photoUrl && (
@@ -156,27 +250,39 @@ export function CardTable({ cards, loading, onReprice, onDelete }: CardTableProp
               <td className="quantity">{card.quantity}</td>
               <td className="price">{formatPrice(card.marketPrice, card.isFoilPrice)}</td>
               <td className="price">{formatPrice(card.listingPrice)}</td>
-              <td className="date">{formatDate(card.updatedAt)}</td>
-              <td className="actions">
-                <button
-                  onClick={() => handleReprice(card.id)}
-                  disabled={repricingId === card.id}
-                  className="action-button reprice"
-                  title="Re-price this card"
-                >
-                  {repricingId === card.id ? '⏳' : '💰'}
-                </button>
-                <button
-                  onClick={() => handleDelete(card.id)}
-                  disabled={deletingId === card.id}
-                  className="action-button delete"
-                  title="Delete this card"
-                >
-                  {deletingId === card.id ? '⏳' : '🗑️'}
-                </button>
-              </td>
-            </tr>
-          ))}
+                <td className="date">{formatDate(card.updatedAt)}</td>
+                <td className="actions">
+                  {isListed ? (
+                    <button
+                      onClick={() => handleUnlist(card.id)}
+                      disabled={unlistingId === card.id}
+                      className="action-button unlist"
+                      title="Remove from listing"
+                    >
+                      {unlistingId === card.id ? '⏳' : '↩️'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleReprice(card.id)}
+                      disabled={repricingId === card.id}
+                      className="action-button reprice"
+                      title="Re-price this card"
+                    >
+                      {repricingId === card.id ? '⏳' : '💰'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(card.id)}
+                    disabled={deletingId === card.id}
+                    className="action-button delete"
+                    title="Delete this card"
+                  >
+                    {deletingId === card.id ? '⏳' : '🗑️'}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

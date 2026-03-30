@@ -6,6 +6,7 @@ import type {
   ImportResult,
   RepriceAllResult,
   FetchPricesResult,
+  MarkListedResult,
 } from './types';
 
 const API_BASE = '/api';
@@ -89,6 +90,19 @@ class ApiClient {
 
   async fetchPrices(): Promise<FetchPricesResult> {
     return this.request<FetchPricesResult>('/cards/fetch-prices', {
+      method: 'POST',
+    });
+  }
+
+  async markListed(cardIds: number[]): Promise<MarkListedResult> {
+    return this.request<MarkListedResult>('/cards/mark-listed', {
+      method: 'POST',
+      body: JSON.stringify({ cardIds }),
+    });
+  }
+
+  async unlistCard(id: number): Promise<Card> {
+    return this.request<Card>(`/cards/${id}/unlist`, {
       method: 'POST',
     });
   }

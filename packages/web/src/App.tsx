@@ -123,6 +123,31 @@ export function App() {
     }
   };
 
+  const handleMarkListed = async (cardIds: number[]) => {
+    try {
+      const result = await api.markListed(cardIds);
+      let message = `✅ Marked ${result.updated} card${result.updated !== 1 ? 's' : ''} as listed`;
+      if (result.errors.length > 0) {
+        message += `\n\n⚠️ Skipped ${result.errors.length} card${result.errors.length !== 1 ? 's' : ''}:\n${result.errors.join('\n')}`;
+      }
+      alert(message);
+      fetchCards();
+      fetchStats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to mark cards as listed');
+    }
+  };
+
+  const handleUnlist = async (id: number) => {
+    try {
+      const updatedCard = await api.unlistCard(id);
+      setCards(cards.map((c) => (c.id === id ? updatedCard : c)));
+      fetchStats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to unlist card');
+    }
+  };
+
   const handleStatusFilter = (status: StatusFilter) => {
     setStatusFilter(status);
     setCurrentPage(1);
@@ -207,6 +232,8 @@ export function App() {
             loading={loading}
             onReprice={handleReprice}
             onDelete={handleDelete}
+            onMarkListed={handleMarkListed}
+            onUnlist={handleUnlist}
           />
 
           <Pagination

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { eq, desc, isNotNull, sql, ilike, and, or, isNull } from 'drizzle-orm';
+import { eq, desc, isNotNull, sql, ilike, and, or, isNull, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
@@ -43,6 +43,15 @@ interface UpdateCardBody {
 interface FetchPricesResponse {
   updated: number;
   notFound: number;
+  errors: string[];
+}
+
+interface MarkListedBody {
+  cardIds: number[];
+}
+
+interface MarkListedResponse {
+  updated: number;
   errors: string[];
 }
 
@@ -338,12 +347,17 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       const marketPrice = card.marketPrice ? parseFloat(card.marketPrice) : null;
       const pricingResult = calculatePrice({ marketPrice });
 
+      // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
+      const newStatus = card.status === 'listed' && pricingResult.status === 'matched'
+        ? 'listed'
+        : pricingResult.status;
+
       // Update card with new pricing
       const [updatedCard] = await db
         .update(cards)
         .set({
           listingPrice: pricingResult.listingPrice?.toString() ?? null,
-          status: pricingResult.status,
+          status: newStatus,
           updatedAt: new Date(),
         })
         .where(eq(cards.id, parseInt(id, 10)))
@@ -372,11 +386,16 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         const marketPrice = parseFloat(card.marketPrice!);
         const pricingResult = calculatePrice({ marketPrice });
 
+        // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
+        const newStatus = card.status === 'listed' && pricingResult.status === 'matched'
+          ? 'listed'
+          : pricingResult.status;
+
         await db
           .update(cards)
           .set({
             listingPrice: pricingResult.listingPrice?.toString() ?? null,
-            status: pricingResult.status,
+            status: newStatus,
             updatedAt: new Date(),
           })
           .where(eq(cards.id, card.id));
@@ -479,12 +498,17 @@ export async function cardsRoutes(fastify: FastifyInstance) {
               notesValue = notesValue.split('\n').filter(line => line !== foilNoteLine).join('\n');
             }
 
+            // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
+            const newStatus = card.status === 'listed' && pricingResult.status === 'matched'
+              ? 'listed'
+              : pricingResult.status;
+
             await db
               .update(cards)
               .set({
                 marketPrice: newMarketPrice.toString(),
                 listingPrice: pricingResult.listingPrice?.toString() ?? null,
-                status: pricingResult.status,
+                status: newStatus,
                 isFoilPrice: isFoilFallback,
                 notes: notesValue || null,
                 updatedAt: new Date(),
@@ -507,6 +531,98 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to fetch prices' });
+    }
+  });
+
+  // POST /mark-listed - Bulk mark cards as listed
+  fastify.post<{
+    Body: MarkListedBody;
+    Reply: MarkListedResponse;
+  }>('/mark-listed', async (request, reply) => {
+    const { cardIds } = request.body;
+
+    // Validate request
+    if (!cardIds || !Array.isArray(cardIds) || cardIds.length === 0) {
+      return reply.code(400).send({ error: 'cardIds must be a non-empty array' });
+    }
+
+    try {
+      // Fetch all requested cards
+      const cardsToUpdate = await db
+        .select()
+        .from(cards)
+        .where(inArray(cards.id, cardIds));
+
+      let updated = 0;
+      const errors: string[] = [];
+
+      // Process each card
+      for (const card of cardsToUpdate) {
+        if (card.status === 'matched') {
+          // Update status to listed
+          await db
+            .update(cards)
+            .set({
+              status: 'listed',
+              updatedAt: new Date(),
+            })
+            .where(eq(cards.id, card.id));
+          updated++;
+        } else {
+          // Skip non-matched cards with error message
+          errors.push(`Card "${card.productName}" (ID: ${card.id}) has status "${card.status}" - only matched cards can be marked as listed`);
+        }
+      }
+
+      return reply.send({ updated, errors });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to mark cards as listed' });
+    }
+  });
+
+  // POST /:id/unlist - Unlist a card (set status back to matched)
+  fastify.post<{
+    Params: { id: string };
+    Reply: Card;
+  }>('/:id/unlist', async (request, reply) => {
+    const { id } = request.params;
+
+    try {
+      // Fetch the card
+      const [card] = await db
+        .select()
+        .from(cards)
+        .where(eq(cards.id, parseInt(id, 10)));
+
+      if (!card) {
+        return reply.code(404).send({ error: 'Card not found' });
+      }
+
+      // Validate that card is listed
+      if (card.status !== 'listed') {
+        return reply.code(400).send({ error: 'Only listed cards can be unlisted' });
+      }
+
+      // Re-run pricing engine
+      const marketPrice = card.marketPrice ? parseFloat(card.marketPrice) : null;
+      const pricingResult = calculatePrice({ marketPrice });
+
+      // Update card back to matched status
+      const [updatedCard] = await db
+        .update(cards)
+        .set({
+          status: pricingResult.status,
+          listingPrice: pricingResult.listingPrice?.toString() ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(cards.id, parseInt(id, 10)))
+        .returning();
+
+      return reply.send(updatedCard);
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to unlist card' });
     }
   });
 }

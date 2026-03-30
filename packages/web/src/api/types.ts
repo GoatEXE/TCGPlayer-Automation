@@ -60,6 +60,11 @@ export interface FetchPricesResult {
   errors: string[];
 }
 
+export interface MarkListedResult {
+  updated: number;
+  errors: string[];
+}
+
 export interface ApiError {
   error: string;
   message: string;
