@@ -294,9 +294,12 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
   - `Condition` → `condition`
   - `Add to Quantity` → `quantity`
   - `TCG Market Price` → use for initial price calculation
-- [ ] Handle duplicates (same card + condition = increment quantity, not new row)
+- [x] Handle duplicates (same card + condition = increment quantity, not new row)
+  - CSV: matches on `tcgplayerId + condition`
+  - TXT: matches on `productName + setName + number + condition`
+- [x] Extract `tcgProductId` from photo URLs during CSV import (`/product/652954_...` → `652954`)
 - [x] Store raw CSV row in `rawCsvData` for debugging
-- [x] Return import summary: `{ imported: N, duplicatesUpdated: N, errors: [...] }`
+- [x] Return import summary: `{ imported: N, updated: N, errors: [...], cards: [...] }`
 - [x] Create API endpoint: `POST /api/cards/import` (multipart file upload)
 - [x] Support TXT import format: `"{quantity} {card name} [{set code}] {number}"` — requires catalog lookup to resolve TCGPlayer IDs
 - [x] Build TXT parser with regex: `^(\d+)\s+(.+?)\s+\[(\w+)\]\s+(.+)$`
@@ -336,6 +339,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Cards with market price >= $0.05: eligible for listing at 98% market price
 - [x] No hard minimum listing floor — list everything $0.05+ to maximize inventory for order consolidation
 - [x] Track profitability per ORDER (after $0.30 fee split), not per individual card
+- [x] Foil price fallback — when Normal pricing unavailable, fall back to Foil pricing with `isFoilPrice` indicator
 - [ ] Build simple "review and confirm" UI step — show user what will be listed at what price before pushing
 
 ### 4.7 Basic API Endpoints (Full Phase 1 Summary)
@@ -351,6 +355,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 | GET    | `/api/cards/stats`         | ✅     | Status counts (pending/matched/gift)    |
 | POST   | `/api/cards/:id/reprice`   | ✅     | Re-price single card                    |
 | POST   | `/api/cards/reprice-all`   | ✅     | Bulk re-price all cards                 |
+| POST   | `/api/cards/fetch-prices`  | ✅     | Fetch latest prices from TCGTracking API |
 | GET    | `/api/listings`            | 📋     | List all listings                       |
 | POST   | `/api/listings/create`     | N/A    | Create listings (no API, manual)        |
 | POST   | `/api/listings/create-all` | N/A    | Create listings (no API, manual)        |
@@ -404,12 +409,15 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Status:** 🚧 IN PROGRESS
 
-**Tasks:**
-- [ ] Handle duplicates (same card + condition = increment quantity, not new row)
+**Completed:**
+- [x] Handle duplicates (same card + condition = increment quantity, not new row)
+- [x] Wire up live TCGTracking price fetching with `POST /api/cards/fetch-prices`
+- [x] Foil price fallback when Normal pricing unavailable
+
+**Still TODO:**
 - [ ] Build "review and confirm" UI — preview what to list before committing
 - [ ] Add ability to mark cards as "listed" from the dashboard
 - [ ] Auto-run migrations on startup
-- [ ] Wire up live TCGTracking price fetching (replace snapshot prices from CSV)
 - [ ] ESLint + Prettier setup (nice to have)
 - [ ] Seed script for dev data (nice to have)
 

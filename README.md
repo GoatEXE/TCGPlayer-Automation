@@ -546,17 +546,36 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 
 ## API Endpoints (Phase 1)
 
-| Method | Path                    | Description                            |
-| ------ | ----------------------- | -------------------------------------- |
-| GET    | `/api/health`           | Health check                           |
-| GET    | `/api/cards`            | List all cards (paginated, filterable) |
-| POST   | `/api/cards`            | Add single card manually               |
-| POST   | `/api/cards/import`     | Upload CSV file for import             |
-| POST   | `/api/cards/import-txt` | Upload TXT file for import             |
-| PATCH  | `/api/cards/:id`        | Update card details                    |
-| DELETE | `/api/cards/:id`        | Remove card                            |
-| GET    | `/api/listings`         | List all listings                      |
-| POST   | `/api/listings/create`  | Create listings for selected cards     |
+| Method | Path                      | Description                                      |
+| ------ | ------------------------- | ------------------------------------------------ |
+| GET    | `/api/health`             | Health check                                     |
+| GET    | `/api/cards`              | List all cards (paginated, filterable)           |
+| POST   | `/api/cards`              | Add single card manually                         |
+| POST   | `/api/cards/import`       | Upload CSV/TXT file for import                   |
+| PATCH  | `/api/cards/:id`          | Update card details                              |
+| DELETE | `/api/cards/:id`          | Remove card                                      |
+| GET    | `/api/cards/stats`        | Get status counts (pending/matched/gift/etc)     |
+| POST   | `/api/cards/:id/reprice`  | Re-price single card                             |
+| POST   | `/api/cards/reprice-all`  | Bulk re-price all cards                          |
+| POST   | `/api/cards/fetch-prices` | Fetch latest prices from TCGTracking API         |
+| GET    | `/api/listings`           | List all listings                                |
+| POST   | `/api/listings/create`    | Create listings for selected cards               |
+
+### Import Deduplication
+
+When re-importing the same card, the system increments quantity instead of creating duplicates:
+- **CSV imports**: Matches on `tcgplayerId + condition`
+- **TXT imports**: Matches on `productName + setName + number + condition`
+
+Import responses include: `{ imported, updated, errors, cards }` showing newly imported vs. updated quantities.
+
+### Live Price Fetching
+
+The `POST /api/cards/fetch-prices` endpoint fetches the latest market prices from TCGTracking API for all Riftbound sets, matches them to your cards via `tcgProductId` (extracted from Photo URLs during CSV import), and automatically re-runs the pricing engine.
+
+### Foil Price Fallback
+
+When a card has no Normal market pricing available but does have Foil pricing, the system automatically falls back to Foil price for listing recommendations. Cards using foil-sourced pricing are marked with an `isFoilPrice` indicator and display a ✨ sparkle icon in the dashboard with a tooltip explanation. This fallback is automatically cleared if Normal pricing becomes available in future price updates.
 
 ### Response Conventions
 
