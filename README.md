@@ -558,6 +558,8 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 | POST   | `/api/cards/:id/reprice`  | Re-price single card                             |
 | POST   | `/api/cards/reprice-all`  | Bulk re-price all cards                          |
 | POST   | `/api/cards/fetch-prices` | Fetch latest prices from TCGTracking API         |
+| POST   | `/api/cards/mark-listed`  | Bulk mark matched cards as listed on TCGPlayer   |
+| POST   | `/api/cards/:id/unlist`   | Unlist a card, returns to matched status         |
 | GET    | `/api/listings`           | List all listings                                |
 | POST   | `/api/listings/create`    | Create listings for selected cards               |
 
@@ -576,6 +578,17 @@ The `POST /api/cards/fetch-prices` endpoint fetches the latest market prices fro
 ### Foil Price Fallback
 
 When a card has no Normal market pricing available but does have Foil pricing, the system automatically falls back to Foil price for listing recommendations. Cards using foil-sourced pricing are marked with an `isFoilPrice` indicator and display a ✨ sparkle icon in the dashboard with a tooltip explanation. This fallback is automatically cleared if Normal pricing becomes available in future price updates.
+
+### Mark as Listed Workflow
+
+The dashboard provides a bulk workflow for marking cards as listed on TCGPlayer once you've manually entered them in the seller portal:
+
+- **Checkbox selection**: Only enabled for `matched` cards (cards ready to list with calculated prices)
+- **Select all**: Header checkbox selects all matched cards on current page
+- **Bulk action**: "📋 Mark X as Listed" button with confirmation dialog
+- **Visual distinction**: Listed cards show green background + ↩️ unlist button
+- **Unlist**: Returns card to `matched` status and re-runs pricing engine
+- **Status preservation**: Repricing operations preserve `listed` status unless price drops below thresholds
 
 ### Response Conventions
 

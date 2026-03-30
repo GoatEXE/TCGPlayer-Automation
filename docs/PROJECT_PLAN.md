@@ -416,7 +416,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Still TODO:**
 - [ ] Build "review and confirm" UI — preview what to list before committing
-- [ ] Add ability to mark cards as "listed" from the dashboard
+- [x] Add ability to mark cards as "listed" from the dashboard
 - [ ] Auto-run migrations on startup
 - [ ] ESLint + Prettier setup (nice to have)
 - [ ] Seed script for dev data (nice to have)
