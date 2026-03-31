@@ -103,7 +103,10 @@ interface UpdateCardBody {
 Response includes `floorPriceCents` field for each card.
 
 ### POST /api/cards/:id/reprice
-Repricing now applies the card's `floorPriceCents` if set.
+Single-card repricing applies the card's `floorPriceCents` if set.
+
+### POST /api/cards/reprice-all
+Batch repricing also applies each card's `floorPriceCents` before persisting listing prices.
 
 ## Testing
 **Files:**
