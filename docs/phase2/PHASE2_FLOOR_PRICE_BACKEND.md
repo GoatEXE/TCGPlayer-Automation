@@ -113,6 +113,9 @@ Single-card repricing applies the card's `floorPriceCents` if set.
 ### POST /api/cards/reprice-all
 Batch repricing also applies each card's `floorPriceCents` before persisting listing prices.
 
+### POST /api/cards/:id/unlist
+Unlist recalculation also applies floor pricing so relisted recommendations do not drop below `floorPriceCents`.
+
 ## Testing
 **Files:**
 - `packages/server/src/lib/price-check/__tests__/run-price-check.test.ts`
