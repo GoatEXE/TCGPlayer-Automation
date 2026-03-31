@@ -180,6 +180,17 @@ export function App() {
     }
   };
 
+  const handleUpdateCard = async (id: number, data: Partial<Card>) => {
+    try {
+      const updatedCard = await api.updateCard(id, data);
+      setCards(cards.map((c) => (c.id === id ? updatedCard : c)));
+      return updatedCard;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update card');
+      throw err;
+    }
+  };
+
   const handleStatusFilter = (status: StatusFilter) => {
     setStatusFilter(status);
     setCurrentPage(1);
@@ -273,6 +284,7 @@ export function App() {
             onDelete={handleDelete}
             onMarkListed={handleMarkListed}
             onUnlist={handleUnlist}
+            onUpdateCard={handleUpdateCard}
           />
 
           <Pagination

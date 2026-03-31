@@ -18,6 +18,7 @@ export interface Card {
     | 'error';
   marketPrice: string | null;
   listingPrice: string | null;
+  floorPriceCents: number | null;
   isFoilPrice: boolean;
   photoUrl: string | null;
   notes: string | null;

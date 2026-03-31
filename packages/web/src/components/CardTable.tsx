@@ -11,6 +11,7 @@ interface CardTableProps {
   onDelete: (id: number) => void;
   onMarkListed: (cardIds: number[]) => void;
   onUnlist: (id: number) => void;
+  onUpdateCard: (id: number, data: Partial<Card>) => Promise<Card>;
 }
 
 type SortField = keyof Card | null;
@@ -23,6 +24,7 @@ export function CardTable({
   onDelete,
   onMarkListed,
   onUnlist,
+  onUpdateCard,
 }: CardTableProps) {
   const [sortField, setSortField] = useState<SortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -34,6 +36,8 @@ export function CardTable({
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [historyCardId, setHistoryCardId] = useState<number | null>(null);
   const [historyCardName, setHistoryCardName] = useState<string>('');
+  const [editingFloorId, setEditingFloorId] = useState<number | null>(null);
+  const [floorEditValue, setFloorEditValue] = useState<string>('');
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -130,6 +134,39 @@ export function CardTable({
 
   // Filter cards that can be selected (only matched status)
   const matchedCards = sortedCards.filter((card) => card.status === 'matched');
+
+  const handleFloorEdit = (card: Card) => {
+    setEditingFloorId(card.id);
+    setFloorEditValue(
+      card.floorPriceCents != null
+        ? (card.floorPriceCents / 100).toFixed(2)
+        : '',
+    );
+  };
+
+  const handleFloorSave = async (id: number) => {
+    const trimmed = floorEditValue.trim();
+    const cents = trimmed === '' ? null : Math.round(parseFloat(trimmed) * 100);
+    if (cents !== null && (isNaN(cents) || cents < 0)) return;
+    setEditingFloorId(null);
+    await onUpdateCard(id, { floorPriceCents: cents } as Partial<Card>);
+  };
+
+  const handleFloorKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    id: number,
+  ) => {
+    if (e.key === 'Enter') {
+      handleFloorSave(id);
+    } else if (e.key === 'Escape') {
+      setEditingFloorId(null);
+    }
+  };
+
+  const formatFloorPrice = (cents: number | null) => {
+    if (cents == null) return '—';
+    return `$${(cents / 100).toFixed(2)}`;
+  };
 
   const formatPrice = (price: string | null, isFoil?: boolean) => {
     if (!price) return '—';
@@ -236,6 +273,7 @@ export function CardTable({
             <SortableHeader field="quantity">Qty</SortableHeader>
             <SortableHeader field="marketPrice">Market</SortableHeader>
             <SortableHeader field="listingPrice">Listing</SortableHeader>
+            <SortableHeader field="floorPriceCents">Floor</SortableHeader>
             <SortableHeader field="lastCheckedAt">Last Checked</SortableHeader>
             <SortableHeader field="updatedAt">Updated</SortableHeader>
             <th>Actions</th>
@@ -290,6 +328,30 @@ export function CardTable({
                   {formatPrice(card.marketPrice, card.isFoilPrice)}
                 </td>
                 <td className="price">{formatPrice(card.listingPrice)}</td>
+                <td className="price floor-price-cell">
+                  {editingFloorId === card.id ? (
+                    <input
+                      type="number"
+                      className="floor-price-input"
+                      value={floorEditValue}
+                      onChange={(e) => setFloorEditValue(e.target.value)}
+                      onKeyDown={(e) => handleFloorKeyDown(e, card.id)}
+                      onBlur={() => handleFloorSave(card.id)}
+                      min="0"
+                      step="0.01"
+                      placeholder="—"
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      className="floor-price-display"
+                      onClick={() => handleFloorEdit(card)}
+                      title="Click to set floor price"
+                    >
+                      {formatFloorPrice(card.floorPriceCents)}
+                    </button>
+                  )}
+                </td>
                 <td className="date">
                   {card.lastCheckedAt ? formatDate(card.lastCheckedAt) : '—'}
                 </td>

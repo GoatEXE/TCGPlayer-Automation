@@ -20,6 +20,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     status: 'matched',
     marketPrice: '0.20',
     listingPrice: '0.20',
+    floorPriceCents: null,
     isFoilPrice: false,
     photoUrl: null,
     notes: null,

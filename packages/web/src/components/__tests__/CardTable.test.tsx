@@ -20,6 +20,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     status: 'matched',
     marketPrice: '0.20',
     listingPrice: '0.20',
+    floorPriceCents: null,
     isFoilPrice: false,
     photoUrl: null,
     notes: null,
@@ -58,6 +59,7 @@ describe('CardTable review + confirm flow', () => {
         onDelete={() => {}}
         onMarkListed={onMarkListed}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -96,6 +98,7 @@ describe('CardTable review + confirm flow', () => {
         onDelete={() => {}}
         onMarkListed={onMarkListed}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -122,6 +125,7 @@ describe('CardTable Last Checked column', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -136,6 +140,7 @@ describe('CardTable Last Checked column', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -143,9 +148,8 @@ describe('CardTable Last Checked column', () => {
     const rows = screen.getAllByRole('row');
     // row[0] is thead, row[1] is the data row
     const cells = rows[1].querySelectorAll('td');
-    // Last Checked is the column before Updated (second-to-last date column)
-    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, listing, lastChecked, updated, actions
-    const lastCheckedCell = cells[10];
+    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, listing, floor, lastChecked, updated, actions
+    const lastCheckedCell = cells[11];
     expect(lastCheckedCell.textContent).toBe('—');
   });
 
@@ -158,13 +162,179 @@ describe('CardTable Last Checked column', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
     const rows = screen.getAllByRole('row');
     const cells = rows[1].querySelectorAll('td');
-    const lastCheckedCell = cells[10];
+    const lastCheckedCell = cells[11];
     expect(lastCheckedCell.textContent).toBe('3h ago');
+  });
+});
+
+describe('CardTable floor price column', () => {
+  it('renders Floor column header', () => {
+    render(
+      <CardTable
+        cards={[makeCard()]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Floor')).toBeInTheDocument();
+  });
+
+  it('shows dash when floorPriceCents is null', () => {
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, floorPriceCents: null })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn()}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, listing, floor, lastChecked, updated, actions
+    const cells = rows[1].querySelectorAll('td');
+    const floorCell = cells[10];
+    expect(floorCell.textContent).toBe('—');
+  });
+
+  it('shows formatted dollar value when floorPriceCents is set', () => {
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn()}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const floorCell = cells[10];
+    expect(floorCell.textContent).toBe('$1.50');
+  });
+
+  it('shows floor price edit input when floor cell is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn()}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const floorCell = cells[10];
+    await user.click(floorCell.querySelector('button')!);
+
+    expect(screen.getByRole('spinbutton')).toBeInTheDocument();
+  });
+
+  it('saves floor price when edit is confirmed', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi
+      .fn()
+      .mockResolvedValue(makeCard({ id: 1, floorPriceCents: 200 }));
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const floorCell = cells[10];
+    await user.click(floorCell.querySelector('button')!);
+
+    const input = screen.getByRole('spinbutton');
+    await user.clear(input);
+    await user.type(input, '2.00');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { floorPriceCents: 200 });
+    });
+  });
+
+  it('clears floor price when input is emptied and confirmed', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi
+      .fn()
+      .mockResolvedValue(makeCard({ id: 1, floorPriceCents: null }));
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const floorCell = cells[10];
+    await user.click(floorCell.querySelector('button')!);
+
+    const input = screen.getByRole('spinbutton');
+    await user.clear(input);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { floorPriceCents: null });
+    });
+  });
+
+  it('cancels floor price edit on Escape', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn();
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const floorCell = cells[10];
+    await user.click(floorCell.querySelector('button')!);
+
+    const input = screen.getByRole('spinbutton');
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    expect(onUpdateCard).not.toHaveBeenCalled();
   });
 });
 
@@ -184,6 +354,7 @@ describe('CardTable price history button', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -202,6 +373,7 @@ describe('CardTable price history button', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -230,6 +402,7 @@ describe('CardTable price history button', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 
@@ -265,6 +438,7 @@ describe('CardTable price history button', () => {
         onDelete={() => {}}
         onMarkListed={() => {}}
         onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
       />,
     );
 

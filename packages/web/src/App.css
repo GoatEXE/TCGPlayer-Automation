@@ -928,3 +928,46 @@ body {
     text-align: center;
   }
 }
+
+/* Floor price inline editor */
+.floor-price-cell {
+  min-width: 5rem;
+}
+
+.floor-price-display {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding: 0.125rem 0.25rem;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.floor-price-display:hover {
+  background: var(--color-surface);
+}
+
+.floor-price-display:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.floor-price-input {
+  width: 4.5rem;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  outline: none;
+}
+
+.floor-price-input:focus {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
