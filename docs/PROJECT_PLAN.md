@@ -434,15 +434,20 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Goal:** Keep listings competitively priced by checking market prices on a lazy schedule and adjusting when drift exceeds a threshold.
 
-### 5.1 Price Check Scheduler
+Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLMQ_REDIS.md)
+
+### 5.1 Price Check Scheduler ✅ CORE COMPLETE (Phase 2.1 infrastructure)
+
+**Implementation details:** See [PHASE2_BULLMQ_REDIS.md](phase2/PHASE2_BULLMQ_REDIS.md)
 
 **Tasks:**
-- [ ] Set up BullMQ with a Redis container (add to `docker-compose.yml`)
-- [ ] Create repeating job: "check-prices" — runs every 12 hours by default (configurable via env var)
-- [ ] Make price check interval configurable via environment variable (e.g., `PRICE_CHECK_INTERVAL_HOURS`, default: 12) and expose in the web UI settings
-- [ ] Job fetches all active listings, batches them into groups of ~50 (to stay within rate limits)
-- [ ] For each batch, fetch market prices from TCGPlayer
-- [ ] Record each check in `PriceHistory`
+- [x] Set up BullMQ with a Redis container (add to `docker-compose.yml`)
+- [x] Create repeating job: "check-prices" — runs every 12 hours by default (configurable via env var)
+- [x] Make price check interval configurable via environment variable (e.g., `PRICE_CHECK_INTERVAL_HOURS`, default: 12)
+- [x] Job fetches all cards, batches by set, fetches market prices from TCGTracking
+- [x] Worker calls `runPriceCheck({ source: 'scheduled' })` which updates all card prices/statuses
+- [ ] Expose price check interval in web UI settings
+- [x] Record each check in `PriceHistory` (implemented via `price_history` + `runPriceCheck`)
 - [ ] Re-check `needs_attention` cards during each price check cycle — if market price now available, auto-list at 98% and update status
 
 ### 5.2 Auto-Adjustment Logic
@@ -699,10 +704,10 @@ docker compose up --build -d
 | 1.8 | API Endpoints | Core CRUD + import + pricing | ✅ COMPLETE |
 | 1.9 | Dashboard | Card management UI | ✅ COMPLETE |
 | **1** | **MVP Complete** | **Cards imported and priced for listing** | 🚧 IN PROGRESS |
-| 2.1 | Price Scheduler | BullMQ + Redis + repeating job | Medium |
-| 2.2 | Auto-Adjust | Price drift detection + update | Medium |
-| 2.3 | Monitoring UI | Price history views + manual refresh | Small |
-| **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **—** |
+| 2.1 | Price Scheduler | BullMQ + Redis + repeating job | ✅ COMPLETE |
+| 2.2 | Auto-Adjust | Price drift detection + update | 📋 TODO |
+| 2.3 | Monitoring UI | Price history views + manual refresh | 📋 TODO |
+| **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **🚧 IN PROGRESS** |
 | 3.1 | Sales Dashboard | Active listings + sales history views | Medium |
 | 3.2 | Shipment Tracking | Tracking entry + status sync | Medium |
 | 3.3 | Invoicing | Printable invoice + packing slip | Small |

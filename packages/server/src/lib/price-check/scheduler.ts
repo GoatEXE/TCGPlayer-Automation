@@ -1,3 +1,4 @@
+import { Queue, Worker, type RedisOptions } from 'bullmq';
 import { env } from '../../config/env.js';
 import { sendTelegramMessage } from '../notifications/telegram.js';
 import type { RunPriceCheckResult } from './run-price-check.js';
@@ -19,6 +20,15 @@ export interface PriceCheckLastRun {
   errors: string[];
 }
 
+const PRICE_CHECK_QUEUE = 'price-check';
+const PRICE_CHECK_JOB = 'check-prices';
+const PRICE_CHECK_REPEAT_JOB_ID = 'check-prices-repeat';
+
+let queue: Queue | null = null;
+let worker: Worker | null = null;
+let running = false;
+let lastRun: PriceCheckLastRun | null = null;
+
 function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
 }
@@ -26,6 +36,22 @@ function formatPrice(value: number): string {
 function formatDriftPercent(value: number): string {
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(2)}%`;
+}
+
+function getRedisConnectionOptions(): RedisOptions {
+  const url = new URL(env.REDIS_URL);
+
+  return {
+    host: url.hostname,
+    port: Number(url.port || 6379),
+    username: url.username || undefined,
+    password: url.password || undefined,
+    db:
+      url.pathname && url.pathname !== '/'
+        ? Number(url.pathname.slice(1))
+        : undefined,
+    maxRetriesPerRequest: null,
+  };
 }
 
 export function buildScheduledPriceCheckMessage(
@@ -63,10 +89,6 @@ export function buildScheduledPriceCheckMessage(
 
   return lines.join('\n');
 }
-
-let timer: NodeJS.Timeout | null = null;
-let running = false;
-let lastRun: PriceCheckLastRun | null = null;
 
 async function executeScheduledRun(logger: LoggerLike) {
   if (running) {
@@ -132,37 +154,107 @@ async function executeScheduledRun(logger: LoggerLike) {
   }
 }
 
-export function startPriceCheckScheduler(logger: LoggerLike) {
+export async function startPriceCheckScheduler(logger: LoggerLike) {
   if (env.NODE_ENV === 'test') {
     return;
   }
 
-  if (timer) {
+  if (queue || worker) {
     return;
   }
 
-  const intervalMs = env.PRICE_CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
-  logger.info(
-    `[price-check] scheduler enabled, interval=${env.PRICE_CHECK_INTERVAL_HOURS}h`,
-  );
+  try {
+    const connection = getRedisConnectionOptions();
 
-  timer = setInterval(() => {
-    void executeScheduledRun(logger);
-  }, intervalMs);
+    queue = new Queue(PRICE_CHECK_QUEUE, {
+      connection,
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 100,
+      },
+    });
 
-  timer.unref?.();
+    worker = new Worker(
+      PRICE_CHECK_QUEUE,
+      async (job) => {
+        if (job.name !== PRICE_CHECK_JOB) {
+          return;
+        }
+
+        await executeScheduledRun(logger);
+      },
+      {
+        connection,
+        concurrency: 1,
+      },
+    );
+
+    worker.on('error', (error) => {
+      logger.error(`[price-check] worker error: ${error}`);
+    });
+
+    const intervalMs = Math.max(
+      1000,
+      env.PRICE_CHECK_INTERVAL_HOURS * 60 * 60 * 1000,
+    );
+
+    const existingRepeatJobs = await queue.getRepeatableJobs();
+    const repeatJobsToRemove = existingRepeatJobs.filter(
+      (job) =>
+        job.name === PRICE_CHECK_JOB || job.id === PRICE_CHECK_REPEAT_JOB_ID,
+    );
+
+    for (const job of repeatJobsToRemove) {
+      await queue.removeRepeatableByKey(job.key);
+    }
+
+    await queue.add(
+      PRICE_CHECK_JOB,
+      {},
+      {
+        jobId: PRICE_CHECK_REPEAT_JOB_ID,
+        repeat: {
+          every: intervalMs,
+        },
+      },
+    );
+
+    logger.info(
+      `[price-check] bullmq scheduler enabled, interval=${env.PRICE_CHECK_INTERVAL_HOURS}h, clearedExistingRepeatJobs=${repeatJobsToRemove.length}`,
+    );
+  } catch (error) {
+    logger.error(
+      `[price-check] failed to initialize BullMQ scheduler: ${error}`,
+    );
+
+    // Fail-open: app remains available even if scheduler infra is down.
+    if (worker) {
+      await worker.close().catch(() => undefined);
+      worker = null;
+    }
+
+    if (queue) {
+      await queue.close().catch(() => undefined);
+      queue = null;
+    }
+  }
 }
 
-export function stopPriceCheckScheduler() {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
+export async function stopPriceCheckScheduler() {
+  if (worker) {
+    await worker.close().catch(() => undefined);
+    worker = null;
+  }
+
+  if (queue) {
+    await queue.close().catch(() => undefined);
+    queue = null;
   }
 }
 
 export function getPriceCheckSchedulerStatus() {
   return {
-    enabled: timer !== null && env.NODE_ENV !== 'test',
+    enabled: queue !== null && worker !== null && env.NODE_ENV !== 'test',
     intervalHours: env.PRICE_CHECK_INTERVAL_HOURS,
     thresholdPercent: env.PRICE_DRIFT_THRESHOLD_PERCENT,
     running,

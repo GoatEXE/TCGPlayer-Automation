@@ -1,6 +1,30 @@
 # Phase 2 Discovery Scan
 
-Scope: map the current touchpoints for scheduled price monitoring / drift notifications. No implementation changes made.
+Scope: historical discovery snapshot of scheduler/drift touchpoints. Phase 2.1 implementation has since landed (see status section below).
+
+---
+
+## ✅ Implementation Status (2026-03-31)
+
+**Phase 2.1 (BullMQ + Redis Scheduler) is now COMPLETE.**
+
+See [PHASE2_BULLMQ_REDIS.md](PHASE2_BULLMQ_REDIS.md) for full implementation details:
+- BullMQ + Redis integration added to Docker Compose (dev + prod profiles)
+- `REDIS_URL` environment variable support
+- Repeatable job `check-prices` runs every `PRICE_CHECK_INTERVAL_HOURS` (default: 12)
+- Worker calls existing `runPriceCheck({ source: 'scheduled' })` from `run-price-check.ts`
+- Manual price checks via `POST /api/cards/fetch-prices` still work independently
+- Status endpoint `/api/cards/price-check-status` reports scheduler state
+- Tests pass, Docker verified, endpoint validated
+
+**Remaining Phase 2 work:**
+- Auto-adjustment logic + safeguards (apply drift decisions to operational listing workflow)
+- Monitoring UI expansion (price history views, last-checked/adjustment logs)
+- Scheduler controls in UI (config editing and run-now ergonomics)
+
+> Note: sections below are discovery notes captured before Phase 2.1 implementation and may reference pre-implementation assumptions.
+
+---
 
 ## 1) Current `fetch-prices` logic
 

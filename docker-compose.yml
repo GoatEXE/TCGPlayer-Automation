@@ -33,6 +33,32 @@ services:
       retries: 5
     profiles: ["dev"]
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles: ["prod"]
+
+  redis-dev:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles: ["dev"]
+
   # Production app (built image, serves frontend)
   app:
     build:
@@ -42,6 +68,7 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db:5432/${POSTGRES_DB:-tcgplayer}
+      REDIS_URL: redis://redis:6379
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
@@ -49,6 +76,8 @@ services:
       - .env
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     profiles: ["prod"]
@@ -63,6 +92,7 @@ services:
       - "5173:5173"  # Vite dev server
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db-dev:5432/${POSTGRES_DB:-tcgplayer}
+      REDIS_URL: redis://redis-dev:6379
       NODE_ENV: development
       PORT: 3000
       HOST: 0.0.0.0
@@ -76,8 +106,11 @@ services:
     depends_on:
       db-dev:
         condition: service_healthy
+      redis-dev:
+        condition: service_healthy
     restart: "no"
     profiles: ["dev"]
 
 volumes:
   pgdata:
+  redisdata:

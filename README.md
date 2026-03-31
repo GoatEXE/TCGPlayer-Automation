@@ -2,7 +2,7 @@
 
 > Self-hosted web application for automating the selling workflow of duplicate **Riftbound: League of Legends Trading Card Game** cards on TCGPlayer.
 
-**Status:** Phase 1 — MVP (In Development)
+**Status:** Phase 2.1 — Price Scheduler Infrastructure Complete (In Development)
 
 ---
 
@@ -76,13 +76,16 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 
 ### Phase 2 — Price Monitoring
 
-- **Lazy price checks** on a configurable interval (default: every 12 hours via `PRICE_CHECK_INTERVAL_HOURS`)
-- **Bidirectional threshold management:**
+**Status:** Phase 2.1 (BullMQ scheduler) ✅ Complete — See [PHASE2_BULLMQ_REDIS.md](docs/phase2/PHASE2_BULLMQ_REDIS.md)
+
+- **BullMQ + Redis scheduler** ✅ Implemented — persistent repeatable background checks every 12 hours (configurable)
+- **Lazy price checks** ✅ Implemented — runs via BullMQ repeatable job calling `runPriceCheck({ source: 'scheduled' })`
+- **Manual "Refresh Prices" button** ✅ Implemented — `POST /api/cards/fetch-prices` triggers on-demand checks
+- **Bidirectional threshold management:** (Planned)
   - Listed card drops below `$0.05` market → recommend delisting, move to gift pool
   - Gift card rises above `$0.05` → recommend listing
   - Listed card with `>2%` price drift → recommend price update
-- **Price history tracking** per card with chart/table views
-- **Manual "Refresh Prices" button** for on-demand checks
+- **Price history tracking** per card with chart/table views (Planned)
 
 ### Phase 3 — Dashboard, Notifications & Invoicing
 
@@ -108,7 +111,7 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 | **Frontend**       | Vite + React                            | SPA dashboard, React Router, TanStack Query    |
 | **Database**       | PostgreSQL 16                           | Docker container with named volume             |
 | **ORM**            | Drizzle                                 | SQL-first, no binary engine, inferred types    |
-| **Job Scheduling** | BullMQ + Redis                          | Phase 2+ only — job persistence and retries    |
+| **Job Scheduling** | BullMQ + Redis                          | Phase 2.1+ — repeatable price check jobs        |
 | **Package Manager**| pnpm workspaces                         | Monorepo with `packages/server` + `packages/web` |
 | **Testing**        | Vitest                                  | Vite ecosystem alignment, test-first workflow  |
 | **Deployment**     | Docker Compose on Ubuntu Linux          | Multi-stage Dockerfile                         |
@@ -349,6 +352,10 @@ Configurable via `MIN_LISTING_PRICE_CENTS` (default: `5`).
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/tcgplayer
 
+# Redis (Phase 2.1+)
+REDIS_URL=redis://localhost:6379   # Use redis://redis:6379 in Docker
+                                    # Use redis://redis-dev:6379 in dev profile
+
 # TCGTracking API (free, no auth needed)
 TCGTRACKING_BASE_URL=https://tcgtracking.com/tcgapi/v1
 
@@ -359,7 +366,7 @@ RIFTBOUND_CATEGORY_ID=89
 MIN_LISTING_PRICE_CENTS=5          # Cards below this market price → gift pool
 LISTING_PRICE_MULTIPLIER=0.98      # List at this % of market price
 
-# Price checking (Phase 2)
+# Price checking (Phase 2.1+)
 PRICE_CHECK_INTERVAL_HOURS=12      # How often to re-check market prices
 
 # Telegram (Phase 3)
@@ -554,24 +561,25 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 
 ---
 
-## API Endpoints (Phase 1)
+## API Endpoints (Phase 1 + Phase 2.1)
 
-| Method | Path                      | Description                                      |
-| ------ | ------------------------- | ------------------------------------------------ |
-| GET    | `/api/health`             | Health check                                     |
-| GET    | `/api/cards`              | List all cards (paginated, filterable)           |
-| POST   | `/api/cards`              | Add single card manually (not used in CSV-first workflow) |
-| POST   | `/api/cards/import`       | Upload CSV/TXT file for import                   |
-| PATCH  | `/api/cards/:id`          | Update card details                              |
-| DELETE | `/api/cards/:id`          | Remove card                                      |
-| GET    | `/api/cards/stats`        | Get status counts (pending/matched/gift/etc)     |
-| POST   | `/api/cards/:id/reprice`  | Re-price single card                             |
-| POST   | `/api/cards/reprice-all`  | Bulk re-price all cards                          |
-| POST   | `/api/cards/fetch-prices` | Fetch latest prices from TCGTracking API         |
-| POST   | `/api/cards/mark-listed`  | Bulk mark matched cards as listed on TCGPlayer   |
-| POST   | `/api/cards/:id/unlist`   | Unlist a card, returns to matched status         |
-| GET    | `/api/listings`           | List all listings                                |
-| POST   | `/api/listings/create`    | Create listings for selected cards               |
+| Method | Path                           | Description                                      |
+| ------ | ------------------------------ | ------------------------------------------------ |
+| GET    | `/api/health`                  | Health check                                     |
+| GET    | `/api/cards`                   | List all cards (paginated, filterable)           |
+| POST   | `/api/cards`                   | Add single card manually (not used in CSV-first workflow) |
+| POST   | `/api/cards/import`            | Upload CSV/TXT file for import                   |
+| PATCH  | `/api/cards/:id`               | Update card details                              |
+| DELETE | `/api/cards/:id`               | Remove card                                      |
+| GET    | `/api/cards/stats`             | Get status counts (pending/matched/gift/etc)     |
+| POST   | `/api/cards/:id/reprice`       | Re-price single card                             |
+| POST   | `/api/cards/reprice-all`       | Bulk re-price all cards                          |
+| POST   | `/api/cards/fetch-prices`      | Fetch latest prices from TCGTracking API (manual trigger) |
+| GET    | `/api/cards/price-check-status`| Get scheduler status, interval, last run (Phase 2.1) |
+| POST   | `/api/cards/mark-listed`       | Bulk mark matched cards as listed on TCGPlayer   |
+| POST   | `/api/cards/:id/unlist`        | Unlist a card, returns to matched status         |
+| GET    | `/api/listings`                | List all listings                                |
+| POST   | `/api/listings/create`         | Create listings for selected cards               |
 
 **Note:** This project runs as a CSV/TXT import-first workflow. Manual single-card entry is intentionally out of scope for current Phase 1 usage.
 
