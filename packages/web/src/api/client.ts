@@ -7,6 +7,7 @@ import type {
   RepriceAllResult,
   FetchPricesResult,
   MarkListedResult,
+  PriceCheckStatus,
 } from './types';
 
 const API_BASE = '/api';
@@ -118,6 +119,10 @@ class ApiClient {
     return this.request<Card>(`/cards/${id}/unlist`, {
       method: 'POST',
     });
+  }
+
+  async getPriceCheckStatus(): Promise<PriceCheckStatus> {
+    return this.request<PriceCheckStatus>('/cards/price-check-status');
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

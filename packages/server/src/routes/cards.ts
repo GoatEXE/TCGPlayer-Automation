@@ -471,7 +471,12 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     async (_request, reply) => {
       try {
         const result = await runPriceCheck({ source: 'manual' });
-        return reply.send(result);
+        return reply.send({
+          updated: result.updated,
+          notFound: result.notFound,
+          drifted: result.drifted,
+          errors: result.errors,
+        });
       } catch (error) {
         fastify.log.error(error);
         return reply.code(500).send({ error: 'Failed to fetch prices' });

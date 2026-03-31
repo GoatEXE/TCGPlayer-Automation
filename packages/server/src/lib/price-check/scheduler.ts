@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import { sendTelegramMessage } from '../notifications/telegram.js';
+import type { RunPriceCheckResult } from './run-price-check.js';
 import { runPriceCheck } from './run-price-check.js';
 
 interface LoggerLike {
@@ -16,6 +17,51 @@ export interface PriceCheckLastRun {
   notFound: number;
   drifted: number;
   errors: string[];
+}
+
+function formatPrice(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function formatDriftPercent(value: number): string {
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+}
+
+export function buildScheduledPriceCheckMessage(
+  result: Pick<
+    RunPriceCheckResult,
+    'updated' | 'notFound' | 'drifted' | 'errors' | 'driftedCards'
+  >,
+  thresholdPercent: number,
+): string {
+  const lines = [
+    '📈 Scheduled price check completed',
+    `Updated: ${result.updated}`,
+    `Not found: ${result.notFound}`,
+    `Drifted (>= ${thresholdPercent}%): ${result.drifted}`,
+    `Errors: ${result.errors.length}`,
+  ];
+
+  if (result.driftedCards.length > 0) {
+    lines.push('', 'Top drifted cards:');
+
+    const topDrifted = [...result.driftedCards]
+      .sort((a, b) => Math.abs(b.driftPercent) - Math.abs(a.driftPercent))
+      .slice(0, 5);
+
+    for (const card of topDrifted) {
+      lines.push(
+        `• ${card.productName} - ${formatPrice(card.previousListingPrice)} → ${formatPrice(card.newListingPrice)} (${formatDriftPercent(card.driftPercent)})`,
+      );
+    }
+  }
+
+  if (result.errors.length > 0) {
+    lines.push('', 'First error:', result.errors[0]);
+  }
+
+  return lines.join('\n');
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -51,20 +97,13 @@ async function executeScheduledRun(logger: LoggerLike) {
     );
 
     if (result.drifted > 0 || result.errors.length > 0) {
-      const lines = [
-        '📈 Scheduled price check completed',
-        `Updated: ${result.updated}`,
-        `Not found: ${result.notFound}`,
-        `Drifted (>= ${env.PRICE_DRIFT_THRESHOLD_PERCENT}%): ${result.drifted}`,
-        `Errors: ${result.errors.length}`,
-      ];
-
-      if (result.errors.length > 0) {
-        lines.push('', 'First error:', result.errors[0]);
-      }
+      const message = buildScheduledPriceCheckMessage(
+        result,
+        env.PRICE_DRIFT_THRESHOLD_PERCENT,
+      );
 
       try {
-        await sendTelegramMessage(lines.join('\n'));
+        await sendTelegramMessage(message);
       } catch (error) {
         logger.error(`[price-check] telegram notification failed: ${error}`);
       }

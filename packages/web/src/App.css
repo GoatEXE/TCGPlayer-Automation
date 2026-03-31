@@ -159,6 +159,130 @@ body {
   font-size: 0.875rem;
 }
 
+/* Actions Row (Import + Price Check Status) */
+.actions-row {
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.actions-row .import-section {
+  flex: 1 1 0;
+  margin-bottom: 0;
+}
+
+/* Price Check Status Card */
+.price-check-card {
+  background: var(--color-bg);
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.price-check-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.price-check-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.price-check-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-enabled {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.price-check-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.price-check-loading,
+.price-check-no-runs {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.price-check-config {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.price-check-meta strong {
+  color: var(--color-text);
+}
+
+.price-check-last-run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.price-check-last-run-time {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.price-check-failed {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.price-check-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.result-chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.result-errors {
+  border-color: var(--color-warning);
+  background: #fef3c7;
+}
+
+@media (max-width: 768px) {
+  .actions-row {
+    flex-direction: column;
+  }
+
+  .price-check-card {
+    flex: 1 1 auto;
+  }
+}
+
 /* Cards Section */
 .cards-section {
   background: var(--color-bg);

@@ -13,10 +13,19 @@ export interface RunPriceCheckOptions {
   source?: PriceCheckSource;
 }
 
+export interface DriftedCardChange {
+  cardId: number;
+  productName: string;
+  previousListingPrice: number;
+  newListingPrice: number;
+  driftPercent: number;
+}
+
 export interface RunPriceCheckResult {
   updated: number;
   notFound: number;
   drifted: number;
+  driftedCards: DriftedCardChange[];
   errors: string[];
 }
 
@@ -84,6 +93,7 @@ export async function runPriceCheck(
   let updated = 0;
   let notFound = 0;
   let drifted = 0;
+  const driftedCards: DriftedCardChange[] = [];
 
   for (const card of allCards) {
     if (!card.tcgProductId) {
@@ -157,6 +167,15 @@ export async function runPriceCheck(
       Math.abs(driftPercent) >= env.PRICE_DRIFT_THRESHOLD_PERCENT
     ) {
       drifted++;
+      if (previousListingPrice !== null && newListingPrice !== null) {
+        driftedCards.push({
+          cardId: card.id,
+          productName: card.productName,
+          previousListingPrice,
+          newListingPrice,
+          driftPercent,
+        });
+      }
     }
 
     await db
@@ -192,6 +211,7 @@ export async function runPriceCheck(
     updated,
     notFound,
     drifted,
+    driftedCards,
     errors,
   };
 }

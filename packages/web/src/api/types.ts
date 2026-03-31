@@ -72,6 +72,24 @@ export interface MarkListedResult {
   errors: string[];
 }
 
+export interface PriceCheckLastRun {
+  startedAt: string;
+  finishedAt: string;
+  success: boolean;
+  updated: number;
+  notFound: number;
+  drifted: number;
+  errors: string[];
+}
+
+export interface PriceCheckStatus {
+  enabled: boolean;
+  intervalHours: number;
+  thresholdPercent: number;
+  running: boolean;
+  lastRun: PriceCheckLastRun | null;
+}
+
 export interface ApiError {
   error: string;
   message: string;

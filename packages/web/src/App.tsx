@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from './api/client';
-import type { Card, CardStats } from './api/types';
+import type { Card, CardStats, PriceCheckStatus } from './api/types';
 import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
+import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
 import { CardTable } from './components/CardTable';
 import { Pagination } from './components/Pagination';
 import './App.css';
@@ -20,6 +21,10 @@ export function App() {
   const [totalItems, setTotalItems] = useState(0);
   const [repricingAll, setRepricingAll] = useState(false);
   const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [priceCheckStatus, setPriceCheckStatus] =
+    useState<PriceCheckStatus | null>(null);
+  const [priceCheckLoading, setPriceCheckLoading] = useState(true);
+  const [priceCheckError, setPriceCheckError] = useState(false);
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -57,8 +62,23 @@ export function App() {
     fetchCards();
   }, [statusFilter, searchQuery, currentPage]);
 
+  const fetchPriceCheckStatus = async () => {
+    setPriceCheckLoading(true);
+    setPriceCheckError(false);
+    try {
+      const data = await api.getPriceCheckStatus();
+      setPriceCheckStatus(data);
+    } catch (err) {
+      console.error('Failed to fetch price check status:', err);
+      setPriceCheckError(true);
+    } finally {
+      setPriceCheckLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
+    fetchPriceCheckStatus();
   }, []);
 
   const handleImportComplete = () => {
@@ -125,6 +145,7 @@ export function App() {
       }
       fetchCards();
       fetchStats();
+      fetchPriceCheckStatus();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to fetch prices');
     } finally {
@@ -187,7 +208,14 @@ export function App() {
       </header>
 
       <main className="app-main">
-        <ImportUpload onImportComplete={handleImportComplete} />
+        <div className="actions-row">
+          <ImportUpload onImportComplete={handleImportComplete} />
+          <PriceCheckStatusCard
+            status={priceCheckStatus}
+            loading={priceCheckLoading}
+            error={priceCheckError}
+          />
+        </div>
 
         <section className="cards-section">
           <div className="section-header">
