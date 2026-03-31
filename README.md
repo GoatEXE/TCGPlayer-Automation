@@ -327,7 +327,7 @@ List at **98% of TCGPlayer market price** (sourced from TCGTracking API), rounde
 | --------------- | ----------------------- | ----------------- | -------------------------------------------- |
 | `≥ $0.05`       | List at 98% market      | `listed`          | Consolidation magnet — more inventory = better margins via cart optimizer |
 | `< $0.05`       | Add to gift pool        | `gift`            | Include as freebies in shipments to encourage positive reviews |
-| Not available   | Skip, notify, retry     | `needs_attention` | Telegram alert; auto-list when price found on next check cycle |
+| Not available   | Skip, notify, retry     | `needs_attention` | Telegram alert; move back to `matched` when price returns on a later cycle |
 
 ### Why No Hard Floor
 
@@ -337,7 +337,7 @@ Cards below `$0.50` lose money individually (after fees), but listing large chea
 
 Price monitoring re-evaluates every card each cycle:
 - Listed card drops below `$0.05` → **delist**, move to gift pool
-- Gift card rises above `$0.05` → **promote** to listing
+- Gift card rises above `$0.05` → **promote** to relist queue (`matched`)
 - Listed card drifts `>2%` from target → **update** price
 
 Configurable via `MIN_LISTING_PRICE_CENTS` (default: `5`).

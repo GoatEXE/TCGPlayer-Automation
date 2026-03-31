@@ -448,7 +448,7 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 - [x] Worker calls `runPriceCheck({ source: 'scheduled' })` which updates all card prices/statuses
 - [ ] Expose price check interval in web UI settings
 - [x] Record each check in `PriceHistory` (implemented via `price_history` + `runPriceCheck`)
-- [ ] Re-check `needs_attention` cards during each price check cycle — if market price now available, auto-list at 98% and update status
+- [x] Re-check `needs_attention` cards during each price check cycle — if market price returns, recalculate at 98% and move to `matched` for relisting
 
 ### 5.2 Auto-Adjustment Logic
 
@@ -460,8 +460,8 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [x] Add backend support for a floor price option per card (optional, default: none) to prevent listing below a minimum
 - [x] Add floor price controls in the dashboard UI (set/clear per-card `floorPriceCents`)
-- [ ] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
-- [ ] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market
+- [x] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
+- [x] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market (`matched` status)
 - [ ] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes
 
 ### 5.3 Monitoring UI
