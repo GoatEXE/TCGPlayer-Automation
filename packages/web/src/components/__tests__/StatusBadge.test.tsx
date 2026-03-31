@@ -3,7 +3,11 @@ import { StatusBadge } from '../StatusBadge';
 import type { Card } from '../../api/types';
 
 describe('StatusBadge', () => {
-  const testCases: Array<{ status: Card['status']; label: string; color: string }> = [
+  const testCases: Array<{
+    status: Card['status'];
+    label: string;
+    color: string;
+  }> = [
     { status: 'pending', label: 'Pending', color: '#6b7280' },
     { status: 'matched', label: 'Ready to List', color: '#8b5cf6' },
     { status: 'listed', label: 'Listed', color: '#10b981' },

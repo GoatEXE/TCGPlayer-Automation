@@ -79,8 +79,12 @@ export function ImportUpload({ onImportComplete }: ImportUploadProps) {
           <p>⏳ Importing...</p>
         ) : (
           <>
-            <p className="dropzone-text">📁 Drop CSV or TXT file here, or click to browse</p>
-            <p className="dropzone-hint">Accepts TCGPlayer collection exports (.csv, .txt)</p>
+            <p className="dropzone-text">
+              📁 Drop CSV or TXT file here, or click to browse
+            </p>
+            <p className="dropzone-hint">
+              Accepts TCGPlayer collection exports (.csv, .txt)
+            </p>
           </>
         )}
       </div>
@@ -94,7 +98,8 @@ export function ImportUpload({ onImportComplete }: ImportUploadProps) {
           {result.errors.length > 0 && (
             <details>
               <summary>
-                {result.errors.length} error{result.errors.length > 1 ? 's' : ''}
+                {result.errors.length} error
+                {result.errors.length > 1 ? 's' : ''}
               </summary>
               <ul className="error-list">
                 {result.errors.map((err, i) => (

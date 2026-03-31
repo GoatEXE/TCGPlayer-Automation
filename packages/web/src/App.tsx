@@ -103,7 +103,12 @@ export function App() {
   };
 
   const handleFetchPrices = async () => {
-    if (!confirm('Fetch latest prices from TCGTracking? This may take a few minutes.')) return;
+    if (
+      !confirm(
+        'Fetch latest prices from TCGTracking? This may take a few minutes.',
+      )
+    )
+      return;
 
     setFetchingPrices(true);
     try {
@@ -134,7 +139,9 @@ export function App() {
       fetchCards();
       fetchStats();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to mark cards as listed');
+      alert(
+        err instanceof Error ? err.message : 'Failed to mark cards as listed',
+      );
     }
   };
 

@@ -5,6 +5,8 @@ export default defineConfig({
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://tcgplayer:tcgplayer@localhost:5432/tcgplayer',
+    url:
+      process.env.DATABASE_URL ||
+      'postgresql://tcgplayer:tcgplayer@localhost:5432/tcgplayer',
   },
 });

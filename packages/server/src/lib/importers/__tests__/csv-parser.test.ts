@@ -12,11 +12,13 @@ describe('CSV Parser', () => {
     expect(result.totalRows).toBe(1);
     expect(result.errors).toEqual([]);
     expect(result.cards).toHaveLength(1);
-    
+
     const card = result.cards[0];
     expect(card.tcgplayerId).toBe(8927752);
     expect(card.tcgProductId).toBe(653083);
-    expect(card.productLine).toBe('Riftbound: League of Legends Trading Card Game');
+    expect(card.productLine).toBe(
+      'Riftbound: League of Legends Trading Card Game',
+    );
     expect(card.setName).toBe('Origins');
     expect(card.productName).toBe("Targon's Peak");
     expect(card.title).toBeNull();
@@ -25,7 +27,9 @@ describe('CSV Parser', () => {
     expect(card.condition).toBe('Near Mint');
     expect(card.quantity).toBe(1);
     expect(card.snapshotMarketPrice).toBe(0.18);
-    expect(card.photoUrl).toBe('https://tcgplayer-cdn.tcgplayer.com/product/653083_in_400x400.jpg');
+    expect(card.photoUrl).toBe(
+      'https://tcgplayer-cdn.tcgplayer.com/product/653083_in_400x400.jpg',
+    );
   });
 
   it('maps Add to Quantity to quantity field, not Total Quantity', () => {
@@ -136,7 +140,8 @@ describe('CSV Parser', () => {
       condition: 'Near Mint',
       quantity: 1,
       snapshotMarketPrice: 0.18,
-      photoUrl: 'https://tcgplayer-cdn.tcgplayer.com/product/653083_in_400x400.jpg',
+      photoUrl:
+        'https://tcgplayer-cdn.tcgplayer.com/product/653083_in_400x400.jpg',
     });
 
     // Verify second card has quantity 6

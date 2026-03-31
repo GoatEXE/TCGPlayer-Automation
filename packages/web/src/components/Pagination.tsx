@@ -5,7 +5,12 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
 }
 
-export function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange }: PaginationProps) {
+export function Pagination({
+  currentPage,
+  totalItems,
+  itemsPerPage,
+  onPageChange,
+}: PaginationProps) {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   if (totalPages <= 1) {
@@ -25,7 +30,8 @@ export function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange
         ← Previous
       </button>
       <span className="pagination-info">
-        Showing {startItem}–{endItem} of {totalItems} ({currentPage} of {totalPages})
+        Showing {startItem}–{endItem} of {totalItems} ({currentPage} of{' '}
+        {totalPages})
       </span>
       <button
         onClick={() => onPageChange(currentPage + 1)}

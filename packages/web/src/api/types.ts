@@ -9,7 +9,13 @@ export interface Card {
   rarity: string | null;
   condition: string;
   quantity: number;
-  status: 'pending' | 'matched' | 'listed' | 'needs_attention' | 'gift' | 'error';
+  status:
+    | 'pending'
+    | 'matched'
+    | 'listed'
+    | 'needs_attention'
+    | 'gift'
+    | 'error';
   marketPrice: string | null;
   listingPrice: string | null;
   isFoilPrice: boolean;

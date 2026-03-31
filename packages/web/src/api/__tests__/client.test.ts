@@ -35,11 +35,16 @@ describe('ApiClient', () => {
       const mockResponse = { cards: [], total: 0, page: 2, limit: 25 };
       mockFetch(mockResponse);
 
-      await api.getCards({ status: 'listed', page: 2, limit: 25, search: 'test' });
+      await api.getCards({
+        status: 'listed',
+        page: 2,
+        limit: 25,
+        search: 'test',
+      });
 
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/cards?status=listed&page=2&limit=25&search=test',
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -49,7 +54,10 @@ describe('ApiClient', () => {
 
       await api.getCards({ status: 'listed' });
 
-      expect(global.fetch).toHaveBeenCalledWith('/api/cards?status=listed', expect.any(Object));
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/cards?status=listed',
+        expect.any(Object),
+      );
     });
   });
 
@@ -91,7 +99,7 @@ describe('ApiClient', () => {
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),
-        })
+        }),
       );
       expect(result).toEqual(mockResult);
     });
@@ -101,7 +109,9 @@ describe('ApiClient', () => {
 
       const file = new File(['test'], 'cards.csv', { type: 'text/csv' });
 
-      await expect(api.importCards(file)).rejects.toThrow('Invalid file format');
+      await expect(api.importCards(file)).rejects.toThrow(
+        'Invalid file format',
+      );
     });
   });
 
@@ -118,7 +128,7 @@ describe('ApiClient', () => {
           method: 'PATCH',
           body: JSON.stringify({ quantity: 5, notes: 'Updated' }),
           headers: { 'Content-Type': 'application/json' },
-        })
+        }),
       );
     });
   });
@@ -134,7 +144,7 @@ describe('ApiClient', () => {
         expect.objectContaining({
           method: 'DELETE',
           headers: {},
-        })
+        }),
       );
       expect(result).toEqual({ success: true });
     });
@@ -142,7 +152,11 @@ describe('ApiClient', () => {
 
   describe('repriceCard', () => {
     it('sends POST request to reprice endpoint', async () => {
-      const mockCard: Partial<Card> = { id: 1, marketPrice: '5.99', listingPrice: '5.87' };
+      const mockCard: Partial<Card> = {
+        id: 1,
+        marketPrice: '5.99',
+        listingPrice: '5.87',
+      };
       mockFetch(mockCard);
 
       await api.repriceCard(1);
@@ -152,7 +166,7 @@ describe('ApiClient', () => {
         expect.objectContaining({
           method: 'POST',
           headers: {},
-        })
+        }),
       );
     });
   });
@@ -168,7 +182,7 @@ describe('ApiClient', () => {
         expect.objectContaining({
           method: 'POST',
           headers: {},
-        })
+        }),
       );
       expect(result).toEqual({ updated: 42 });
     });

@@ -91,7 +91,9 @@ Also invalid
 
     const result = parseTxt(txtContent);
 
-    expect(result.cards[0].productLine).toBe('Riftbound: League of Legends Trading Card Game');
+    expect(result.cards[0].productLine).toBe(
+      'Riftbound: League of Legends Trading Card Game',
+    );
   });
 
   it('sets tcgplayerId, tcgProductId, rarity, photoUrl, and snapshotMarketPrice to null', () => {

@@ -1,5 +1,15 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { eq, desc, isNotNull, sql, ilike, and, or, isNull, inArray } from 'drizzle-orm';
+import {
+  eq,
+  desc,
+  isNotNull,
+  sql,
+  ilike,
+  and,
+  or,
+  isNull,
+  inArray,
+} from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
@@ -33,7 +43,13 @@ interface CardsListResponse {
 }
 
 interface UpdateCardBody {
-  status?: 'pending' | 'matched' | 'listed' | 'needs_attention' | 'gift' | 'error';
+  status?:
+    | 'pending'
+    | 'matched'
+    | 'listed'
+    | 'needs_attention'
+    | 'gift'
+    | 'error';
   quantity?: number;
   listingPrice?: number;
   notes?: string;
@@ -60,7 +76,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   fastify.post<{ Reply: ImportResponse }>('/import', async (request, reply) => {
     try {
       const data = await request.file();
-      
+
       if (!data) {
         return reply.code(400).send({ error: 'No file uploaded' });
       }
@@ -77,7 +93,9 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       } else if (filename.endsWith('.txt')) {
         importResult = parseTxt(content);
       } else {
-        return reply.code(400).send({ error: 'Invalid file type. Only .csv and .txt files are supported' });
+        return reply.code(400).send({
+          error: 'Invalid file type. Only .csv and .txt files are supported',
+        });
       }
 
       const processedCards: Card[] = [];
@@ -91,7 +109,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
 
         // Check if card already exists
         let existingCards: Card[];
-        
+
         if (importedCard.tcgplayerId) {
           // For CSV imports with tcgplayerId: match on tcgplayerId + condition
           existingCards = await db
@@ -100,8 +118,8 @@ export async function cardsRoutes(fastify: FastifyInstance) {
             .where(
               and(
                 eq(cards.tcgplayerId, importedCard.tcgplayerId),
-                eq(cards.condition, importedCard.condition)
-              )
+                eq(cards.condition, importedCard.condition),
+              ),
             );
         } else {
           // For TXT imports without tcgplayerId: match on productName + setName + number + condition
@@ -165,7 +183,10 @@ export async function cardsRoutes(fastify: FastifyInstance) {
             photoUrl: importedCard.photoUrl,
           };
 
-          const [insertedCard] = await db.insert(cards).values(cardData).returning();
+          const [insertedCard] = await db
+            .insert(cards)
+            .values(cardData)
+            .returning();
           processedCards.push(insertedCard);
           importedCount++;
         }
@@ -185,7 +206,12 @@ export async function cardsRoutes(fastify: FastifyInstance) {
 
   // GET / - List cards with pagination and filtering
   fastify.get<{
-    Querystring: { status?: string; page?: string; limit?: string; search?: string };
+    Querystring: {
+      status?: string;
+      page?: string;
+      limit?: string;
+      search?: string;
+    };
     Reply: CardsListResponse;
   }>('/', async (request, reply) => {
     const { status, page = '1', limit = '50', search } = request.query;
@@ -204,7 +230,9 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       }
 
       // Get total count
-      let countQuery = db.select({ count: sql<number>`count(*)::int` }).from(cards);
+      let countQuery = db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cards);
       if (conditions.length > 0) {
         countQuery = countQuery.where(sql`${sql.join(conditions, sql` AND `)}`);
       }
@@ -278,7 +306,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
 
     try {
       const updateData: any = { ...updates, updatedAt: new Date() };
-      
+
       // Convert listingPrice to string if provided
       if (updates.listingPrice !== undefined) {
         updateData.listingPrice = updates.listingPrice.toString();
@@ -344,13 +372,16 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       }
 
       // Calculate new price
-      const marketPrice = card.marketPrice ? parseFloat(card.marketPrice) : null;
+      const marketPrice = card.marketPrice
+        ? parseFloat(card.marketPrice)
+        : null;
       const pricingResult = calculatePrice({ marketPrice });
 
       // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
-      const newStatus = card.status === 'listed' && pricingResult.status === 'matched'
-        ? 'listed'
-        : pricingResult.status;
+      const newStatus =
+        card.status === 'listed' && pricingResult.status === 'matched'
+          ? 'listed'
+          : pricingResult.status;
 
       // Update card with new pricing
       const [updatedCard] = await db
@@ -371,168 +402,190 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /reprice-all - Reprice all cards
-  fastify.post<{ Reply: { updated: number } }>('/reprice-all', async (request, reply) => {
-    try {
-      // Fetch all cards with a market price
-      const cardsToReprice = await db
-        .select()
-        .from(cards)
-        .where(isNotNull(cards.marketPrice));
+  fastify.post<{ Reply: { updated: number } }>(
+    '/reprice-all',
+    async (request, reply) => {
+      try {
+        // Fetch all cards with a market price
+        const cardsToReprice = await db
+          .select()
+          .from(cards)
+          .where(isNotNull(cards.marketPrice));
 
-      let updated = 0;
+        let updated = 0;
 
-      // Update each card with new pricing
-      for (const card of cardsToReprice) {
-        const marketPrice = parseFloat(card.marketPrice!);
-        const pricingResult = calculatePrice({ marketPrice });
+        // Update each card with new pricing
+        for (const card of cardsToReprice) {
+          const marketPrice = parseFloat(card.marketPrice!);
+          const pricingResult = calculatePrice({ marketPrice });
 
-        // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
-        const newStatus = card.status === 'listed' && pricingResult.status === 'matched'
-          ? 'listed'
-          : pricingResult.status;
-
-        await db
-          .update(cards)
-          .set({
-            listingPrice: pricingResult.listingPrice?.toString() ?? null,
-            status: newStatus,
-            updatedAt: new Date(),
-          })
-          .where(eq(cards.id, card.id));
-
-        updated++;
-      }
-
-      return reply.send({ updated });
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.code(500).send({ error: 'Failed to reprice cards' });
-    }
-  });
-
-  // POST /fetch-prices - Fetch latest prices from TCGTracking API
-  fastify.post<{ Reply: FetchPricesResponse }>('/fetch-prices', async (request, reply) => {
-    try {
-      const client = new TCGTrackingClient();
-      
-      // Fetch all Riftbound sets
-      const sets = await client.getSets();
-      
-      if (sets.length === 0) {
-        return reply.code(500).send({ 
-          error: 'Failed to fetch sets from TCGTracking' 
-        });
-      }
-
-      // Get all cards from our database
-      const allCards = await db.select().from(cards);
-
-      let updated = 0;
-      let notFound = 0;
-      const errors: string[] = [];
-
-      // Fetch pricing for each set and update matching cards
-      for (const set of sets) {
-        try {
-          const pricingData = await client.getPricing(set.id);
-          
-          if (!pricingData || !pricingData.prices) {
-            fastify.log.warn(`No pricing data for set ${set.name} (${set.id})`);
-            continue;
-          }
-
-          // Process each card in our database
-          for (const card of allCards) {
-            if (!card.tcgProductId) {
-              // Skip cards without TCG Product ID
-              continue;
-            }
-
-            const productId = card.tcgProductId.toString();
-            const productPricing = pricingData.prices[productId];
-
-            if (!productPricing) {
-              // Card not found in this set's pricing
-              continue;
-            }
-
-            // Determine which condition to use based on card's condition
-            let conditionKey = 'Normal'; // Default
-            if (card.condition.toLowerCase().includes('foil')) {
-              conditionKey = 'Foil';
-            }
-
-            let conditionPricing = productPricing.tcg[conditionKey];
-            let isFoilFallback = false;
-
-            // Fallback to Foil pricing if Normal is not available
-            if ((!conditionPricing || !conditionPricing.market) && conditionKey === 'Normal') {
-              const foilPricing = productPricing.tcg['Foil'];
-              if (foilPricing && foilPricing.market) {
-                conditionPricing = foilPricing;
-                isFoilFallback = true;
-              }
-            }
-
-            if (!conditionPricing || !conditionPricing.market) {
-              // No market price for this condition
-              notFound++;
-              continue;
-            }
-
-            // Update card with new market price
-            const newMarketPrice = conditionPricing.market;
-            const pricingResult = calculatePrice({ marketPrice: newMarketPrice });
-
-            // Build notes field
-            let notesValue = card.notes || '';
-            const foilNoteLine = 'Price from Foil (no Normal pricing available)';
-            
-            if (isFoilFallback) {
-              // Add foil note if not present
-              if (!notesValue.includes(foilNoteLine)) {
-                notesValue = notesValue ? `${notesValue}\n${foilNoteLine}` : foilNoteLine;
-              }
-            } else {
-              // Remove foil note if present (Normal price became available)
-              notesValue = notesValue.split('\n').filter(line => line !== foilNoteLine).join('\n');
-            }
-
-            // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
-            const newStatus = card.status === 'listed' && pricingResult.status === 'matched'
+          // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
+          const newStatus =
+            card.status === 'listed' && pricingResult.status === 'matched'
               ? 'listed'
               : pricingResult.status;
 
-            await db
-              .update(cards)
-              .set({
-                marketPrice: newMarketPrice.toString(),
-                listingPrice: pricingResult.listingPrice?.toString() ?? null,
-                status: newStatus,
-                isFoilPrice: isFoilFallback,
-                notes: notesValue || null,
-                updatedAt: new Date(),
-              })
-              .where(eq(cards.id, card.id));
+          await db
+            .update(cards)
+            .set({
+              listingPrice: pricingResult.listingPrice?.toString() ?? null,
+              status: newStatus,
+              updatedAt: new Date(),
+            })
+            .where(eq(cards.id, card.id));
 
-            updated++;
-          }
-        } catch (error) {
-          const errorMsg = `Error fetching pricing for set ${set.name}: ${error}`;
-          fastify.log.error(errorMsg);
-          errors.push(errorMsg);
+          updated++;
         }
+
+        return reply.send({ updated });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.code(500).send({ error: 'Failed to reprice cards' });
       }
+    },
+  );
 
-      // Count cards that weren't updated (no pricing found)
-      notFound = allCards.filter(card => card.tcgProductId).length - updated;
+  // POST /fetch-prices - Fetch latest prices from TCGTracking API
+  fastify.post<{ Reply: FetchPricesResponse }>(
+    '/fetch-prices',
+    async (request, reply) => {
+      try {
+        const client = new TCGTrackingClient();
 
-      return reply.send({ updated, notFound, errors });
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.code(500).send({ error: 'Failed to fetch prices' });
-    }
-  });
+        // Fetch all Riftbound sets
+        const sets = await client.getSets();
+
+        if (sets.length === 0) {
+          return reply.code(500).send({
+            error: 'Failed to fetch sets from TCGTracking',
+          });
+        }
+
+        // Get all cards from our database
+        const allCards = await db.select().from(cards);
+
+        let updated = 0;
+        let notFound = 0;
+        const errors: string[] = [];
+
+        // Fetch pricing for each set and update matching cards
+        for (const set of sets) {
+          try {
+            const pricingData = await client.getPricing(set.id);
+
+            if (!pricingData || !pricingData.prices) {
+              fastify.log.warn(
+                `No pricing data for set ${set.name} (${set.id})`,
+              );
+              continue;
+            }
+
+            // Process each card in our database
+            for (const card of allCards) {
+              if (!card.tcgProductId) {
+                // Skip cards without TCG Product ID
+                continue;
+              }
+
+              const productId = card.tcgProductId.toString();
+              const productPricing = pricingData.prices[productId];
+
+              if (!productPricing) {
+                // Card not found in this set's pricing
+                continue;
+              }
+
+              // Determine which condition to use based on card's condition
+              let conditionKey = 'Normal'; // Default
+              if (card.condition.toLowerCase().includes('foil')) {
+                conditionKey = 'Foil';
+              }
+
+              let conditionPricing = productPricing.tcg[conditionKey];
+              let isFoilFallback = false;
+
+              // Fallback to Foil pricing if Normal is not available
+              if (
+                (!conditionPricing || !conditionPricing.market) &&
+                conditionKey === 'Normal'
+              ) {
+                const foilPricing = productPricing.tcg['Foil'];
+                if (foilPricing && foilPricing.market) {
+                  conditionPricing = foilPricing;
+                  isFoilFallback = true;
+                }
+              }
+
+              if (!conditionPricing || !conditionPricing.market) {
+                // No market price for this condition
+                notFound++;
+                continue;
+              }
+
+              // Update card with new market price
+              const newMarketPrice = conditionPricing.market;
+              const pricingResult = calculatePrice({
+                marketPrice: newMarketPrice,
+              });
+
+              // Build notes field
+              let notesValue = card.notes || '';
+              const foilNoteLine =
+                'Price from Foil (no Normal pricing available)';
+
+              if (isFoilFallback) {
+                // Add foil note if not present
+                if (!notesValue.includes(foilNoteLine)) {
+                  notesValue = notesValue
+                    ? `${notesValue}\n${foilNoteLine}`
+                    : foilNoteLine;
+                }
+              } else {
+                // Remove foil note if present (Normal price became available)
+                notesValue = notesValue
+                  .split('\n')
+                  .filter((line) => line !== foilNoteLine)
+                  .join('\n');
+              }
+
+              // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
+              const newStatus =
+                card.status === 'listed' && pricingResult.status === 'matched'
+                  ? 'listed'
+                  : pricingResult.status;
+
+              await db
+                .update(cards)
+                .set({
+                  marketPrice: newMarketPrice.toString(),
+                  listingPrice: pricingResult.listingPrice?.toString() ?? null,
+                  status: newStatus,
+                  isFoilPrice: isFoilFallback,
+                  notes: notesValue || null,
+                  updatedAt: new Date(),
+                })
+                .where(eq(cards.id, card.id));
+
+              updated++;
+            }
+          } catch (error) {
+            const errorMsg = `Error fetching pricing for set ${set.name}: ${error}`;
+            fastify.log.error(errorMsg);
+            errors.push(errorMsg);
+          }
+        }
+
+        // Count cards that weren't updated (no pricing found)
+        notFound =
+          allCards.filter((card) => card.tcgProductId).length - updated;
+
+        return reply.send({ updated, notFound, errors });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.code(500).send({ error: 'Failed to fetch prices' });
+      }
+    },
+  );
 
   // POST /mark-listed - Bulk mark cards as listed
   fastify.post<{
@@ -543,7 +596,9 @@ export async function cardsRoutes(fastify: FastifyInstance) {
 
     // Validate request
     if (!cardIds || !Array.isArray(cardIds) || cardIds.length === 0) {
-      return reply.code(400).send({ error: 'cardIds must be a non-empty array' });
+      return reply
+        .code(400)
+        .send({ error: 'cardIds must be a non-empty array' });
     }
 
     try {
@@ -570,7 +625,9 @@ export async function cardsRoutes(fastify: FastifyInstance) {
           updated++;
         } else {
           // Skip non-matched cards with error message
-          errors.push(`Card "${card.productName}" (ID: ${card.id}) has status "${card.status}" - only matched cards can be marked as listed`);
+          errors.push(
+            `Card "${card.productName}" (ID: ${card.id}) has status "${card.status}" - only matched cards can be marked as listed`,
+          );
         }
       }
 
@@ -601,11 +658,15 @@ export async function cardsRoutes(fastify: FastifyInstance) {
 
       // Validate that card is listed
       if (card.status !== 'listed') {
-        return reply.code(400).send({ error: 'Only listed cards can be unlisted' });
+        return reply
+          .code(400)
+          .send({ error: 'Only listed cards can be unlisted' });
       }
 
       // Re-run pricing engine
-      const marketPrice = card.marketPrice ? parseFloat(card.marketPrice) : null;
+      const marketPrice = card.marketPrice
+        ? parseFloat(card.marketPrice)
+        : null;
       const pricingResult = calculatePrice({ marketPrice });
 
       // Update card back to matched status

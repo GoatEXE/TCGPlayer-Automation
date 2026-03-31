@@ -2,13 +2,13 @@ import type { ImportResult, ImportedCard } from './types';
 
 /**
  * Parse TCGPlayer mobile app TXT export format
- * 
+ *
  * Expected format: {quantity} {card name} [{set_code}] {number}/{total}
  * Example: 6 Chaos Rune [OGN] 166/298
  */
 
 const SET_CODE_MAP: Record<string, string> = {
-  'OGN': 'Origins',
+  OGN: 'Origins',
 };
 
 const PRODUCT_LINE = 'Riftbound: League of Legends Trading Card Game';
@@ -39,16 +39,18 @@ export function parseTxt(content: string): ImportResult {
     const lineNumber = i + 1;
 
     const match = line.match(TXT_LINE_PATTERN);
-    
+
     if (!match) {
-      errors.push(`Line ${lineNumber}: Does not match expected format - "${line}"`);
+      errors.push(
+        `Line ${lineNumber}: Does not match expected format - "${line}"`,
+      );
       continue;
     }
 
     const [, quantityStr, cardName, setCode, number] = match;
 
     const setName = SET_CODE_MAP[setCode];
-    
+
     if (!setName) {
       errors.push(`Line ${lineNumber}: Unknown set code "${setCode}"`);
       continue;
@@ -76,6 +78,6 @@ export function parseTxt(content: string): ImportResult {
     source: 'txt',
     cards,
     errors,
-    totalRows: lines.filter(line => line.trim()).length,
+    totalRows: lines.filter((line) => line.trim()).length,
   };
 }

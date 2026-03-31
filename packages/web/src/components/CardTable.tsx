@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Card } from '../api/types';
 import { StatusBadge } from './StatusBadge';
+import { ReviewListModal } from './ReviewListModal';
 
 interface CardTableProps {
   cards: Card[];
@@ -14,7 +15,14 @@ interface CardTableProps {
 type SortField = keyof Card | null;
 type SortDirection = 'asc' | 'desc';
 
-export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, onUnlist }: CardTableProps) {
+export function CardTable({
+  cards,
+  loading,
+  onReprice,
+  onDelete,
+  onMarkListed,
+  onUnlist,
+}: CardTableProps) {
   const [sortField, setSortField] = useState<SortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -22,6 +30,7 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
   const [unlistingId, setUnlistingId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [markingListed, setMarkingListed] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -79,7 +88,7 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
       setSelectedIds(new Set());
     } else {
       // Select all matched cards
-      const matchedIds = matchedCards.map(card => card.id);
+      const matchedIds = matchedCards.map((card) => card.id);
       setSelectedIds(new Set(matchedIds));
     }
   };
@@ -94,24 +103,30 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
     setSelectedIds(newSelected);
   };
 
-  const handleMarkListed = async () => {
+  const handleOpenReview = () => {
     if (selectedIds.size === 0) return;
-    
-    if (!confirm(`Mark ${selectedIds.size} card${selectedIds.size > 1 ? 's' : ''} as listed on TCGPlayer?`)) {
-      return;
-    }
+    setShowReviewModal(true);
+  };
 
+  const handleConfirmMarkListed = async () => {
     setMarkingListed(true);
     try {
       await onMarkListed(Array.from(selectedIds));
       setSelectedIds(new Set()); // Clear selection on success
+      setShowReviewModal(false);
     } finally {
       setMarkingListed(false);
     }
   };
 
+  const handleCancelReview = () => {
+    if (!markingListed) {
+      setShowReviewModal(false);
+    }
+  };
+
   // Filter cards that can be selected (only matched status)
-  const matchedCards = sortedCards.filter(card => card.status === 'matched');
+  const matchedCards = sortedCards.filter((card) => card.status === 'matched');
 
   const formatPrice = (price: string | null, isFoil?: boolean) => {
     if (!price) return '—';
@@ -140,11 +155,19 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
     return date.toLocaleDateString();
   };
 
-  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+  const SortableHeader = ({
+    field,
+    children,
+  }: {
+    field: SortField;
+    children: React.ReactNode;
+  }) => (
     <th onClick={() => handleSort(field)} className="sortable">
       {children}
       {sortField === field && (
-        <span className="sort-indicator">{sortDirection === 'asc' ? ' ↑' : ' ↓'}</span>
+        <span className="sort-indicator">
+          {sortDirection === 'asc' ? ' ↑' : ' ↓'}
+        </span>
       )}
     </th>
   );
@@ -170,11 +193,13 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
       {selectedIds.size > 0 && (
         <div className="selection-actions">
           <button
-            onClick={handleMarkListed}
+            onClick={handleOpenReview}
             disabled={markingListed}
             className="button-primary mark-listed"
           >
-            {markingListed ? '⏳ Marking...' : `📋 Mark ${selectedIds.size} as Listed`}
+            {markingListed
+              ? '⏳ Marking...'
+              : `📋 Mark ${selectedIds.size} as Listed`}
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
@@ -190,7 +215,10 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
             <th className="checkbox-column">
               <input
                 type="checkbox"
-                checked={selectedIds.size === matchedCards.length && matchedCards.length > 0}
+                checked={
+                  selectedIds.size === matchedCards.length &&
+                  matchedCards.length > 0
+                }
                 onChange={handleSelectAll}
                 disabled={matchedCards.length === 0}
                 title="Select all matched cards"
@@ -214,42 +242,50 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
             const isMatched = card.status === 'matched';
             const isListed = card.status === 'listed';
             const isSelected = selectedIds.has(card.id);
-            
+
             return (
               <tr key={card.id} className={isListed ? 'listed-row' : ''}>
                 <td className="checkbox-column">
                   <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={(e) => handleSelectCard(card.id, e.target.checked)}
+                    onChange={(e) =>
+                      handleSelectCard(card.id, e.target.checked)
+                    }
                     disabled={!isMatched}
-                    title={isMatched ? 'Select for bulk listing' : 'Only matched cards can be selected'}
+                    title={
+                      isMatched
+                        ? 'Select for bulk listing'
+                        : 'Only matched cards can be selected'
+                    }
                   />
                 </td>
                 <td>
                   <StatusBadge status={card.status} />
                 </td>
-              <td className="card-name">
-                {card.title || card.productName}
-                {card.photoUrl && (
-                  <a
-                    href={card.photoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="photo-link"
-                    title="View photo"
-                  >
-                    🖼️
-                  </a>
-                )}
-              </td>
-              <td>{card.setName || '—'}</td>
-              <td>{card.number || '—'}</td>
-              <td>{card.rarity || '—'}</td>
-              <td>{card.condition}</td>
-              <td className="quantity">{card.quantity}</td>
-              <td className="price">{formatPrice(card.marketPrice, card.isFoilPrice)}</td>
-              <td className="price">{formatPrice(card.listingPrice)}</td>
+                <td className="card-name">
+                  {card.title || card.productName}
+                  {card.photoUrl && (
+                    <a
+                      href={card.photoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="photo-link"
+                      title="View photo"
+                    >
+                      🖼️
+                    </a>
+                  )}
+                </td>
+                <td>{card.setName || '—'}</td>
+                <td>{card.number || '—'}</td>
+                <td>{card.rarity || '—'}</td>
+                <td>{card.condition}</td>
+                <td className="quantity">{card.quantity}</td>
+                <td className="price">
+                  {formatPrice(card.marketPrice, card.isFoilPrice)}
+                </td>
+                <td className="price">{formatPrice(card.listingPrice)}</td>
                 <td className="date">{formatDate(card.updatedAt)}</td>
                 <td className="actions">
                   {isListed ? (
@@ -285,6 +321,14 @@ export function CardTable({ cards, loading, onReprice, onDelete, onMarkListed, o
           })}
         </tbody>
       </table>
+      {showReviewModal && (
+        <ReviewListModal
+          cards={sortedCards.filter((card) => selectedIds.has(card.id))}
+          onConfirm={handleConfirmMarkListed}
+          onCancel={handleCancelReview}
+          loading={markingListed}
+        />
+      )}
     </div>
   );
 }

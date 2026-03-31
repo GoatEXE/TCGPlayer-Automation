@@ -438,10 +438,8 @@ docker compose up db -d
 # Update .env to use localhost instead of 'db' hostname
 # DATABASE_URL=postgresql://tcgplayer:tcgplayer@localhost:5432/tcgplayer
 
-# Run database migrations
-pnpm --filter server db:migrate
-
 # Start dev servers (API + frontend with hot reload)
+# Migrations auto-run when the server starts
 pnpm dev
 
 # API:      http://localhost:3000
@@ -461,6 +459,12 @@ docker compose build              # Rebuild images after code changes
 docker compose restart app        # Restart just the app service
 ```
 
+### Automatic Migrations on Startup
+
+- The server runs Drizzle migrations during startup before registering API routes.
+- Works in both Docker profiles (`app-dev` and `app`).
+- If migrations fail, startup fails fast with a visible error in logs.
+
 ### Key Scripts (Local Development)
 
 ```bash
@@ -468,10 +472,16 @@ pnpm dev              # Start API + frontend concurrently (hot reload)
 pnpm build            # Build server + web for production
 pnpm test             # Run all tests
 pnpm test:watch       # Watch mode during development
+pnpm lint             # Run ESLint across workspace
+pnpm format           # Format code with Prettier
+pnpm format:check     # Check formatting without writing
 
 # Database
-pnpm --filter server db:migrate    # Run Drizzle migrations
+pnpm --filter server db:migrate    # Run Drizzle migrations manually (optional)
+pnpm --filter server db:seed       # Seed dev database with sample cards
 pnpm --filter server db:studio     # Open Drizzle Studio (visual DB inspector)
+
+# Note: Migrations auto-run on server startup in both dev and prod Docker profiles
 ```
 
 ---
@@ -585,7 +595,8 @@ The dashboard provides a bulk workflow for marking cards as listed on TCGPlayer 
 
 - **Checkbox selection**: Only enabled for `matched` cards (cards ready to list with calculated prices)
 - **Select all**: Header checkbox selects all matched cards on current page
-- **Bulk action**: "📋 Mark X as Listed" button with confirmation dialog
+- **Bulk action**: "📋 Mark X as Listed" opens a review modal before applying changes
+- **Review modal**: Shows selected cards, quantity, listing price, and estimated total value before confirmation
 - **Visual distinction**: Listed cards show green background + ↩️ unlist button
 - **Unlist**: Returns card to `matched` status and re-runs pricing engine
 - **Status preservation**: Repricing operations preserve `listed` status unless price drops below thresholds

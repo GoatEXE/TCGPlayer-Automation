@@ -226,7 +226,7 @@ Keeps the server and frontend independently buildable/testable, but avoids the o
 **Tasks:**
 - [x] Initialize pnpm workspace with `packages/server` and `packages/web`
 - [x] Configure TypeScript (strict mode, path aliases)
-- [ ] Set up ESLint + Prettier (minimal config, not over-engineered)
+- [x] Set up ESLint + Prettier (minimal config, not over-engineered)
 - [x] Set up Vitest for both `packages/server` and `packages/web`
 - [x] Configure test scripts in root `package.json`
 - [x] Create `.env.example` with all required env vars documented
@@ -242,7 +242,7 @@ Keeps the server and frontend independently buildable/testable, but avoids the o
 - [x] Define Drizzle schema for `Card` (other entities are Phase 2/3)
 - [x] Generate and run initial migration
 - [x] Add `drizzle-kit studio` for visual DB inspection during dev
-- [ ] Create seed script (`scripts/seed.ts`) with sample cards
+- [x] Create seed script (`scripts/seed.ts`) with sample cards
 
 ### 4.3 TCGPlayer API Client
 
@@ -333,14 +333,14 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [N/A] Build batch listing service that processes a set of matched cards (manual listing at Level 1)
 - [N/A] Create API endpoint: `POST /api/listings/create` (no API access for automated listing)
 - [N/A] Create API endpoint: `POST /api/listings/create-all` (no API access for automated listing)
-- [ ] Add error handling and partial failure support
+- [N/A] Add error handling and partial failure support (manual listing workflow at Level 1)
 - [x] Handle cards with no market price data — skip listing, set card status to `needs_attention`, trigger notification, queue for retry on next price check cycle
 - [x] Cards with market price < $0.05: mark as `gift` — these are freebies to include in orders to encourage positive reviews
 - [x] Cards with market price >= $0.05: eligible for listing at 98% market price
 - [x] No hard minimum listing floor — list everything $0.05+ to maximize inventory for order consolidation
 - [x] Track profitability per ORDER (after $0.30 fee split), not per individual card
 - [x] Foil price fallback — when Normal pricing unavailable, fall back to Foil pricing with `isFoilPrice` indicator
-- [ ] Build simple "review and confirm" UI step — show user what will be listed at what price before pushing
+- [x] Build simple "review and confirm" UI step — show user what will be listed at what price before pushing
 
 ### 4.7 Basic API Endpoints (Full Phase 1 Summary)
 
@@ -356,6 +356,8 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 | POST   | `/api/cards/:id/reprice`   | ✅     | Re-price single card                    |
 | POST   | `/api/cards/reprice-all`   | ✅     | Bulk re-price all cards                 |
 | POST   | `/api/cards/fetch-prices`  | ✅     | Fetch latest prices from TCGTracking API |
+| POST   | `/api/cards/mark-listed`   | ✅     | Bulk mark matched cards as listed       |
+| POST   | `/api/cards/:id/unlist`    | ✅     | Return listed card back to matched      |
 | GET    | `/api/listings`            | 📋     | List all listings                       |
 | POST   | `/api/listings/create`     | N/A    | Create listings (no API, manual)        |
 | POST   | `/api/listings/create-all` | N/A    | Create listings (no API, manual)        |
@@ -403,23 +405,23 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Update `.env.example` to document profile usage
 - [x] Update README.md with Docker-first workflow
 - [x] Verify clean `docker compose up` from scratch works
-- [ ] Add database migration service or run migrations in app startup
+- [x] Add database migration service or run migrations in app startup
 
 ### 4.9 Remaining Phase 1 Work
 
-**Status:** 🚧 IN PROGRESS
+**Status:** ✅ COMPLETE
 
 **Completed:**
 - [x] Handle duplicates (same card + condition = increment quantity, not new row)
 - [x] Wire up live TCGTracking price fetching with `POST /api/cards/fetch-prices`
 - [x] Foil price fallback when Normal pricing unavailable
 
-**Still TODO:**
-- [ ] Build "review and confirm" UI — preview what to list before committing
+**Completed in this pass:**
+- [x] Build "review and confirm" UI — preview what to list before committing
 - [x] Add ability to mark cards as "listed" from the dashboard
-- [ ] Auto-run migrations on startup
-- [ ] ESLint + Prettier setup (nice to have)
-- [ ] Seed script for dev data (nice to have)
+- [x] Auto-run migrations on startup
+- [x] ESLint + Prettier setup (nice to have)
+- [x] Seed script for dev data (nice to have)
 
 ---
 

@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TCGTrackingClient } from '../client';
-import type { TCGTrackingSet, TCGTrackingSetsResponse, TCGTrackingPriceResponse } from '../types';
+import type {
+  TCGTrackingSet,
+  TCGTrackingSetsResponse,
+  TCGTrackingPriceResponse,
+} from '../types';
 
 describe('TCGTrackingClient', () => {
   let client: TCGTrackingClient;
-  
+
   beforeEach(() => {
     // Reset fetch mock before each test
     global.fetch = vi.fn();
@@ -18,7 +22,7 @@ describe('TCGTrackingClient', () => {
         category_name: 'Riftbound',
         generated_at: '2026-03-28T09:30:39-04:00',
         sets: [
-          { 
+          {
             id: 24344,
             name: 'Origins',
             abbreviation: 'OGN',
@@ -34,7 +38,7 @@ describe('TCGTrackingClient', () => {
             pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
             skus_url: '/tcgapi/v1/89/sets/24344/skus',
           },
-          { 
+          {
             id: 24519,
             name: 'Test Set',
             abbreviation: 'TST',
@@ -60,7 +64,9 @@ describe('TCGTrackingClient', () => {
 
       const sets = await client.getSets();
 
-      expect(global.fetch).toHaveBeenCalledWith('https://test.example.com/89/sets');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://test.example.com/89/sets',
+      );
       expect(sets).toEqual(mockResponse.sets);
       expect(sets).toHaveLength(2);
       expect(sets[0].name).toBe('Origins');
@@ -68,21 +74,25 @@ describe('TCGTrackingClient', () => {
     });
 
     it('should handle network errors gracefully', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
 
       const sets = await client.getSets();
 
       expect(sets).toEqual([]);
       expect(consoleErrorSpy).toHaveBeenCalled();
-      
+
       consoleErrorSpy.mockRestore();
     });
 
     it('should handle non-ok HTTP responses', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       (global.fetch as any).mockResolvedValueOnce({
         ok: false,
         status: 404,
@@ -93,13 +103,15 @@ describe('TCGTrackingClient', () => {
 
       expect(sets).toEqual([]);
       expect(consoleErrorSpy).toHaveBeenCalled();
-      
+
       consoleErrorSpy.mockRestore();
     });
 
     it('should handle unexpected response shapes', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {});
+
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ unexpected: 'format' }),
@@ -109,7 +121,7 @@ describe('TCGTrackingClient', () => {
 
       // Should return empty array for unexpected format
       expect(sets).toEqual([]);
-      
+
       consoleWarnSpy.mockRestore();
     });
   });
@@ -122,12 +134,12 @@ describe('TCGTrackingClient', () => {
         prices: {
           '12345': {
             tcg: {
-              Normal: { low: 1.20, market: 1.50 },
+              Normal: { low: 1.2, market: 1.5 },
             },
           },
           '67890': {
             tcg: {
-              Foil: { low: 0.20, market: 0.25 },
+              Foil: { low: 0.2, market: 0.25 },
             },
           },
         },
@@ -140,10 +152,12 @@ describe('TCGTrackingClient', () => {
 
       const prices = await client.getPricing(24344);
 
-      expect(global.fetch).toHaveBeenCalledWith('https://test.example.com/89/sets/24344/pricing');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://test.example.com/89/sets/24344/pricing',
+      );
       expect(prices).toEqual(mockResponse);
       expect(prices?.set_id).toBe(24344);
-      expect(prices?.prices['12345'].tcg.Normal.market).toBe(1.50);
+      expect(prices?.prices['12345'].tcg.Normal.market).toBe(1.5);
     });
 
     it('should handle market prices with only low', async () => {
@@ -171,21 +185,25 @@ describe('TCGTrackingClient', () => {
     });
 
     it('should handle network errors gracefully', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
 
       const prices = await client.getPricing(24344);
 
       expect(prices).toBeNull();
       expect(consoleErrorSpy).toHaveBeenCalled();
-      
+
       consoleErrorSpy.mockRestore();
     });
 
     it('should handle unexpected response shapes', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {});
+
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ unexpected: 'format' }),
@@ -194,7 +212,7 @@ describe('TCGTrackingClient', () => {
       const prices = await client.getPricing(24344);
 
       expect(prices).toBeNull();
-      
+
       consoleWarnSpy.mockRestore();
     });
   });
@@ -216,7 +234,9 @@ describe('TCGTrackingClient', () => {
       const originalEnv = process.env.TCGTRACKING_BASE_URL;
       process.env.TCGTRACKING_BASE_URL = 'https://env.example.com';
 
-      const clientWithCustom = new TCGTrackingClient('https://custom.example.com');
+      const clientWithCustom = new TCGTrackingClient(
+        'https://custom.example.com',
+      );
 
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
@@ -225,7 +245,9 @@ describe('TCGTrackingClient', () => {
 
       await clientWithCustom.getSets();
 
-      expect(global.fetch).toHaveBeenCalledWith('https://custom.example.com/89/sets');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom.example.com/89/sets',
+      );
 
       process.env.TCGTRACKING_BASE_URL = originalEnv;
     });

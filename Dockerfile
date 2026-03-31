@@ -55,8 +55,9 @@ COPY --from=prod-deps /app/packages/web/node_modules ./packages/web/node_modules
 COPY packages/server/package.json ./packages/server/
 COPY packages/web/package.json ./packages/web/
 
-# Copy built server code
+# Copy built server code + migrations
 COPY --from=build-server /app/packages/server/dist ./packages/server/dist
+COPY packages/server/drizzle ./packages/server/drizzle
 
 # Copy built frontend
 COPY --from=build-web /app/packages/web/dist ./packages/web/dist

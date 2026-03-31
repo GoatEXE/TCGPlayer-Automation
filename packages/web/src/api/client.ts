@@ -12,8 +12,13 @@ import type {
 const API_BASE = '/api';
 
 class ApiClient {
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
+  private async request<T>(
+    endpoint: string,
+    options?: RequestInit,
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      ...(options?.headers as Record<string, string>),
+    };
     // Only set Content-Type for requests with a body
     if (options?.body) {
       headers['Content-Type'] = headers['Content-Type'] || 'application/json';
@@ -24,8 +29,12 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Request failed' }));
+      throw new Error(
+        error.error || error.message || `HTTP ${response.status}`,
+      );
     }
 
     return response.json();
@@ -56,8 +65,12 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Import failed' }));
-      throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Import failed' }));
+      throw new Error(
+        error.error || error.message || `HTTP ${response.status}`,
+      );
     }
 
     return response.json();

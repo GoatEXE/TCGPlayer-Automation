@@ -1,4 +1,13 @@
-import { pgTable, serial, text, integer, numeric, timestamp, pgEnum, boolean } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  serial,
+  text,
+  integer,
+  numeric,
+  timestamp,
+  pgEnum,
+  boolean,
+} from 'drizzle-orm/pg-core';
 
 export const cardStatusEnum = pgEnum('card_status', [
   'pending',

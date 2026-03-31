@@ -2,11 +2,26 @@
   "name": "tcgplayer-automation",
   "private": true,
   "scripts": {
-    "dev": "pnpm --parallel --filter './packages/*' dev",
-    "build": "pnpm --filter './packages/*' build",
-    "test": "pnpm --filter './packages/*' test",
-    "test:watch": "pnpm --filter './packages/*' test:watch",
-    "lint": "pnpm --filter './packages/*' lint"
+    "dev": "pnpm -r --parallel --if-present run dev",
+    "build": "pnpm -r --if-present run build",
+    "test": "pnpm -r --if-present run test",
+    "test:watch": "pnpm -r --if-present run test:watch",
+    "lint": "pnpm -r --if-present run lint",
+    "lint:fix": "pnpm exec eslint . --fix",
+    "format": "pnpm exec prettier \"eslint.config.mjs\" \".prettierrc.json\" \"packages/**/*.{ts,tsx,js,jsx,json,md,cjs,mjs}\" --write",
+    "format:check": "pnpm exec prettier \"eslint.config.mjs\" \".prettierrc.json\" \"packages/**/*.{ts,tsx,js,jsx,json,md,cjs,mjs}\" --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.37.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.46.1"
   },
   "engines": {
     "node": ">=20.0.0"

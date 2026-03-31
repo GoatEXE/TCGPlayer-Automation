@@ -72,7 +72,7 @@ describe('POST /api/cards/import', () => {
         rarity: 'Common',
         condition: 'Near Mint',
         quantity: 4,
-        snapshotMarketPrice: 1.50,
+        snapshotMarketPrice: 1.5,
         photoUrl: 'https://example.com/card.jpg',
       },
     ];
@@ -117,8 +117,9 @@ describe('POST /api/cards/import', () => {
       }),
     } as any);
 
-    const csvContent = 'Quantity,TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Price,Add to Quantity,Photo,test\n4,12345,Riftbound,Origins,Test Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,5.60,4,https://example.com/card.jpg,';
-    
+    const csvContent =
+      'Quantity,TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Price,Add to Quantity,Photo,test\n4,12345,Riftbound,Origins,Test Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,5.60,4,https://example.com/card.jpg,';
+
     const form = new FormData();
     const blob = new Blob([csvContent], { type: 'text/csv' });
     form.append('file', blob, 'cards.csv');
@@ -197,7 +198,7 @@ describe('POST /api/cards/import', () => {
     } as any);
 
     const txtContent = '2 Another Card [Origins]';
-    
+
     const form = new FormData();
     const blob = new Blob([txtContent], { type: 'text/plain' });
     form.append('file', blob, 'cards.txt');
@@ -263,9 +264,15 @@ describe('GET /api/cards', () => {
     // Create a mock chain that returns cards
     const mockOffset = vi.fn().mockResolvedValue(mockCards);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit, offset: mockOffset });
-    const mockFrom = vi.fn().mockReturnValue({ orderBy: mockOrderBy, limit: mockLimit, offset: mockOffset });
-    
+    const mockOrderBy = vi
+      .fn()
+      .mockReturnValue({ limit: mockLimit, offset: mockOffset });
+    const mockFrom = vi.fn().mockReturnValue({
+      orderBy: mockOrderBy,
+      limit: mockLimit,
+      offset: mockOffset,
+    });
+
     // Mock select to handle both count and card queries
     let selectCallCount = 0;
     vi.mocked(db.select).mockImplementation((...args: any[]) => {
@@ -307,9 +314,20 @@ describe('GET /api/cards', () => {
     // Create mock chain with where clause
     const mockOffset = vi.fn().mockResolvedValue(mockCards);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit, offset: mockOffset });
-    const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy, limit: mockLimit, offset: mockOffset });
-    const mockFrom = vi.fn().mockReturnValue({ where: mockWhere, orderBy: mockOrderBy, limit: mockLimit, offset: mockOffset });
+    const mockOrderBy = vi
+      .fn()
+      .mockReturnValue({ limit: mockLimit, offset: mockOffset });
+    const mockWhere = vi.fn().mockReturnValue({
+      orderBy: mockOrderBy,
+      limit: mockLimit,
+      offset: mockOffset,
+    });
+    const mockFrom = vi.fn().mockReturnValue({
+      where: mockWhere,
+      orderBy: mockOrderBy,
+      limit: mockLimit,
+      offset: mockOffset,
+    });
 
     let selectCallCount = 0;
     vi.mocked(db.select).mockImplementation((...args: any[]) => {
@@ -350,9 +368,20 @@ describe('GET /api/cards', () => {
     // Create mock chain with where clause
     const mockOffset = vi.fn().mockResolvedValue(mockCards);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit, offset: mockOffset });
-    const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy, limit: mockLimit, offset: mockOffset });
-    const mockFrom = vi.fn().mockReturnValue({ where: mockWhere, orderBy: mockOrderBy, limit: mockLimit, offset: mockOffset });
+    const mockOrderBy = vi
+      .fn()
+      .mockReturnValue({ limit: mockLimit, offset: mockOffset });
+    const mockWhere = vi.fn().mockReturnValue({
+      orderBy: mockOrderBy,
+      limit: mockLimit,
+      offset: mockOffset,
+    });
+    const mockFrom = vi.fn().mockReturnValue({
+      where: mockWhere,
+      orderBy: mockOrderBy,
+      limit: mockLimit,
+      offset: mockOffset,
+    });
 
     let selectCallCount = 0;
     vi.mocked(db.select).mockImplementation((...args: any[]) => {
@@ -691,7 +720,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
         rarity: 'Common',
         condition: 'Near Mint',
         quantity: 2,
-        snapshotMarketPrice: 1.50,
+        snapshotMarketPrice: 1.5,
         photoUrl: null,
       },
     ];
@@ -748,7 +777,8 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       }),
     } as any);
 
-    const csvContent = '2,12345,Riftbound,Origins,Duplicate Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,3.00,2,';
+    const csvContent =
+      '2,12345,Riftbound,Origins,Duplicate Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,3.00,2,';
     const form = new FormData();
     const blob = new Blob([csvContent], { type: 'text/csv' });
     form.append('file', blob, 'cards.csv');
@@ -780,13 +810,13 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
         rarity: 'Rare',
         condition: 'Near Mint',
         quantity: 1,
-        snapshotMarketPrice: 5.00,
+        snapshotMarketPrice: 5.0,
         photoUrl: null,
       },
     ];
 
     const mockPricingResult = {
-      listingPrice: 4.90,
+      listingPrice: 4.9,
       status: 'matched' as const,
       reason: 'Priced at 98% of market',
     };
@@ -834,7 +864,8 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       }),
     } as any);
 
-    const csvContent = '1,99999,Riftbound,Origins,New Card,,99/298,Rare,Near Mint,5.00,4.80,4.85,4.80,5.00,1,';
+    const csvContent =
+      '1,99999,Riftbound,Origins,New Card,,99/298,Rare,Near Mint,5.00,4.80,4.85,4.80,5.00,1,';
     const form = new FormData();
     const blob = new Blob([csvContent], { type: 'text/csv' });
     form.append('file', blob, 'cards.csv');
@@ -865,7 +896,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
         rarity: 'Common',
         condition: 'Near Mint',
         quantity: 2,
-        snapshotMarketPrice: 1.50,
+        snapshotMarketPrice: 1.5,
         photoUrl: null,
       },
       {
@@ -878,7 +909,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
         rarity: 'Rare',
         condition: 'Near Mint',
         quantity: 1,
-        snapshotMarketPrice: 5.00,
+        snapshotMarketPrice: 5.0,
         photoUrl: null,
       },
     ];
@@ -945,7 +976,8 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       }),
     } as any);
 
-    const csvContent = '2,12345,Riftbound,Origins,Duplicate Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,3.00,2,\n1,99999,Riftbound,Origins,New Card,,99/298,Rare,Near Mint,5.00,4.80,4.85,4.80,5.00,1,';
+    const csvContent =
+      '2,12345,Riftbound,Origins,Duplicate Card,,1/298,Common,Near Mint,1.50,1.40,1.45,1.40,3.00,2,\n1,99999,Riftbound,Origins,New Card,,99/298,Rare,Near Mint,5.00,4.80,4.85,4.80,5.00,1,';
     const form = new FormData();
     const blob = new Blob([csvContent], { type: 'text/csv' });
     form.append('file', blob, 'cards.csv');
@@ -1079,12 +1111,12 @@ describe('POST /api/cards/fetch-prices', () => {
       prices: {
         '12345': {
           tcg: {
-            Normal: { low: 1.40, market: 1.50 },
+            Normal: { low: 1.4, market: 1.5 },
           },
         },
         '67890': {
           tcg: {
-            Normal: { low: 5.00, market: 5.50 },
+            Normal: { low: 5.0, market: 5.5 },
           },
         },
       },
@@ -1250,7 +1282,7 @@ describe('POST /api/cards/fetch-prices', () => {
       prices: {
         '652802': {
           tcg: {
-            Foil: { low: 0.10, market: 0.24 },
+            Foil: { low: 0.1, market: 0.24 },
           },
         },
       },
@@ -1307,7 +1339,9 @@ describe('POST /api/cards/fetch-prices', () => {
     expect(body.notFound).toBe(0);
     expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.24 });
     expect(updateCallArgs.isFoilPrice).toBe(true);
-    expect(updateCallArgs.notes).toContain('Price from Foil (no Normal pricing available)');
+    expect(updateCallArgs.notes).toContain(
+      'Price from Foil (no Normal pricing available)',
+    );
   });
 
   it('should prefer Normal pricing over Foil when both are available', async () => {
@@ -1337,7 +1371,7 @@ describe('POST /api/cards/fetch-prices', () => {
         '652954': {
           tcg: {
             Foil: { low: 0.55, market: 9.13 },
-            Normal: { low: 0.05, market: 0.20 },
+            Normal: { low: 0.05, market: 0.2 },
           },
         },
       },
@@ -1366,7 +1400,7 @@ describe('POST /api/cards/fetch-prices', () => {
     } as any);
 
     const mockPricingResult = {
-      listingPrice: 0.20,
+      listingPrice: 0.2,
       status: 'matched' as const,
       reason: 'Priced at 98% of market',
     };
@@ -1391,9 +1425,12 @@ describe('POST /api/cards/fetch-prices', () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.updated).toBe(1);
-    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.20 }); // Should use Normal price
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.2 }); // Should use Normal price
     expect(updateCallArgs.isFoilPrice).toBe(false);
-    expect(updateCallArgs.notes === null || !updateCallArgs.notes.includes('Price from Foil')).toBe(true);
+    expect(
+      updateCallArgs.notes === null ||
+        !updateCallArgs.notes.includes('Price from Foil'),
+    ).toBe(true);
   });
 
   it('should clear foil fallback flag when Normal pricing becomes available', async () => {

@@ -530,3 +530,190 @@ body {
   background: #fef3c7;
   transform: scale(1.1);
 }
+
+/* ───── Review List Modal ───── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 1rem;
+}
+
+.modal-content {
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-enter 0.15s ease-out;
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.modal-close:hover:not(:disabled) {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.modal-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.review-summary-text {
+  margin: 0;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+}
+
+.review-table-wrapper {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  padding: 0 1.5rem;
+  max-height: 40vh;
+}
+
+.review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.review-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg);
+  z-index: 1;
+}
+
+.review-table th {
+  padding: 0.5rem 0.5rem 0.5rem 0;
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.review-table td {
+  padding: 0.5rem 0.5rem 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.review-col-right {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-card-name {
+  font-weight: 500;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-top: 2px solid var(--color-border);
+  font-size: 1rem;
+}
+
+.review-total strong {
+  font-size: 1.1rem;
+  color: var(--color-success);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Mobile adjustments for modal */
+@media (max-width: 768px) {
+  .modal-backdrop {
+    padding: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .modal-content {
+    max-height: 90vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .modal-header {
+    padding: 1rem;
+  }
+
+  .review-summary-text {
+    padding: 0.5rem 1rem;
+  }
+
+  .review-table-wrapper {
+    padding: 0 1rem;
+    max-height: 50vh;
+  }
+
+  .review-total {
+    padding: 0.75rem 1rem;
+  }
+
+  .modal-actions {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+  }
+
+  .modal-actions .button-primary,
+  .modal-actions .button-secondary {
+    width: 100%;
+    text-align: center;
+  }
+}

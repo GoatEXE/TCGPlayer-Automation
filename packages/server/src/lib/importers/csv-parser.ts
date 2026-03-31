@@ -2,15 +2,15 @@ import type { ImportResult, ImportedCard } from './types';
 
 /**
  * Parse TCGPlayer mobile app CSV export format
- * 
+ *
  * Expected columns:
- * TCGplayer Id, Product Line, Set Name, Product Name, Title, Number, Rarity, 
+ * TCGplayer Id, Product Line, Set Name, Product Name, Title, Number, Rarity,
  * Condition, TCG Market Price, TCG Direct Low, TCG Low Price With Shipping,
  * TCG Low Price, Total Quantity, Add to Quantity, TCG Marketplace Price, Photo URL
  */
 export function parseCsv(content: string): ImportResult {
   const lines = content.trim().split('\n');
-  
+
   if (lines.length === 0 || content.trim() === '') {
     return {
       source: 'csv',
@@ -22,7 +22,7 @@ export function parseCsv(content: string): ImportResult {
 
   // Skip header row
   const dataLines = lines.slice(1);
-  
+
   const cards: ImportedCard[] = [];
   const errors: string[] = [];
 
@@ -31,10 +31,10 @@ export function parseCsv(content: string): ImportResult {
     if (!line) continue;
 
     const rowNumber = i + 2; // +2 because we skip header (1) and arrays are 0-indexed
-    
+
     try {
       const cols = parseCsvLine(line);
-      
+
       // Column indices (0-based)
       const tcgplayerIdStr = cols[0]?.trim();
       const productLine = cols[1]?.trim();
@@ -50,7 +50,9 @@ export function parseCsv(content: string): ImportResult {
 
       // Validation: required fields
       if (!tcgplayerIdStr || !productLine || !setName || !productName) {
-        errors.push(`Row ${rowNumber}: Missing required fields (TCGplayer Id, Product Line, Set Name, or Product Name)`);
+        errors.push(
+          `Row ${rowNumber}: Missing required fields (TCGplayer Id, Product Line, Set Name, or Product Name)`,
+        );
         continue;
       }
 
@@ -71,7 +73,9 @@ export function parseCsv(content: string): ImportResult {
 
       cards.push(card);
     } catch (error) {
-      errors.push(`Row ${rowNumber}: Parse error - ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(
+        `Row ${rowNumber}: Parse error - ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -79,7 +83,7 @@ export function parseCsv(content: string): ImportResult {
     source: 'csv',
     cards,
     errors,
-    totalRows: dataLines.filter(line => line.trim()).length,
+    totalRows: dataLines.filter((line) => line.trim()).length,
   };
 }
 
