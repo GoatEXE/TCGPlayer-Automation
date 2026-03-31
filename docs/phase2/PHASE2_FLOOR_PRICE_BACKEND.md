@@ -99,6 +99,11 @@ interface UpdateCardBody {
 }
 ```
 
+Validation rules:
+- `floorPriceCents: null` ✅ allowed (clears floor)
+- `floorPriceCents: <non-negative integer>` ✅ allowed
+- negative or non-integer values ❌ rejected with `400`
+
 ### GET /api/cards
 Response includes `floorPriceCents` field for each card.
 
