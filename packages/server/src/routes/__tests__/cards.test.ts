@@ -4,6 +4,16 @@ import type { FastifyInstance } from 'fastify';
 import { cardsRoutes } from '../cards.js';
 import multipart from '@fastify/multipart';
 
+const getFormHeaders = (form: FormData): Record<string, string> => {
+  if ('getHeaders' in form) {
+    return (
+      form as FormData & { getHeaders: () => Record<string, string> }
+    ).getHeaders();
+  }
+
+  return {};
+};
+
 // Mock the database
 vi.mock('../../db/index.js', () => ({
   db: {
@@ -71,6 +81,7 @@ describe('POST /api/cards/import', () => {
     const mockImportedCards = [
       {
         tcgplayerId: 12345,
+        tcgProductId: 12345,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'Test Card',
@@ -135,7 +146,7 @@ describe('POST /api/cards/import', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(201);
@@ -151,6 +162,7 @@ describe('POST /api/cards/import', () => {
     const mockImportedCards = [
       {
         tcgplayerId: null,
+        tcgProductId: null,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'Another Card',
@@ -214,7 +226,7 @@ describe('POST /api/cards/import', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(201);
@@ -232,7 +244,7 @@ describe('POST /api/cards/import', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(400);
@@ -809,7 +821,7 @@ describe('POST /api/cards/reprice-all', () => {
 
     const mockPricingResult1 = {
       listingPrice: 1.47,
-      status: 'listed' as const,
+      status: 'matched' as const,
       reason: 'Priced at 98% of market',
     };
 
@@ -855,6 +867,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
     const mockImportedCards = [
       {
         tcgplayerId: 12345,
+        tcgProductId: 12345,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'Duplicate Card',
@@ -930,7 +943,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(201);
@@ -945,6 +958,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
     const mockImportedCards = [
       {
         tcgplayerId: 99999,
+        tcgProductId: 99999,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'New Card',
@@ -1017,7 +1031,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(201);
@@ -1031,6 +1045,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
     const mockImportedCards = [
       {
         tcgplayerId: 12345,
+        tcgProductId: 12345,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'Duplicate Card',
@@ -1044,6 +1059,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       },
       {
         tcgplayerId: 99999,
+        tcgProductId: 99999,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'New Card',
@@ -1129,7 +1145,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(201);
@@ -1143,6 +1159,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
     const mockImportedCards = [
       {
         tcgplayerId: null,
+        tcgProductId: null,
         productLine: 'Riftbound',
         setName: 'Origins',
         productName: 'TXT Card',
@@ -1206,7 +1223,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
       method: 'POST',
       url: '/api/cards/import',
       payload: form,
-      headers: form.getHeaders ? form.getHeaders() : {},
+      headers: getFormHeaders(form),
     });
 
     expect(response.statusCode).toBe(201);

@@ -105,7 +105,7 @@ interface PriceHistoryResponse {
 
 export async function cardsRoutes(fastify: FastifyInstance) {
   // POST /import - Import cards from CSV or TXT with duplicate handling
-  fastify.post<{ Reply: ImportResponse }>('/import', async (request, reply) => {
+  fastify.post('/import', async (request, reply) => {
     try {
       const data = await request.file();
 
@@ -244,7 +244,6 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       limit?: string;
       search?: string;
     };
-    Reply: CardsListResponse;
   }>('/', async (request, reply) => {
     const { status, page = '1', limit = '50', search } = request.query;
     const pageNum = parseInt(page, 10);
@@ -262,7 +261,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       }
 
       // Get total count
-      let countQuery = db
+      let countQuery: any = db
         .select({ count: sql<number>`count(*)::int` })
         .from(cards);
       if (conditions.length > 0) {
@@ -271,7 +270,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       const [{ count: total }] = await countQuery;
 
       // Get cards
-      let query = db
+      let query: any = db
         .select({
           ...getTableColumns(cards),
           lastCheckedAt: sql<Date | null>`(
@@ -302,7 +301,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /stats - Get card statistics by status
-  fastify.get<{ Reply: StatsResponse }>('/stats', async (request, reply) => {
+  fastify.get('/stats', async (request, reply) => {
     try {
       const stats = await db
         .select({
@@ -340,7 +339,6 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   fastify.patch<{
     Params: { id: string };
     Body: UpdateCardBody;
-    Reply: Card;
   }>('/:id', async (request, reply) => {
     const { id } = request.params;
     const updates = request.body;
@@ -373,7 +371,6 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   // DELETE /:id - Delete a card
   fastify.delete<{
     Params: { id: string };
-    Reply: { success: boolean };
   }>('/:id', async (request, reply) => {
     const { id } = request.params;
 
@@ -397,7 +394,6 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   // POST /:id/reprice - Reprice a single card
   fastify.post<{
     Params: { id: string };
-    Reply: Card;
   }>('/:id/reprice', async (request, reply) => {
     const { id } = request.params;
 
@@ -448,88 +444,78 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /reprice-all - Reprice all cards
-  fastify.post<{ Reply: { updated: number } }>(
-    '/reprice-all',
-    async (request, reply) => {
-      try {
-        // Fetch all cards with a market price
-        const cardsToReprice = await db
-          .select()
-          .from(cards)
-          .where(isNotNull(cards.marketPrice));
+  fastify.post('/reprice-all', async (request, reply) => {
+    try {
+      // Fetch all cards with a market price
+      const cardsToReprice = await db
+        .select()
+        .from(cards)
+        .where(isNotNull(cards.marketPrice));
 
-        let updated = 0;
+      let updated = 0;
 
-        // Update each card with new pricing
-        for (const card of cardsToReprice) {
-          const marketPrice = parseFloat(card.marketPrice!);
-          const pricingResult = calculatePrice({ marketPrice });
+      // Update each card with new pricing
+      for (const card of cardsToReprice) {
+        const marketPrice = parseFloat(card.marketPrice!);
+        const pricingResult = calculatePrice({ marketPrice });
 
-          // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
-          const newStatus =
-            card.status === 'listed' && pricingResult.status === 'matched'
-              ? 'listed'
-              : pricingResult.status;
+        // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
+        const newStatus =
+          card.status === 'listed' && pricingResult.status === 'matched'
+            ? 'listed'
+            : pricingResult.status;
 
-          await db
-            .update(cards)
-            .set({
-              listingPrice: pricingResult.listingPrice?.toString() ?? null,
-              status: newStatus,
-              updatedAt: new Date(),
-            })
-            .where(eq(cards.id, card.id));
+        await db
+          .update(cards)
+          .set({
+            listingPrice: pricingResult.listingPrice?.toString() ?? null,
+            status: newStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(cards.id, card.id));
 
-          updated++;
-        }
-
-        return reply.send({ updated });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.code(500).send({ error: 'Failed to reprice cards' });
+        updated++;
       }
-    },
-  );
+
+      return reply.send({ updated });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to reprice cards' });
+    }
+  });
 
   // POST /fetch-prices - Fetch latest prices from TCGTracking API
-  fastify.post<{ Reply: FetchPricesResponse }>(
-    '/fetch-prices',
-    async (_request, reply) => {
-      try {
-        const result = await runPriceCheck({ source: 'manual' });
-        return reply.send({
-          updated: result.updated,
-          notFound: result.notFound,
-          drifted: result.drifted,
-          errors: result.errors,
-        });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.code(500).send({ error: 'Failed to fetch prices' });
-      }
-    },
-  );
+  fastify.post('/fetch-prices', async (_request, reply) => {
+    try {
+      const result = await runPriceCheck({ source: 'manual' });
+      return reply.send({
+        updated: result.updated,
+        notFound: result.notFound,
+        drifted: result.drifted,
+        errors: result.errors,
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to fetch prices' });
+    }
+  });
 
   // GET /price-check-status - Get scheduler status and last run metadata
-  fastify.get<{ Reply: PriceCheckStatusResponse }>(
-    '/price-check-status',
-    async (_request, reply) => {
-      try {
-        return reply.send(getPriceCheckSchedulerStatus());
-      } catch (error) {
-        fastify.log.error(error);
-        return reply
-          .code(500)
-          .send({ error: 'Failed to fetch price check status' });
-      }
-    },
-  );
+  fastify.get('/price-check-status', async (_request, reply) => {
+    try {
+      return reply.send(getPriceCheckSchedulerStatus());
+    } catch (error) {
+      fastify.log.error(error);
+      return reply
+        .code(500)
+        .send({ error: 'Failed to fetch price check status' });
+    }
+  });
 
   // GET /:id/price-history - View recent price adjustment history for a card
   fastify.get<{
     Params: { id: string };
     Querystring: { limit?: string };
-    Reply: PriceHistoryResponse;
   }>('/:id/price-history', async (request, reply) => {
     const { id } = request.params;
     const { limit } = request.query;
@@ -562,7 +548,6 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   // POST /mark-listed - Bulk mark cards as listed
   fastify.post<{
     Body: MarkListedBody;
-    Reply: MarkListedResponse;
   }>('/mark-listed', async (request, reply) => {
     const { cardIds } = request.body;
 
@@ -613,7 +598,6 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   // POST /:id/unlist - Unlist a card (set status back to matched)
   fastify.post<{
     Params: { id: string };
-    Reply: Card;
   }>('/:id/unlist', async (request, reply) => {
     const { id } = request.params;
 
