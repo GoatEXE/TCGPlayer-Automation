@@ -8,6 +8,7 @@ import type {
   FetchPricesResult,
   MarkListedResult,
   PriceCheckStatus,
+  GetPriceHistoryResponse,
 } from './types';
 
 const API_BASE = '/api';
@@ -123,6 +124,18 @@ class ApiClient {
 
   async getPriceCheckStatus(): Promise<PriceCheckStatus> {
     return this.request<PriceCheckStatus>('/cards/price-check-status');
+  }
+
+  async getCardPriceHistory(
+    cardId: number,
+    limit?: number,
+  ): Promise<GetPriceHistoryResponse> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    const query = params.toString();
+    return this.request<GetPriceHistoryResponse>(
+      `/cards/${cardId}/price-history${query ? `?${query}` : ''}`,
+    );
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

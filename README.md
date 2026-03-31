@@ -81,11 +81,16 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 - **BullMQ + Redis scheduler** ✅ Implemented — persistent repeatable background checks every 12 hours (configurable)
 - **Lazy price checks** ✅ Implemented — runs via BullMQ repeatable job calling `runPriceCheck({ source: 'scheduled' })`
 - **Manual "Refresh Prices" button** ✅ Implemented — `POST /api/cards/fetch-prices` triggers on-demand checks
+- **Price history tracking** ✅ Implemented — per-card 📈 action opens modal with price/adjustment history table
+
+Implementation details:
+- [Phase 2.1 Scheduler Migration](docs/phase2/PHASE2_BULLMQ_REDIS.md)
+- [Phase 2.3 Price History UI](docs/phase2/PHASE2_PRICE_HISTORY_UI.md)
+
 - **Bidirectional threshold management:** (Planned)
   - Listed card drops below `$0.05` market → recommend delisting, move to gift pool
   - Gift card rises above `$0.05` → recommend listing
   - Listed card with `>2%` price drift → recommend price update
-- **Price history tracking** per card with chart/table views (Planned)
 
 ### Phase 3 — Dashboard, Notifications & Invoicing
 
@@ -576,6 +581,7 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 | POST   | `/api/cards/reprice-all`       | Bulk re-price all cards                          |
 | POST   | `/api/cards/fetch-prices`      | Fetch latest prices from TCGTracking API (manual trigger) |
 | GET    | `/api/cards/price-check-status`| Get scheduler status, interval, last run (Phase 2.1) |
+| GET    | `/api/cards/:id/price-history` | Get price history for a card (limit, sorted by checkedAt DESC) |
 | POST   | `/api/cards/mark-listed`       | Bulk mark matched cards as listed on TCGPlayer   |
 | POST   | `/api/cards/:id/unlist`        | Unlist a card, returns to matched status         |
 | GET    | `/api/listings`                | List all listings                                |

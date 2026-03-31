@@ -202,6 +202,48 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('getCardPriceHistory', () => {
+    it('fetches price history for a card with default limit', async () => {
+      const mockResponse = {
+        history: [
+          {
+            id: 1,
+            cardId: 42,
+            checkedAt: '2026-03-30T14:30:00Z',
+            source: 'scheduled',
+            previousMarketPrice: '0.25',
+            newMarketPrice: '0.30',
+            previousListingPrice: '0.25',
+            newListingPrice: '0.29',
+            driftPercent: '20.00',
+            previousStatus: 'listed',
+            newStatus: 'listed',
+          },
+        ],
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.getCardPriceHistory(42, 50);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/cards/42/price-history?limit=50',
+        expect.any(Object),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('fetches price history without limit', async () => {
+      mockFetch({ history: [] });
+
+      await api.getCardPriceHistory(42);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/cards/42/price-history',
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('error handling', () => {
     it('throws error with message from API', async () => {
       mockFetch({ error: 'Card not found' }, false, 404);

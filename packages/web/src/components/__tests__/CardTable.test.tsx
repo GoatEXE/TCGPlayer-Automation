@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
@@ -29,7 +29,20 @@ function makeCard(overrides: Partial<Card> = {}): Card {
   };
 }
 
+// Mock api for PriceHistoryModal
+vi.mock('../../api/client', () => ({
+  api: {
+    getCardPriceHistory: vi.fn(),
+  },
+}));
+
+import { api } from '../../api/client';
+const mockGetCardPriceHistory = vi.mocked(api.getCardPriceHistory);
+
 describe('CardTable review + confirm flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
   it('opens review modal and confirms mark listed with selected IDs', async () => {
     const user = userEvent.setup();
     const onMarkListed = vi.fn().mockResolvedValue(undefined);
@@ -96,5 +109,116 @@ describe('CardTable review + confirm flow', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(onMarkListed).not.toHaveBeenCalled();
+  });
+});
+
+describe('CardTable price history button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders a history button for each card row', () => {
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, productName: 'Card A' }),
+          makeCard({ id: 2, productName: 'Card B' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    const historyButtons = screen.getAllByTitle('View price history');
+    expect(historyButtons).toHaveLength(2);
+  });
+
+  it('opens price history modal when history button clicked', async () => {
+    mockGetCardPriceHistory.mockResolvedValue({ history: [] });
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 7, productName: 'Test Card' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByTitle('View price history'));
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toBeInTheDocument();
+      expect(dialog).toHaveAttribute(
+        'aria-label',
+        'Price history for Test Card',
+      );
+    });
+
+    expect(mockGetCardPriceHistory).toHaveBeenCalledWith(7, 50);
+  });
+
+  it('closes price history modal when close is clicked', async () => {
+    mockGetCardPriceHistory.mockResolvedValue({ history: [] });
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 7, productName: 'Test Card' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByTitle('View price history'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Click the X close button (first close button in the modal)
+    const closeButtons = screen.getAllByRole('button', { name: /close/i });
+    await user.click(closeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('uses card title when available instead of productName', async () => {
+    mockGetCardPriceHistory.mockResolvedValue({ history: [] });
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 7,
+            productName: 'Raw Name',
+            title: 'Display Title',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByTitle('View price history'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toHaveAttribute(
+        'aria-label',
+        'Price history for Display Title',
+      );
+    });
   });
 });

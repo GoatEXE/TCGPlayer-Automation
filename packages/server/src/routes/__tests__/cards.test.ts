@@ -1705,6 +1705,135 @@ describe('GET /api/cards/price-check-status', () => {
   });
 });
 
+describe('GET /api/cards/:id/price-history', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = Fastify();
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should return price history for a card ordered by checkedAt descending', async () => {
+    const mockHistory = [
+      {
+        id: 2,
+        cardId: 123,
+        source: 'scheduled' as const,
+        previousMarketPrice: '1.00',
+        newMarketPrice: '1.10',
+        previousListingPrice: '0.98',
+        newListingPrice: '1.08',
+        previousStatus: 'listed' as const,
+        newStatus: 'listed' as const,
+        driftPercent: '10.00',
+        notificationSent: true,
+        checkedAt: new Date('2026-03-31T12:00:00.000Z'),
+      },
+      {
+        id: 1,
+        cardId: 123,
+        source: 'manual' as const,
+        previousMarketPrice: '0.90',
+        newMarketPrice: '1.00',
+        previousListingPrice: '0.88',
+        newListingPrice: '0.98',
+        previousStatus: 'matched' as const,
+        newStatus: 'listed' as const,
+        driftPercent: '11.11',
+        notificationSent: false,
+        checkedAt: new Date('2026-03-30T12:00:00.000Z'),
+      },
+    ];
+
+    const limit = vi.fn().mockResolvedValue(mockHistory);
+    const orderBy = vi.fn().mockReturnValue({ limit });
+    const where = vi.fn().mockReturnValue({ orderBy });
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({ where }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/123/price-history',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(orderBy).toHaveBeenCalledTimes(1);
+    expect(limit).toHaveBeenCalledWith(50);
+    expect(JSON.parse(response.body)).toEqual({
+      history: mockHistory.map((entry) => ({
+        ...entry,
+        checkedAt: entry.checkedAt.toISOString(),
+      })),
+    });
+  });
+
+  it('should parse the limit query and cap it at 200', async () => {
+    const limit = vi.fn().mockResolvedValue([]);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({ limit }),
+        }),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/123/price-history?limit=500',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(limit).toHaveBeenCalledWith(200);
+    expect(JSON.parse(response.body)).toEqual({ history: [] });
+  });
+
+  it('should return an empty history array when no price history exists', async () => {
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/999/price-history',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ history: [] });
+  });
+
+  it('should return 400 for a malformed card id', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/not-a-number/price-history',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({ error: 'Invalid card id' });
+    expect(db.select).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 for a non-positive card id', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/0/price-history',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({ error: 'Invalid card id' });
+    expect(db.select).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/cards/mark-listed', () => {
   let app: FastifyInstance;
 

@@ -12,6 +12,7 @@ import {
 } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
+import { priceHistory } from '../db/schema/price-history.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
 import { calculatePrice } from '../lib/pricing/index.js';
 import {
@@ -20,6 +21,7 @@ import {
 } from '../lib/price-check/index.js';
 import type { ImportedCard } from '../lib/importers/index.js';
 import type { Card } from '../db/schema/cards.js';
+import type { PriceHistory } from '../db/schema/price-history.js';
 
 interface ImportResponse {
   imported: number;
@@ -89,6 +91,10 @@ interface PriceCheckStatusResponse {
     drifted: number;
     errors: string[];
   } | null;
+}
+
+interface PriceHistoryResponse {
+  history: PriceHistory[];
 }
 
 export async function cardsRoutes(fastify: FastifyInstance) {
@@ -498,6 +504,40 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  // GET /:id/price-history - View recent price adjustment history for a card
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { limit?: string };
+    Reply: PriceHistoryResponse;
+  }>('/:id/price-history', async (request, reply) => {
+    const { id } = request.params;
+    const { limit } = request.query;
+
+    const cardId = Number.parseInt(id, 10);
+    if (Number.isNaN(cardId) || cardId <= 0) {
+      return reply.code(400).send({ error: 'Invalid card id' });
+    }
+
+    const parsedLimit = Number.parseInt(limit ?? '', 10);
+    const limitNum = Number.isNaN(parsedLimit)
+      ? 50
+      : Math.min(Math.max(parsedLimit, 1), 200);
+
+    try {
+      const history = await db
+        .select()
+        .from(priceHistory)
+        .where(eq(priceHistory.cardId, cardId))
+        .orderBy(desc(priceHistory.checkedAt))
+        .limit(limitNum);
+
+      return reply.send({ history });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to fetch price history' });
+    }
+  });
 
   // POST /mark-listed - Bulk mark cards as listed
   fastify.post<{

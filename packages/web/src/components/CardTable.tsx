@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Card } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 import { ReviewListModal } from './ReviewListModal';
+import { PriceHistoryModal } from './PriceHistoryModal';
 
 interface CardTableProps {
   cards: Card[];
@@ -31,6 +32,8 @@ export function CardTable({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [markingListed, setMarkingListed] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [historyCardId, setHistoryCardId] = useState<number | null>(null);
+  const [historyCardName, setHistoryCardName] = useState<string>('');
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -308,6 +311,16 @@ export function CardTable({
                     </button>
                   )}
                   <button
+                    onClick={() => {
+                      setHistoryCardId(card.id);
+                      setHistoryCardName(card.title || card.productName);
+                    }}
+                    className="action-button history"
+                    title="View price history"
+                  >
+                    📈
+                  </button>
+                  <button
                     onClick={() => handleDelete(card.id)}
                     disabled={deletingId === card.id}
                     className="action-button delete"
@@ -327,6 +340,13 @@ export function CardTable({
           onConfirm={handleConfirmMarkListed}
           onCancel={handleCancelReview}
           loading={markingListed}
+        />
+      )}
+      {historyCardId !== null && (
+        <PriceHistoryModal
+          cardId={historyCardId}
+          cardName={historyCardName}
+          onClose={() => setHistoryCardId(null)}
         />
       )}
     </div>

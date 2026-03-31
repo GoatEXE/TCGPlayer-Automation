@@ -466,10 +466,10 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 ### 5.3 Monitoring UI
 
 **Tasks:**
-- [ ] Add "Price History" view for each listing — show chart or table of price over time
+- [x] Add "Price History" view for each listing — show chart or table of price over time
 - [ ] Add "Last Checked" column on listings page
-- [ ] Add manual "Refresh Prices" button that triggers an immediate price check job
-- [ ] Show adjustment log — when prices were changed and why
+- [x] Add manual "Refresh Prices" button that triggers an immediate price check job
+- [x] Show adjustment log — when prices were changed and why
 
 ---
 

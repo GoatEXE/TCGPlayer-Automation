@@ -90,6 +90,24 @@ export interface PriceCheckStatus {
   lastRun: PriceCheckLastRun | null;
 }
 
+export interface PriceHistoryEntry {
+  id: number;
+  cardId: number;
+  checkedAt: string;
+  source: string;
+  previousMarketPrice: string | null;
+  newMarketPrice: string | null;
+  previousListingPrice: string | null;
+  newListingPrice: string | null;
+  driftPercent: string | null;
+  previousStatus: string | null;
+  newStatus: string | null;
+}
+
+export interface GetPriceHistoryResponse {
+  history: PriceHistoryEntry[];
+}
+
 export interface ApiError {
   error: string;
   message: string;
