@@ -459,7 +459,7 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 - [ ] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [x] Add backend support for a floor price option per card (optional, default: none) to prevent listing below a minimum
-- [ ] Add floor price controls in the dashboard UI (set/clear per-card `floorPriceCents`)
+- [x] Add floor price controls in the dashboard UI (set/clear per-card `floorPriceCents`)
 - [ ] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
 - [ ] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market
 - [ ] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes

@@ -1,13 +1,14 @@
-# Phase 2.4 — Per-Card Floor Price Backend Support
+# Phase 2.4 — Per-Card Floor Price Support
 
 Date: 2026-03-31
 
 ## Summary
-Implemented optional per-card floor price enforcement at the backend/API layer. Cards can now have an individual `floorPriceCents` value that acts as a minimum listing price, applied after the 98% market price calculation but before the max-drop safeguard.
+Implemented optional per-card floor price support end-to-end. Cards can now have an individual `floorPriceCents` value that acts as a minimum listing price, applied after the 98% market price calculation but before the max-drop safeguard.
 
-This is backend-only infrastructure. No frontend UI controls for setting floor prices are included in this phase.
+Scope includes backend/API enforcement plus dashboard UI controls for inline set/clear in the card table.
 
 ## Files Changed
+### Backend
 - `packages/server/drizzle/0004_brainy_blazing_skull.sql` (new migration)
 - `packages/server/drizzle/meta/0004_snapshot.json` (new snapshot)
 - `packages/server/drizzle/meta/_journal.json` (updated)
@@ -17,6 +18,14 @@ This is backend-only infrastructure. No frontend UI controls for setting floor p
 - `packages/server/src/routes/cards.ts`
 - `packages/server/src/lib/price-check/__tests__/run-price-check.test.ts`
 - `packages/server/src/routes/__tests__/cards.test.ts`
+
+### Frontend
+- `packages/web/src/api/types.ts`
+- `packages/web/src/App.tsx`
+- `packages/web/src/App.css`
+- `packages/web/src/components/CardTable.tsx`
+- `packages/web/src/components/__tests__/CardTable.test.tsx`
+- `packages/web/src/components/__tests__/ReviewListModal.test.tsx`
 
 ## Migration
 **File:** `packages/server/drizzle/0004_brainy_blazing_skull.sql`
@@ -132,13 +141,18 @@ curl -X POST http://localhost:3000/api/cards/1/reprice
 # Listing price should not drop below $0.50 if market price is lower
 ```
 
+## Frontend UI Behavior
+- Card table includes a **Floor** column.
+- Clicking a floor cell opens an inline editor.
+- Enter a dollar amount (for example `0.50`) to set floor (`50` cents).
+- Leave input blank and confirm to clear floor (`null`).
+- Escape cancels editing without update.
+
 ## Not Included in This Phase
-- **Frontend UI controls** for setting floor prices (no input field in card edit form).
 - **Bulk floor operations** (e.g., set floor for all cards in a set).
 - **Floor price history tracking** (floor changes are not logged in `price_history`).
 
 ## Future Enhancements
-- Dashboard UI for setting per-card floors.
 - Bulk floor assignment (e.g., "set floor to $0.25 for all commons").
 - Floor price audit log (track when floors are changed and by whom).
 - Export floor prices in CSV format.

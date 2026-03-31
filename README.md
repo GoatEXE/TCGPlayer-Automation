@@ -84,7 +84,7 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 - **Price history tracking** ✅ Implemented — per-card 📈 action opens modal with price/adjustment history table
 - **Last Checked column** ✅ Implemented — sortable column in card table shows relative time since last price check (e.g., "2 hours ago")
 - **Max drop safeguard** ✅ Implemented — caps single-cycle listing price drops at 20% (configurable via `MAX_PRICE_DROP_PERCENT`)
-- **Per-card floor price** ✅ Backend support — optional `floorPriceCents` field enforced during price checks and repricing (frontend UI controls planned for later phase)
+- **Per-card floor price** ✅ Implemented (backend + UI) — optional `floorPriceCents` is enforced during price checks/repricing and editable inline in the card table
 
 Implementation details:
 - [Phase 2.1 Scheduler Migration](docs/phase2/PHASE2_BULLMQ_REDIS.md)
@@ -96,11 +96,11 @@ Implementation details:
   - Listed card drops below `$0.05` market → recommend delisting, move to gift pool
   - Gift card rises above `$0.05` → recommend listing
   - Listed card with `>2%` price drift → recommend price update
-- **Optional per-card floor price:** ✅ Backend implemented
+- **Optional per-card floor price:** ✅ Implemented end-to-end
   - Cards can have individual `floorPriceCents` minimum listing price
   - Floor enforced during price checks and manual repricing
   - Does not override gift/needs_attention status transitions
-  - Frontend UI controls planned for future phase
+  - Dashboard supports inline set/clear in the Floor column
 
 ### Phase 3 — Dashboard, Notifications & Invoicing
 
