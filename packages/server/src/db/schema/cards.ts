@@ -33,6 +33,7 @@ export const cards = pgTable('cards', {
   status: cardStatusEnum('status').notNull().default('pending'),
   marketPrice: numeric('market_price', { precision: 10, scale: 2 }),
   listingPrice: numeric('listing_price', { precision: 10, scale: 2 }),
+  floorPriceCents: integer('floor_price_cents'),
   isFoilPrice: boolean('is_foil_price').notNull().default(false),
   photoUrl: text('photo_url'),
   notes: text('notes'),

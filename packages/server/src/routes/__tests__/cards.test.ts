@@ -31,6 +31,13 @@ vi.mock('../../lib/importers/index.js', () => ({
 // Mock the pricing engine
 vi.mock('../../lib/pricing/index.js', () => ({
   calculatePrice: vi.fn(),
+  applyFloorPriceCents: vi.fn(({ listingPrice, floorPriceCents }) => {
+    if (listingPrice === null || floorPriceCents == null) {
+      return listingPrice;
+    }
+
+    return Math.max(listingPrice, floorPriceCents / 100);
+  }),
 }));
 
 // Mock the TCGTracking client
@@ -250,6 +257,7 @@ describe('GET /api/cards', () => {
         productName: 'Card 1',
         quantity: 1,
         status: 'listed' as const,
+        floorPriceCents: 150,
         importedAt: new Date('2026-03-30T10:00:00.000Z'),
         lastCheckedAt: new Date('2026-03-31T09:00:00.000Z'),
       },
@@ -258,6 +266,7 @@ describe('GET /api/cards', () => {
         productName: 'Card 2',
         quantity: 2,
         status: 'gift' as const,
+        floorPriceCents: null,
         importedAt: new Date('2026-03-29T10:00:00.000Z'),
         lastCheckedAt: null,
       },
@@ -296,7 +305,9 @@ describe('GET /api/cards', () => {
     expect(body).toHaveProperty('limit');
     expect(body.cards[0]).toHaveProperty('lastCheckedAt');
     expect(body.cards[0].lastCheckedAt).toBe('2026-03-31T09:00:00.000Z');
+    expect(body.cards[0].floorPriceCents).toBe(150);
     expect(body.cards[1].lastCheckedAt).toBeNull();
+    expect(body.cards[1].floorPriceCents).toBeNull();
   });
 
   it('should filter cards by status', async () => {
@@ -442,6 +453,90 @@ describe('PATCH /api/cards/:id', () => {
     vi.clearAllMocks();
     app = Fastify();
     await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should persist floorPriceCents when set', async () => {
+    const mockUpdatedCard = {
+      id: 1,
+      productName: 'Floor Card',
+      floorPriceCents: 125,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([mockUpdatedCard]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        floorPriceCents: 125,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        floorPriceCents: 125,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: 1,
+      floorPriceCents: 125,
+    });
+  });
+
+  it('should persist floorPriceCents when cleared', async () => {
+    const mockUpdatedCard = {
+      id: 1,
+      productName: 'Floor Card',
+      floorPriceCents: null,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([mockUpdatedCard]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        floorPriceCents: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        floorPriceCents: null,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: 1,
+      floorPriceCents: null,
+    });
   });
 
   it('should update and return card', async () => {
@@ -600,6 +695,67 @@ describe('POST /api/cards/:id/reprice', () => {
     const body = JSON.parse(response.body);
     expect(body.id).toBe(1);
     expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 2.0 });
+  });
+
+  it('should apply floorPriceCents during repricing when a listing price exists', async () => {
+    const mockCard = {
+      id: 1,
+      productName: 'Card to Reprice',
+      marketPrice: '2.00',
+      listingPrice: '1.80',
+      floorPriceCents: 250,
+      status: 'listed' as const,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([mockCard]),
+      }),
+    } as any);
+
+    vi.mocked(calculatePrice).mockReturnValue({
+      listingPrice: 1.96,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market — ready to list',
+    });
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                ...mockCard,
+                listingPrice: '2.5',
+                updatedAt: new Date(),
+              },
+            ]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/1/reprice',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        listingPrice: '2.5',
+        status: 'listed',
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: 1,
+      listingPrice: '2.5',
+    });
   });
 
   it('should return 404 for non-existent card', async () => {

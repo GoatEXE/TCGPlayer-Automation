@@ -15,7 +15,7 @@ import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { priceHistory } from '../db/schema/price-history.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
-import { calculatePrice } from '../lib/pricing/index.js';
+import { applyFloorPriceCents, calculatePrice } from '../lib/pricing/index.js';
 import {
   runPriceCheck,
   getPriceCheckSchedulerStatus,
@@ -62,6 +62,7 @@ interface UpdateCardBody {
     | 'error';
   quantity?: number;
   listingPrice?: number;
+  floorPriceCents?: number | null;
   notes?: string;
   condition?: string;
 }
@@ -423,11 +424,16 @@ export async function cardsRoutes(fastify: FastifyInstance) {
           ? 'listed'
           : pricingResult.status;
 
+      const listingPrice = applyFloorPriceCents({
+        listingPrice: pricingResult.listingPrice,
+        floorPriceCents: card.floorPriceCents,
+      });
+
       // Update card with new pricing
       const [updatedCard] = await db
         .update(cards)
         .set({
-          listingPrice: pricingResult.listingPrice?.toString() ?? null,
+          listingPrice: listingPrice?.toString() ?? null,
           status: newStatus,
           updatedAt: new Date(),
         })

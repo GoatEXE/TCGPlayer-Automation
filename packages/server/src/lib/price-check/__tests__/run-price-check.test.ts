@@ -10,6 +10,7 @@ const {
   dbInsert,
   dbValues,
   calculatePrice,
+  applyFloorPriceCents,
   mockGetSets,
   mockGetPricing,
 } = vi.hoisted(() => ({
@@ -25,6 +26,13 @@ const {
   dbInsert: vi.fn(),
   dbValues: vi.fn(),
   calculatePrice: vi.fn(),
+  applyFloorPriceCents: vi.fn(({ listingPrice, floorPriceCents }) => {
+    if (listingPrice === null || floorPriceCents == null) {
+      return listingPrice;
+    }
+
+    return Math.max(listingPrice, floorPriceCents / 100);
+  }),
   mockGetSets: vi.fn(),
   mockGetPricing: vi.fn(),
 }));
@@ -37,7 +45,10 @@ vi.mock('../../../db/index.js', () => ({
     insert: dbInsert,
   },
 }));
-vi.mock('../../pricing/index.js', () => ({ calculatePrice }));
+vi.mock('../../pricing/index.js', () => ({
+  calculatePrice,
+  applyFloorPriceCents,
+}));
 vi.mock('../../tcgtracking/client.js', () => ({
   TCGTrackingClient: class {
     getSets = mockGetSets;
@@ -130,6 +141,66 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
           previousListingPrice: 1,
           newListingPrice: 0.8,
           driftPercent: -20,
+        },
+      ],
+    });
+  });
+
+  it('applies a card floor price when calculated listing price remains non-null', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 2,
+        tcgProductId: 123,
+        productName: 'Vi',
+        condition: 'Near Mint',
+        marketPrice: '0.60',
+        listingPrice: '0.55',
+        floorPriceCents: 60,
+        status: 'listed',
+        notes: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: 0.5,
+      status: 'matched',
+      reason: 'drop',
+    });
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketPrice: '0.51',
+        listingPrice: '0.6',
+        status: 'listed',
+        isFoilPrice: false,
+        notes: null,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 2,
+        source: 'manual',
+        previousListingPrice: '0.55',
+        newListingPrice: '0.6',
+        previousStatus: 'listed',
+        newStatus: 'listed',
+        driftPercent: '9.09',
+        checkedAt: expect.any(Date),
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 1,
+      notFound: 0,
+      drifted: 1,
+      driftedCards: [
+        {
+          cardId: 2,
+          productName: 'Vi',
+          previousListingPrice: 0.55,
+          newListingPrice: 0.6,
+          driftPercent: 9.09,
         },
       ],
     });

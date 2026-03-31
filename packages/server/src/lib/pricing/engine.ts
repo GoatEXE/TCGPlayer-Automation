@@ -3,6 +3,20 @@ import type { PricingInput, PricingResult } from './types';
 const DEFAULT_MIN_LISTING_PRICE_CENTS = 5;
 const DEFAULT_PRICE_MULTIPLIER = 0.98;
 
+export function applyFloorPriceCents({
+  listingPrice,
+  floorPriceCents,
+}: {
+  listingPrice: number | null;
+  floorPriceCents: number | null | undefined;
+}): number | null {
+  if (listingPrice === null || floorPriceCents == null) {
+    return listingPrice;
+  }
+
+  return Math.max(listingPrice, floorPriceCents / 100);
+}
+
 export function calculatePrice(input: PricingInput): PricingResult {
   const {
     marketPrice,

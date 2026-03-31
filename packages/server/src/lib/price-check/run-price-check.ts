@@ -3,7 +3,7 @@ import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
 import { cards } from '../../db/schema/cards.js';
 import { priceHistory } from '../../db/schema/price-history.js';
-import { calculatePrice } from '../pricing/index.js';
+import { applyFloorPriceCents, calculatePrice } from '../pricing/index.js';
 import { capDownwardListingPriceChange } from './max-price-drop-safeguard.js';
 import { TCGTrackingClient } from '../tcgtracking/client.js';
 import type { TCGTrackingProductPrice } from '../tcgtracking/types.js';
@@ -157,9 +157,14 @@ export async function runPriceCheck(
         .join('\n');
     }
 
+    const flooredListingPrice = applyFloorPriceCents({
+      listingPrice: pricingResult.listingPrice ?? null,
+      floorPriceCents: card.floorPriceCents,
+    });
+
     const newListingPrice = capDownwardListingPriceChange({
       previousListingPrice,
-      nextListingPrice: pricingResult.listingPrice ?? null,
+      nextListingPrice: flooredListingPrice,
       maxPriceDropPercent: env.MAX_PRICE_DROP_PERCENT,
     });
     const driftPercent = calculateDriftPercent(

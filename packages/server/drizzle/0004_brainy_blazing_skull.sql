@@ -1,0 +1,1 @@
+ALTER TABLE "cards" ADD COLUMN "floor_price_cents" integer;
