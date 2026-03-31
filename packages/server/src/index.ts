@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { registerRoutes } from './routes/index.js';
 import { registerStatic } from './plugins/static.js';
 import { runMigrations } from './db/migrate.js';
+import { startPriceCheckScheduler } from './lib/price-check/index.js';
 
 const app = Fastify({ logger: true });
 
@@ -20,6 +21,9 @@ try {
   app.log.info('Running database migrations...');
   await runMigrations();
   app.log.info('Database migrations completed');
+
+  // Start background scheduler for periodic price checks
+  startPriceCheckScheduler(app.log);
 
   // Register API routes before static files (so /api/* takes priority)
   console.log('[DEBUG] Registering routes...');

@@ -1199,6 +1199,89 @@ describe('POST /api/cards/fetch-prices', () => {
     expect(body.errors).toEqual([]);
   });
 
+  it('should count drifted cards and write price history rows', async () => {
+    const mockSets = [
+      {
+        id: 24344,
+        name: 'Origins',
+        abbreviation: 'OGN',
+        is_supplemental: false,
+        published_on: '2025-10-31',
+        modified_on: '2026-03-06 20:26:58',
+        product_count: 364,
+        sku_count: 2626,
+        products_modified: '2026-02-26T03:30:58-05:00',
+        pricing_modified: '2026-03-28T08:04:25-04:00',
+        skus_modified: '2026-03-28T09:30:39-04:00',
+        api_url: '/tcgapi/v1/89/sets/24344',
+        pricing_url: '/tcgapi/v1/89/sets/24344/pricing',
+        skus_url: '/tcgapi/v1/89/sets/24344/skus',
+      },
+    ];
+
+    const mockPricing = {
+      set_id: 24344,
+      updated: '2026-03-28T08:04:25-04:00',
+      prices: {
+        '12345': {
+          tcg: {
+            Normal: { low: 1.4, market: 1.5 },
+          },
+        },
+      },
+    };
+
+    const mockCards = [
+      {
+        id: 1,
+        tcgplayerId: 8926802,
+        tcgProductId: 12345,
+        productName: 'Card 1',
+        condition: 'Near Mint',
+        marketPrice: '1.00',
+        listingPrice: '1.00',
+        status: 'listed' as const,
+        isFoilPrice: false,
+        notes: null,
+      },
+    ];
+
+    mockGetSets.mockResolvedValue(mockSets);
+    mockGetPricing.mockResolvedValue(mockPricing);
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(mockCards),
+    } as any);
+
+    vi.mocked(calculatePrice).mockReturnValue({
+      listingPrice: 1.1,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    });
+
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    } as any);
+
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockResolvedValue(undefined),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/fetch-prices',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.updated).toBe(1);
+    expect(body.drifted).toBe(1); // 1.00 -> 1.10 is 10% drift
+    expect(body.notFound).toBe(0);
+    expect(db.insert).toHaveBeenCalled();
+  });
+
   it('should handle cards not found in TCGTracking pricing', async () => {
     const mockSets = [
       {
@@ -1593,6 +1676,32 @@ describe('POST /api/cards/fetch-prices', () => {
     const body = JSON.parse(response.body);
     expect(body.updated).toBe(1);
     expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.03 });
+  });
+});
+
+describe('GET /api/cards/price-check-status', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = Fastify();
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('should return scheduler status payload', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/price-check-status',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+
+    expect(body).toHaveProperty('enabled');
+    expect(body).toHaveProperty('intervalHours');
+    expect(body).toHaveProperty('thresholdPercent');
+    expect(body).toHaveProperty('running');
+    expect(body).toHaveProperty('lastRun');
   });
 });
 

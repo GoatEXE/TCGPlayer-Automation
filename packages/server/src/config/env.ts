@@ -13,6 +13,7 @@ const envSchema = z.object({
   MIN_LISTING_PRICE_CENTS: z.coerce.number().default(5),
   LISTING_PRICE_MULTIPLIER: z.coerce.number().default(0.98),
   PRICE_CHECK_INTERVAL_HOURS: z.coerce.number().default(12),
+  PRICE_DRIFT_THRESHOLD_PERCENT: z.coerce.number().default(2),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   PORT: z.coerce.number().default(3000),

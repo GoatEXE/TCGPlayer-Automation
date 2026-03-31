@@ -63,6 +63,7 @@ export interface RepriceAllResult {
 export interface FetchPricesResult {
   updated: number;
   notFound: number;
+  drifted?: number;
   errors: string[];
 }
 

@@ -113,7 +113,11 @@ export function App() {
     setFetchingPrices(true);
     try {
       const result = await api.fetchPrices();
-      const message = `✅ Updated ${result.updated} cards\n${result.notFound} cards not found in TCGTracking`;
+      const driftLine =
+        result.drifted !== undefined
+          ? `\n${result.drifted} cards exceeded drift threshold`
+          : '';
+      const message = `✅ Updated ${result.updated} cards\n${result.notFound} cards not found in TCGTracking${driftLine}`;
       if (result.errors.length > 0) {
         alert(`${message}\n\n⚠️ Errors:\n${result.errors.join('\n')}`);
       } else {
