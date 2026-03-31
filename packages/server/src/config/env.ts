@@ -12,6 +12,7 @@ const envSchema = z.object({
   RIFTBOUND_CATEGORY_ID: z.coerce.number().default(89),
   MIN_LISTING_PRICE_CENTS: z.coerce.number().default(5),
   LISTING_PRICE_MULTIPLIER: z.coerce.number().default(0.98),
+  MAX_PRICE_DROP_PERCENT: z.coerce.number().default(20),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   PRICE_CHECK_INTERVAL_HOURS: z.coerce.number().default(12),
   PRICE_DRIFT_THRESHOLD_PERCENT: z.coerce.number().default(2),

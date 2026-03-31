@@ -457,7 +457,7 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 - [ ] If difference exceeds threshold (configurable, default: ≥2%), update the listing
 - [ ] Call TCGPlayer inventory API to update price
 - [ ] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
-- [ ] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
+- [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [ ] Add a floor price option per card (optional, default: none) to prevent listing below a minimum
 - [ ] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
 - [ ] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market

@@ -83,10 +83,12 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 - **Manual "Refresh Prices" button** ✅ Implemented — `POST /api/cards/fetch-prices` triggers on-demand checks
 - **Price history tracking** ✅ Implemented — per-card 📈 action opens modal with price/adjustment history table
 - **Last Checked column** ✅ Implemented — sortable column in card table shows relative time since last price check (e.g., "2 hours ago")
+- **Max drop safeguard** ✅ Implemented — caps single-cycle listing price drops at 20% (configurable via `MAX_PRICE_DROP_PERCENT`)
 
 Implementation details:
 - [Phase 2.1 Scheduler Migration](docs/phase2/PHASE2_BULLMQ_REDIS.md)
 - [Phase 2.3 Price History UI](docs/phase2/PHASE2_PRICE_HISTORY_UI.md)
+- [Phase 2.2 Max Drop Safeguard](docs/phase2/PHASE2_MAX_DROP_SAFEGUARD.md)
 
 - **Bidirectional threshold management:** (Planned)
   - Listed card drops below `$0.05` market → recommend delisting, move to gift pool
@@ -371,6 +373,7 @@ RIFTBOUND_CATEGORY_ID=89
 # Pricing
 MIN_LISTING_PRICE_CENTS=5          # Cards below this market price → gift pool
 LISTING_PRICE_MULTIPLIER=0.98      # List at this % of market price
+MAX_PRICE_DROP_PERCENT=20          # Max single-cycle listing price drop % (safeguard)
 
 # Price checking (Phase 2.1+)
 PRICE_CHECK_INTERVAL_HOURS=12      # How often to re-check market prices
