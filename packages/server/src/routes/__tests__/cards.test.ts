@@ -64,7 +64,10 @@ vi.mock('../../lib/tcgtracking/client.js', () => {
 
 import { db } from '../../db/index.js';
 import { parseCsv, parseTxt } from '../../lib/importers/index.js';
-import { calculatePrice } from '../../lib/pricing/index.js';
+import {
+  applyFloorPriceCents,
+  calculatePrice,
+} from '../../lib/pricing/index.js';
 import { TCGTrackingClient } from '../../lib/tcgtracking/client.js';
 
 describe('POST /api/cards/import', () => {
@@ -795,20 +798,22 @@ describe('POST /api/cards/reprice-all', () => {
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
 
-  it('should reprice all cards with market price', async () => {
+  it('should apply floorPriceCents and preserve listed status when repricing all cards', async () => {
     const mockCards = [
       {
         id: 1,
         productName: 'Card 1',
         marketPrice: '1.50',
         listingPrice: '1.40',
+        floorPriceCents: 200,
         status: 'listed' as const,
       },
       {
         id: 2,
         productName: 'Card 2',
         marketPrice: '0.10',
-        listingPrice: null,
+        listingPrice: '0.09',
+        floorPriceCents: 50,
         status: 'listed' as const,
       },
     ];
@@ -819,25 +824,25 @@ describe('POST /api/cards/reprice-all', () => {
       }),
     } as any);
 
-    const mockPricingResult1 = {
-      listingPrice: 1.47,
-      status: 'matched' as const,
-      reason: 'Priced at 98% of market',
-    };
-
-    const mockPricingResult2 = {
-      listingPrice: null,
-      status: 'gift' as const,
-      reason: 'Market price below minimum threshold',
-    };
-
     vi.mocked(calculatePrice)
-      .mockReturnValueOnce(mockPricingResult1)
-      .mockReturnValueOnce(mockPricingResult2);
+      .mockReturnValueOnce({
+        listingPrice: 1.47,
+        status: 'matched' as const,
+        reason: 'Priced at 98% of market',
+      })
+      .mockReturnValueOnce({
+        listingPrice: null,
+        status: 'gift' as const,
+        reason: 'Market price below minimum threshold',
+      });
 
+    const updateCalls: any[] = [];
     vi.mocked(db.update).mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
+      set: vi.fn().mockImplementation((args) => {
+        updateCalls.push(args);
+        return {
+          where: vi.fn().mockResolvedValue(undefined),
+        };
       }),
     } as any);
 
@@ -847,9 +852,30 @@ describe('POST /api/cards/reprice-all', () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(calculatePrice).toHaveBeenCalledTimes(2);
+    expect(applyFloorPriceCents).toHaveBeenNthCalledWith(1, {
+      listingPrice: 1.47,
+      floorPriceCents: 200,
+    });
+    expect(applyFloorPriceCents).toHaveBeenNthCalledWith(2, {
+      listingPrice: null,
+      floorPriceCents: 50,
+    });
+    expect(updateCalls).toEqual([
+      expect.objectContaining({
+        listingPrice: '2',
+        status: 'listed',
+        updatedAt: expect.any(Date),
+      }),
+      expect.objectContaining({
+        listingPrice: null,
+        status: 'gift',
+        updatedAt: expect.any(Date),
+      }),
+    ]);
+
     const body = JSON.parse(response.body);
     expect(body.updated).toBe(2);
-    expect(calculatePrice).toHaveBeenCalledTimes(2);
   });
 });
 

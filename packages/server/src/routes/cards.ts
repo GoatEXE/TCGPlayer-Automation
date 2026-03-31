@@ -465,10 +465,15 @@ export async function cardsRoutes(fastify: FastifyInstance) {
             ? 'listed'
             : pricingResult.status;
 
+        const listingPrice = applyFloorPriceCents({
+          listingPrice: pricingResult.listingPrice,
+          floorPriceCents: card.floorPriceCents,
+        });
+
         await db
           .update(cards)
           .set({
-            listingPrice: pricingResult.listingPrice?.toString() ?? null,
+            listingPrice: listingPrice?.toString() ?? null,
             status: newStatus,
             updatedAt: new Date(),
           })
