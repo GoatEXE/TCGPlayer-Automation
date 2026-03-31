@@ -82,6 +82,7 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 - **Lazy price checks** ✅ Implemented — runs via BullMQ repeatable job calling `runPriceCheck({ source: 'scheduled' })`
 - **Manual "Refresh Prices" button** ✅ Implemented — `POST /api/cards/fetch-prices` triggers on-demand checks
 - **Price history tracking** ✅ Implemented — per-card 📈 action opens modal with price/adjustment history table
+- **Last Checked column** ✅ Implemented — sortable column in card table shows relative time since last price check (e.g., "2 hours ago")
 
 Implementation details:
 - [Phase 2.1 Scheduler Migration](docs/phase2/PHASE2_BULLMQ_REDIS.md)

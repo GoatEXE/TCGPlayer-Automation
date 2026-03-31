@@ -23,6 +23,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     isFoilPrice: false,
     photoUrl: null,
     notes: null,
+    lastCheckedAt: null,
     importedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
@@ -109,6 +110,61 @@ describe('CardTable review + confirm flow', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(onMarkListed).not.toHaveBeenCalled();
+  });
+});
+
+describe('CardTable Last Checked column', () => {
+  it('renders Last Checked column header', () => {
+    render(
+      <CardTable
+        cards={[makeCard()]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Last Checked')).toBeInTheDocument();
+  });
+
+  it('shows dash when lastCheckedAt is null', () => {
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, lastCheckedAt: null })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    // The Last Checked cell should contain a dash
+    const rows = screen.getAllByRole('row');
+    // row[0] is thead, row[1] is the data row
+    const cells = rows[1].querySelectorAll('td');
+    // Last Checked is the column before Updated (second-to-last date column)
+    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, listing, lastChecked, updated, actions
+    const lastCheckedCell = cells[10];
+    expect(lastCheckedCell.textContent).toBe('—');
+  });
+
+  it('shows relative time when lastCheckedAt has a value', () => {
+    const recentDate = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(); // 3h ago
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, lastCheckedAt: recentDate })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const lastCheckedCell = cells[10];
+    expect(lastCheckedCell.textContent).toBe('3h ago');
   });
 });
 

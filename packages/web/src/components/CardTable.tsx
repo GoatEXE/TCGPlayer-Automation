@@ -236,6 +236,7 @@ export function CardTable({
             <SortableHeader field="quantity">Qty</SortableHeader>
             <SortableHeader field="marketPrice">Market</SortableHeader>
             <SortableHeader field="listingPrice">Listing</SortableHeader>
+            <SortableHeader field="lastCheckedAt">Last Checked</SortableHeader>
             <SortableHeader field="updatedAt">Updated</SortableHeader>
             <th>Actions</th>
           </tr>
@@ -289,6 +290,9 @@ export function CardTable({
                   {formatPrice(card.marketPrice, card.isFoilPrice)}
                 </td>
                 <td className="price">{formatPrice(card.listingPrice)}</td>
+                <td className="date">
+                  {card.lastCheckedAt ? formatDate(card.lastCheckedAt) : '—'}
+                </td>
                 <td className="date">{formatDate(card.updatedAt)}</td>
                 <td className="actions">
                   {isListed ? (

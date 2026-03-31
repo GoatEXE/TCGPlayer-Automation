@@ -250,41 +250,37 @@ describe('GET /api/cards', () => {
         productName: 'Card 1',
         quantity: 1,
         status: 'listed' as const,
-        importedAt: new Date(),
+        importedAt: new Date('2026-03-30T10:00:00.000Z'),
+        lastCheckedAt: new Date('2026-03-31T09:00:00.000Z'),
       },
       {
         id: 2,
         productName: 'Card 2',
         quantity: 2,
         status: 'gift' as const,
-        importedAt: new Date(),
+        importedAt: new Date('2026-03-29T10:00:00.000Z'),
+        lastCheckedAt: null,
       },
     ];
 
-    // Create a mock chain that returns cards
     const mockOffset = vi.fn().mockResolvedValue(mockCards);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi
-      .fn()
-      .mockReturnValue({ limit: mockLimit, offset: mockOffset });
-    const mockFrom = vi.fn().mockReturnValue({
-      orderBy: mockOrderBy,
-      limit: mockLimit,
-      offset: mockOffset,
-    });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
 
-    // Mock select to handle both count and card queries
     let selectCallCount = 0;
-    vi.mocked(db.select).mockImplementation((...args: any[]) => {
+    vi.mocked(db.select).mockImplementation(() => {
       selectCallCount++;
       if (selectCallCount === 1) {
-        // First call is count query
         return {
           from: vi.fn().mockResolvedValue([{ count: 2 }]),
         } as any;
       }
-      // Second call is cards query
-      return { from: mockFrom } as any;
+
+      return {
+        from: vi.fn().mockReturnValue({
+          orderBy: mockOrderBy,
+        }),
+      } as any;
     });
 
     const response = await app.inject({
@@ -298,6 +294,9 @@ describe('GET /api/cards', () => {
     expect(body).toHaveProperty('total');
     expect(body).toHaveProperty('page');
     expect(body).toHaveProperty('limit');
+    expect(body.cards[0]).toHaveProperty('lastCheckedAt');
+    expect(body.cards[0].lastCheckedAt).toBe('2026-03-31T09:00:00.000Z');
+    expect(body.cards[1].lastCheckedAt).toBeNull();
   });
 
   it('should filter cards by status', async () => {
@@ -308,40 +307,33 @@ describe('GET /api/cards', () => {
         quantity: 1,
         status: 'gift' as const,
         importedAt: new Date(),
+        lastCheckedAt: null,
       },
     ];
 
-    // Create mock chain with where clause
     const mockOffset = vi.fn().mockResolvedValue(mockCards);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi
-      .fn()
-      .mockReturnValue({ limit: mockLimit, offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
     const mockWhere = vi.fn().mockReturnValue({
       orderBy: mockOrderBy,
-      limit: mockLimit,
-      offset: mockOffset,
-    });
-    const mockFrom = vi.fn().mockReturnValue({
-      where: mockWhere,
-      orderBy: mockOrderBy,
-      limit: mockLimit,
-      offset: mockOffset,
     });
 
     let selectCallCount = 0;
-    vi.mocked(db.select).mockImplementation((...args: any[]) => {
+    vi.mocked(db.select).mockImplementation(() => {
       selectCallCount++;
       if (selectCallCount === 1) {
-        // First call is count query with where
         return {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([{ count: 1 }]),
           }),
         } as any;
       }
-      // Second call is cards query
-      return { from: mockFrom } as any;
+
+      return {
+        from: vi.fn().mockReturnValue({
+          where: mockWhere,
+        }),
+      } as any;
     });
 
     const response = await app.inject({
@@ -352,6 +344,7 @@ describe('GET /api/cards', () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.cards).toBeDefined();
+    expect(body.cards[0].lastCheckedAt).toBeNull();
   });
 
   it('should search cards by productName', async () => {
@@ -362,40 +355,33 @@ describe('GET /api/cards', () => {
         quantity: 1,
         status: 'listed' as const,
         importedAt: new Date(),
+        lastCheckedAt: new Date('2026-03-29T11:00:00.000Z'),
       },
     ];
 
-    // Create mock chain with where clause
     const mockOffset = vi.fn().mockResolvedValue(mockCards);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi
-      .fn()
-      .mockReturnValue({ limit: mockLimit, offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
     const mockWhere = vi.fn().mockReturnValue({
       orderBy: mockOrderBy,
-      limit: mockLimit,
-      offset: mockOffset,
-    });
-    const mockFrom = vi.fn().mockReturnValue({
-      where: mockWhere,
-      orderBy: mockOrderBy,
-      limit: mockLimit,
-      offset: mockOffset,
     });
 
     let selectCallCount = 0;
-    vi.mocked(db.select).mockImplementation((...args: any[]) => {
+    vi.mocked(db.select).mockImplementation(() => {
       selectCallCount++;
       if (selectCallCount === 1) {
-        // First call is count query with where
         return {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([{ count: 1 }]),
           }),
         } as any;
       }
-      // Second call is cards query
-      return { from: mockFrom } as any;
+
+      return {
+        from: vi.fn().mockReturnValue({
+          where: mockWhere,
+        }),
+      } as any;
     });
 
     const response = await app.inject({
@@ -406,6 +392,7 @@ describe('GET /api/cards', () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.cards).toBeDefined();
+    expect(body.cards[0]).toHaveProperty('lastCheckedAt');
   });
 });
 

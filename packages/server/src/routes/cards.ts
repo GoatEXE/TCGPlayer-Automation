@@ -9,6 +9,7 @@ import {
   or,
   isNull,
   inArray,
+  getTableColumns,
 } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
@@ -40,8 +41,12 @@ interface StatsResponse {
   error: number;
 }
 
+interface CardListItem extends Card {
+  lastCheckedAt: Date | null;
+}
+
 interface CardsListResponse {
-  cards: Card[];
+  cards: CardListItem[];
   total: number;
   page: number;
   limit: number;
@@ -265,7 +270,16 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       const [{ count: total }] = await countQuery;
 
       // Get cards
-      let query = db.select().from(cards);
+      let query = db
+        .select({
+          ...getTableColumns(cards),
+          lastCheckedAt: sql<Date | null>`(
+          select max(${priceHistory.checkedAt})
+          from ${priceHistory}
+          where ${priceHistory.cardId} = ${cards.id}
+        )`,
+        })
+        .from(cards);
       if (conditions.length > 0) {
         query = query.where(sql`${sql.join(conditions, sql` AND `)}`);
       }

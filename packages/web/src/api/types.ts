@@ -21,6 +21,7 @@ export interface Card {
   isFoilPrice: boolean;
   photoUrl: string | null;
   notes: string | null;
+  lastCheckedAt: string | null;
   importedAt: string;
   updatedAt: string;
 }

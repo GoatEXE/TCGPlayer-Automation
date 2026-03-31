@@ -82,10 +82,26 @@ Notes:
 - `packages/web/src/App.css`
 
 ## Validation
-- Server tests: **92 passing**
-- Web tests: **64 passing**
+- Server tests: **92 passing** (initial implementation)
+- Web tests: **64 passing** (initial implementation)
 - Formatting: `pnpm format:check` passing
 
+## Follow-up: Last Checked Column ✅ Complete
+
+**Date:** 2026-03-31
+
+Backend now includes `lastCheckedAt` in `GET /api/cards` response:
+- Sourced from latest `price_history.checkedAt` per card via a correlated `MAX(checked_at)` SQL subquery
+- Nullable field (`null` if card has no price history)
+
+Frontend CardTable improvements:
+- New sortable "Last Checked" column
+- Displays relative time (e.g., "2h ago", "3d ago") using the existing CardTable date formatter
+- Fallback to "—" for cards with no price-check history
+
+**Updated test coverage:**
+- Server tests: **94 passing** (↑ from 92)
+- Web tests: **68 passing** (↑ from 64)
+
 ## Remaining Related Work
-- Add "Last Checked" column on main listings table
 - Optional richer history UX (filters, charting, export)

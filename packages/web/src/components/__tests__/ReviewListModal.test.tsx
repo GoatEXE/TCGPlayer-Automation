@@ -23,6 +23,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     isFoilPrice: false,
     photoUrl: null,
     notes: null,
+    lastCheckedAt: null,
     importedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
