@@ -644,13 +644,17 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         ? parseFloat(card.marketPrice)
         : null;
       const pricingResult = calculatePrice({ marketPrice });
+      const listingPrice = applyFloorPriceCents({
+        listingPrice: pricingResult.listingPrice,
+        floorPriceCents: card.floorPriceCents,
+      });
 
       // Update card back to matched status
       const [updatedCard] = await db
         .update(cards)
         .set({
           status: pricingResult.status,
-          listingPrice: pricingResult.listingPrice?.toString() ?? null,
+          listingPrice: listingPrice?.toString() ?? null,
           updatedAt: new Date(),
         })
         .where(eq(cards.id, parseInt(id, 10)))

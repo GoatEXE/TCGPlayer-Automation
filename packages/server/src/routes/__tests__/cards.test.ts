@@ -2234,6 +2234,7 @@ describe('POST /api/cards/:id/unlist', () => {
       status: 'listed' as const,
       marketPrice: '2.00',
       listingPrice: '1.96',
+      floorPriceCents: null,
       updatedAt: new Date(),
     };
 
@@ -2276,6 +2277,67 @@ describe('POST /api/cards/:id/unlist', () => {
     expect(body.id).toBe(1);
     expect(body.status).toBe('matched');
     expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 2.0 });
+  });
+
+  it('should apply floorPriceCents when unlisting and recalculating listing price', async () => {
+    const mockCard = {
+      id: 1,
+      productName: 'Listed Card',
+      status: 'listed' as const,
+      marketPrice: '2.00',
+      listingPrice: '1.96',
+      floorPriceCents: 250,
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([mockCard]),
+      }),
+    } as any);
+
+    vi.mocked(calculatePrice).mockReturnValue({
+      listingPrice: 1.96,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
+    });
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                ...mockCard,
+                status: 'matched' as const,
+                listingPrice: '2.5',
+                updatedAt: new Date(),
+              },
+            ]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/1/unlist',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(applyFloorPriceCents).toHaveBeenCalledWith({
+      listingPrice: 1.96,
+      floorPriceCents: 250,
+    });
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        status: 'matched',
+        listingPrice: '2.5',
+        updatedAt: expect.any(Date),
+      }),
+    );
   });
 
   it('should return 400 for non-listed card', async () => {
