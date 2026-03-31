@@ -554,6 +554,42 @@ describe('PATCH /api/cards/:id', () => {
     });
   });
 
+  it('should return 400 for negative floorPriceCents', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        floorPriceCents: -1,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual(
+      expect.objectContaining({
+        error: 'floorPriceCents must be a non-negative integer or null',
+      }),
+    );
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 for non-integer floorPriceCents', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        floorPriceCents: 12.5,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual(
+      expect.objectContaining({
+        error: 'floorPriceCents must be a non-negative integer or null',
+      }),
+    );
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('should update and return card', async () => {
     const mockUpdatedCard = {
       id: 1,

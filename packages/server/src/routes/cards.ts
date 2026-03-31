@@ -351,6 +351,21 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         updateData.listingPrice = updates.listingPrice.toString();
       }
 
+      // Validate floor price if provided
+      if (updates.floorPriceCents !== undefined) {
+        const { floorPriceCents } = updates;
+        if (
+          floorPriceCents !== null &&
+          (!Number.isFinite(floorPriceCents) ||
+            !Number.isInteger(floorPriceCents) ||
+            floorPriceCents < 0)
+        ) {
+          return reply.code(400).send({
+            error: 'floorPriceCents must be a non-negative integer or null',
+          });
+        }
+      }
+
       const [updatedCard] = await db
         .update(cards)
         .set(updateData)
