@@ -458,7 +458,8 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 - [ ] Call TCGPlayer inventory API to update price
 - [ ] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
-- [ ] Add a floor price option per card (optional, default: none) to prevent listing below a minimum
+- [x] Add backend support for a floor price option per card (optional, default: none) to prevent listing below a minimum
+- [ ] Add floor price controls in the dashboard UI (set/clear per-card `floorPriceCents`)
 - [ ] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
 - [ ] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market
 - [ ] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes
@@ -705,8 +706,11 @@ docker compose up --build -d
 | 1.9 | Dashboard | Card management UI | ✅ COMPLETE |
 | **1** | **MVP Complete** | **Cards imported and priced for listing** | 🚧 IN PROGRESS |
 | 2.1 | Price Scheduler | BullMQ + Redis + repeating job | ✅ COMPLETE |
-| 2.2 | Auto-Adjust | Price drift detection + update | 📋 TODO |
-| 2.3 | Monitoring UI | Price history views + manual refresh | 📋 TODO |
+| 2.2 | Max Drop Safeguard | Cap single-cycle listing price drops | ✅ COMPLETE |
+| 2.3 | Price History UI | Per-card price history viewer | ✅ COMPLETE |
+| 2.4 | Floor Price Backend | Optional per-card minimum listing price | ✅ COMPLETE |
+| 2.5 | Auto-Adjust Logic | Price drift detection + bidirectional threshold management | 📋 TODO |
+| 2.6 | Frontend Floor UI | UI controls for setting floor prices | 📋 TODO |
 | **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **🚧 IN PROGRESS** |
 | 3.1 | Sales Dashboard | Active listings + sales history views | Medium |
 | 3.2 | Shipment Tracking | Tracking entry + status sync | Medium |

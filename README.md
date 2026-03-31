@@ -76,7 +76,7 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 
 ### Phase 2 — Price Monitoring
 
-**Status:** Phase 2.1 (BullMQ scheduler) ✅ Complete — See [PHASE2_BULLMQ_REDIS.md](docs/phase2/PHASE2_BULLMQ_REDIS.md)
+**Status:** Phase 2.1–2.4 infrastructure complete — scheduler, history tracking, safeguards, and floor price backend
 
 - **BullMQ + Redis scheduler** ✅ Implemented — persistent repeatable background checks every 12 hours (configurable)
 - **Lazy price checks** ✅ Implemented — runs via BullMQ repeatable job calling `runPriceCheck({ source: 'scheduled' })`
@@ -84,16 +84,23 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 - **Price history tracking** ✅ Implemented — per-card 📈 action opens modal with price/adjustment history table
 - **Last Checked column** ✅ Implemented — sortable column in card table shows relative time since last price check (e.g., "2 hours ago")
 - **Max drop safeguard** ✅ Implemented — caps single-cycle listing price drops at 20% (configurable via `MAX_PRICE_DROP_PERCENT`)
+- **Per-card floor price** ✅ Backend support — optional `floorPriceCents` field enforced during price checks and repricing (frontend UI controls planned for later phase)
 
 Implementation details:
 - [Phase 2.1 Scheduler Migration](docs/phase2/PHASE2_BULLMQ_REDIS.md)
 - [Phase 2.3 Price History UI](docs/phase2/PHASE2_PRICE_HISTORY_UI.md)
 - [Phase 2.2 Max Drop Safeguard](docs/phase2/PHASE2_MAX_DROP_SAFEGUARD.md)
+- [Phase 2.4 Floor Price Backend](docs/phase2/PHASE2_FLOOR_PRICE_BACKEND.md)
 
-- **Bidirectional threshold management:** (Planned)
+- **Bidirectional threshold management:** (Planned for Phase 2.5)
   - Listed card drops below `$0.05` market → recommend delisting, move to gift pool
   - Gift card rises above `$0.05` → recommend listing
   - Listed card with `>2%` price drift → recommend price update
+- **Optional per-card floor price:** ✅ Backend implemented
+  - Cards can have individual `floorPriceCents` minimum listing price
+  - Floor enforced during price checks and manual repricing
+  - Does not override gift/needs_attention status transitions
+  - Frontend UI controls planned for future phase
 
 ### Phase 3 — Dashboard, Notifications & Invoicing
 
@@ -578,7 +585,7 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 | GET    | `/api/cards`                   | List all cards (paginated, filterable)           |
 | POST   | `/api/cards`                   | Add single card manually (not used in CSV-first workflow) |
 | POST   | `/api/cards/import`            | Upload CSV/TXT file for import                   |
-| PATCH  | `/api/cards/:id`               | Update card details                              |
+| PATCH  | `/api/cards/:id`               | Update card details (quantity, status, floorPriceCents, notes, etc.) |
 | DELETE | `/api/cards/:id`               | Remove card                                      |
 | GET    | `/api/cards/stats`             | Get status counts (pending/matched/gift/etc)     |
 | POST   | `/api/cards/:id/reprice`       | Re-price single card                             |
