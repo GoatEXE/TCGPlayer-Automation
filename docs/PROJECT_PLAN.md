@@ -307,14 +307,18 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 ### 4.5 Manual Card Entry UI
 
-**Deliverable:** Web form to add cards one at a time.
+> **⚠️ N/A for current workflow.**
+>
+> Project is explicitly CSV/TXT import-first. Dustin does not plan to add cards one-by-one through a manual entry form.
+
+**Original Deliverable (N/A):** Web form to add cards one at a time.
 
 **Tasks:**
 - [N/A] Build card search component — user types card name, autocomplete searches TCGPlayer catalog (no API access)
-- [ ] Build card entry form — select card from search results, pick condition, enter quantity
-- [ ] Create API endpoint: `POST /api/cards` (single card creation)
+- [N/A] Build card entry form — select card from search results, pick condition, enter quantity (not used in CSV-first workflow)
+- [N/A] Create API endpoint: `POST /api/cards` (single card creation, not needed for CSV-first workflow)
 - [N/A] Create API endpoint: `GET /api/cards/search?q=` (no TCGPlayer catalog access)
-- [ ] Show list of pending/unmatched cards with option to manually match
+- [N/A] Show list of pending/unmatched cards with option to manually match (not needed for CSV-first workflow)
 
 ### 4.6 Listing Creation Pipeline
 
@@ -347,7 +351,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 | Method | Path                       | Status | Description                             |
 | ------ | -------------------------- | ------ | --------------------------------------- |
 | GET    | `/api/cards`               | ✅     | List all cards (paginated, filterable)  |
-| POST   | `/api/cards`               | 📋     | Add single card manually                |
+| POST   | `/api/cards`               | N/A    | Add single card manually (CSV-first workflow) |
 | POST   | `/api/cards/import`        | ✅     | Upload CSV/TXT file for import          |
 | GET    | `/api/cards/search`        | N/A    | Search TCGPlayer catalog (no API)       |
 | PATCH  | `/api/cards/:id`           | ✅     | Update card details                     |
@@ -422,6 +426,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Auto-run migrations on startup
 - [x] ESLint + Prettier setup (nice to have)
 - [x] Seed script for dev data (nice to have)
+- [x] Manual one-by-one card entry scope clarified as N/A for CSV/TXT import-first workflow
 
 ---
 

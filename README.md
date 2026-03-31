@@ -560,7 +560,7 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 | ------ | ------------------------- | ------------------------------------------------ |
 | GET    | `/api/health`             | Health check                                     |
 | GET    | `/api/cards`              | List all cards (paginated, filterable)           |
-| POST   | `/api/cards`              | Add single card manually                         |
+| POST   | `/api/cards`              | Add single card manually (not used in CSV-first workflow) |
 | POST   | `/api/cards/import`       | Upload CSV/TXT file for import                   |
 | PATCH  | `/api/cards/:id`          | Update card details                              |
 | DELETE | `/api/cards/:id`          | Remove card                                      |
@@ -572,6 +572,8 @@ CSV bulk upload automation when Level 4 is reached. Potential CardTrader API int
 | POST   | `/api/cards/:id/unlist`   | Unlist a card, returns to matched status         |
 | GET    | `/api/listings`           | List all listings                                |
 | POST   | `/api/listings/create`    | Create listings for selected cards               |
+
+**Note:** This project runs as a CSV/TXT import-first workflow. Manual single-card entry is intentionally out of scope for current Phase 1 usage.
 
 ### Import Deduplication
 
