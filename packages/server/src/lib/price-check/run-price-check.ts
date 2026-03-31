@@ -104,6 +104,35 @@ export async function runPriceCheck(
     const productPricing = pricingByProductId.get(card.tcgProductId.toString());
     if (!productPricing) {
       notFound++;
+
+      const previousMarketPrice = parseDecimal(card.marketPrice);
+      const previousListingPrice = parseDecimal(card.listingPrice);
+      const previousStatus = card.status;
+
+      await db
+        .update(cards)
+        .set({
+          marketPrice: null,
+          listingPrice: null,
+          status: 'needs_attention',
+          updatedAt: new Date(),
+        })
+        .where(eq(cards.id, card.id));
+
+      await db.insert(priceHistory).values({
+        cardId: card.id,
+        source,
+        previousMarketPrice: previousMarketPrice?.toString() ?? null,
+        newMarketPrice: null,
+        previousListingPrice: previousListingPrice?.toString() ?? null,
+        newListingPrice: null,
+        previousStatus,
+        newStatus: 'needs_attention',
+        driftPercent: null,
+        notificationSent: false,
+        checkedAt: new Date(),
+      });
+
       continue;
     }
 
@@ -128,6 +157,35 @@ export async function runPriceCheck(
 
     if (!conditionPricing?.market) {
       notFound++;
+
+      const previousMarketPrice = parseDecimal(card.marketPrice);
+      const previousListingPrice = parseDecimal(card.listingPrice);
+      const previousStatus = card.status;
+
+      await db
+        .update(cards)
+        .set({
+          marketPrice: null,
+          listingPrice: null,
+          status: 'needs_attention',
+          updatedAt: new Date(),
+        })
+        .where(eq(cards.id, card.id));
+
+      await db.insert(priceHistory).values({
+        cardId: card.id,
+        source,
+        previousMarketPrice: previousMarketPrice?.toString() ?? null,
+        newMarketPrice: null,
+        previousListingPrice: previousListingPrice?.toString() ?? null,
+        newListingPrice: null,
+        previousStatus,
+        newStatus: 'needs_attention',
+        driftPercent: null,
+        notificationSent: false,
+        checkedAt: new Date(),
+      });
+
       continue;
     }
 

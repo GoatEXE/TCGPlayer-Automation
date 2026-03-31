@@ -87,6 +87,58 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
+  it('marks cards as needs_attention when market price is missing', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 10,
+        tcgProductId: 123,
+        productName: 'No Market Card',
+        condition: 'Near Mint',
+        marketPrice: '1.25',
+        listingPrice: '1.00',
+        status: 'listed',
+        notes: null,
+      },
+    ]);
+
+    mockGetPricing.mockResolvedValueOnce({
+      prices: {},
+    });
+
+    const result = await runPriceCheck({ source: 'scheduled' });
+
+    expect(calculatePrice).not.toHaveBeenCalled();
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketPrice: null,
+        listingPrice: null,
+        status: 'needs_attention',
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 10,
+        source: 'scheduled',
+        previousMarketPrice: '1.25',
+        newMarketPrice: null,
+        previousListingPrice: '1',
+        newListingPrice: null,
+        previousStatus: 'listed',
+        newStatus: 'needs_attention',
+        driftPercent: null,
+        checkedAt: expect.any(Date),
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 0,
+      notFound: 1,
+      drifted: 0,
+      driftedCards: [],
+      errors: [],
+    });
+  });
+
   it('caps a listed card downward reprice to the configured max drop percent', async () => {
     dbFrom.mockResolvedValueOnce([
       {
