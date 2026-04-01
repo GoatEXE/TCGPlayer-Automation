@@ -16,6 +16,7 @@ export const cardStatusEnum = pgEnum('card_status', [
   'needs_attention',
   'gift',
   'error',
+  'sold',
 ]);
 
 export const cards = pgTable('cards', {

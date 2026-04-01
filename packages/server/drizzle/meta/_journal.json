@@ -43,6 +43,13 @@
       "when": 1775066717956,
       "tag": "0005_young_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775068490619,
+      "tag": "0006_romantic_tigra",
+      "breakpoints": true
     }
   ]
 }
