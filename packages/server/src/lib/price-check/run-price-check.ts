@@ -363,28 +363,51 @@ export async function runPriceCheck(
       floorPriceCents: card.floorPriceCents,
     });
 
-    const newListingPrice = capDownwardListingPriceChange({
+    const candidateListingPrice = capDownwardListingPriceChange({
       previousListingPrice,
       nextListingPrice: flooredListingPrice,
       maxPriceDropPercent: env.MAX_PRICE_DROP_PERCENT,
     });
+    const candidateDriftPercent = calculateDriftPercent(
+      previousListingPrice,
+      candidateListingPrice,
+    );
+    const isThresholdDrift =
+      candidateDriftPercent !== null &&
+      Math.abs(candidateDriftPercent) >= env.PRICE_DRIFT_THRESHOLD_PERCENT;
+
+    const holdListedPriceBecauseBelowThreshold =
+      previousStatus === 'listed' &&
+      newStatus === 'listed' &&
+      previousListingPrice !== null &&
+      candidateListingPrice !== null &&
+      !isThresholdDrift;
+
+    const newListingPrice = holdListedPriceBecauseBelowThreshold
+      ? previousListingPrice
+      : candidateListingPrice;
+
     const driftPercent = calculateDriftPercent(
       previousListingPrice,
       newListingPrice,
     );
-    const isThresholdDrift =
-      driftPercent !== null &&
-      Math.abs(driftPercent) >= env.PRICE_DRIFT_THRESHOLD_PERCENT;
 
     if (isThresholdDrift) {
       drifted++;
-      if (previousListingPrice !== null && newListingPrice !== null) {
+
+      const driftForAlert = candidateDriftPercent ?? driftPercent;
+
+      if (
+        previousListingPrice !== null &&
+        newListingPrice !== null &&
+        driftForAlert !== null
+      ) {
         driftedCards.push({
           cardId: card.id,
           productName: card.productName,
           previousListingPrice,
           newListingPrice,
-          driftPercent,
+          driftPercent: driftForAlert,
         });
       }
     }

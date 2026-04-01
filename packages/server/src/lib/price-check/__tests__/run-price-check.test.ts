@@ -295,13 +295,20 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
 
     const result = await runPriceCheck({ source: 'manual' });
 
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        listingPrice: '1',
+        status: 'listed',
+      }),
+    );
+
     expect(dbValues).toHaveBeenCalledWith(
       expect.objectContaining({
         cardId: 7,
         adjustedToPrice: null,
         previousStatus: 'listed',
         newStatus: 'listed',
-        driftPercent: '1',
+        driftPercent: '0',
       }),
     );
 
