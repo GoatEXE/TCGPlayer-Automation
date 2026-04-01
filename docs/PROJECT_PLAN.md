@@ -453,7 +453,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Make price check interval configurable via environment variable (e.g., `PRICE_CHECK_INTERVAL_HOURS`, default: 12)
 - [x] Job fetches all cards, batches by set, fetches market prices from TCGTracking
 - [x] Worker calls `runPriceCheck({ source: 'scheduled' })` which updates all card prices/statuses
-- [ ] Expose price check interval in web UI settings
+- [x] Expose price check interval in web UI settings
 - [x] Record each check in `PriceHistory` (implemented via `price_history` + `runPriceCheck`)
 - [x] Mark `price_history.notificationSent` only after successful scheduler Telegram sends (drift summary + needs_attention alerts)
 - [x] Re-check `needs_attention` cards during each price check cycle — if market price returns, recalculate at 98% and move to `matched` for relisting
