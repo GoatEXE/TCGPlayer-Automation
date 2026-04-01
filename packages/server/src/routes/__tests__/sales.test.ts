@@ -397,6 +397,329 @@ describe('sales routes', () => {
     });
   });
 
+  describe('PATCH /api/sales/batch-status', () => {
+    it('updates multiple sales when transitions are valid', async () => {
+      mockSaleSelectResult([
+        {
+          id: 1,
+          cardId: 1,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+      mockSaleSelectResult([
+        {
+          id: 2,
+          cardId: 2,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+
+      vi.mocked(db.update)
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 1,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 2,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+      const historyValues = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(db.insert).mockReturnValue({ values: historyValues } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/batch-status',
+        payload: {
+          saleIds: [1, 2],
+          newStatus: 'confirmed',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        updated: 2,
+        skipped: [],
+      });
+      expect(historyValues).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns mixed updated/skipped results for invalid and missing sales', async () => {
+      mockSaleSelectResult([
+        {
+          id: 3,
+          cardId: 3,
+          quantitySold: 1,
+          orderStatus: 'confirmed',
+        },
+      ]);
+      mockSaleSelectResult([
+        {
+          id: 4,
+          cardId: 4,
+          quantitySold: 1,
+          orderStatus: 'cancelled',
+        },
+      ]);
+      mockSaleSelectResult([]);
+
+      vi.mocked(db.update).mockReturnValueOnce({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 3,
+                orderStatus: 'shipped',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const historyValues = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(db.insert).mockReturnValue({ values: historyValues } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/batch-status',
+        payload: {
+          saleIds: [3, 4, 999],
+          newStatus: 'shipped',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.updated).toBe(1);
+      expect(body.skipped).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 4 }),
+          { id: 999, reason: 'Sale not found' },
+        ]),
+      );
+      expect(historyValues).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects empty saleIds arrays', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/batch-status',
+        payload: {
+          saleIds: [],
+          newStatus: 'confirmed',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'saleIds must be a non-empty array of positive integers',
+      });
+    });
+
+    it('restores quantities for cancelled sales in batch', async () => {
+      mockSaleSelectResult([
+        {
+          id: 20,
+          cardId: 100,
+          quantitySold: 1,
+          orderStatus: 'confirmed',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 100,
+          quantity: 0,
+          status: 'sold',
+        },
+      ]);
+      mockSaleSelectResult([
+        {
+          id: 21,
+          cardId: 101,
+          quantitySold: 2,
+          orderStatus: 'shipped',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 101,
+          quantity: 3,
+          status: 'listed',
+        },
+      ]);
+
+      const saleOneUpdateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            {
+              id: 20,
+              orderStatus: 'cancelled',
+            },
+          ]),
+        }),
+      });
+
+      const cardOneUpdateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const saleTwoUpdateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            {
+              id: 21,
+              orderStatus: 'cancelled',
+            },
+          ]),
+        }),
+      });
+
+      const cardTwoUpdateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      vi.mocked(db.update)
+        .mockReturnValueOnce({ set: saleOneUpdateSet } as any)
+        .mockReturnValueOnce({ set: cardOneUpdateSet } as any)
+        .mockReturnValueOnce({ set: saleTwoUpdateSet } as any)
+        .mockReturnValueOnce({ set: cardTwoUpdateSet } as any);
+
+      vi.mocked(db.insert).mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/batch-status',
+        payload: {
+          saleIds: [20, 21],
+          newStatus: 'cancelled',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        updated: 2,
+        skipped: [],
+      });
+
+      expect(cardOneUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 1,
+          status: 'listed',
+          updatedAt: expect.any(Date),
+        }),
+      );
+
+      expect(cardTwoUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 5,
+          status: 'listed',
+          updatedAt: expect.any(Date),
+        }),
+      );
+    });
+
+    it('writes one history row per updated sale and includes optional note', async () => {
+      mockSaleSelectResult([
+        {
+          id: 30,
+          cardId: 30,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+      mockSaleSelectResult([
+        {
+          id: 31,
+          cardId: 31,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+
+      vi.mocked(db.update)
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 30,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 31,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+      const historyValues = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(db.insert).mockReturnValue({ values: historyValues } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/batch-status',
+        payload: {
+          saleIds: [30, 31],
+          newStatus: 'confirmed',
+          note: 'Batch update',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(historyValues).toHaveBeenCalledTimes(2);
+      expect(historyValues).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          saleId: 30,
+          previousStatus: 'pending',
+          newStatus: 'confirmed',
+          source: 'manual',
+          note: 'Batch update',
+        }),
+      );
+      expect(historyValues).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          saleId: 31,
+          previousStatus: 'pending',
+          newStatus: 'confirmed',
+          source: 'manual',
+          note: 'Batch update',
+        }),
+      );
+    });
+  });
+
   describe('GET /api/sales/:id', () => {
     it('returns 404 when sale is not found', async () => {
       vi.mocked(db.select).mockReturnValueOnce({

@@ -41,6 +41,12 @@ interface UpdateSaleBody {
   notes?: string | null;
 }
 
+interface BatchUpdateStatusBody {
+  saleIds: number[];
+  newStatus: OrderStatus;
+  note?: string | null;
+}
+
 const validOrderStatuses: OrderStatus[] = [
   'pending',
   'confirmed',
@@ -302,6 +308,113 @@ export async function salesRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to fetch sales stats' });
     }
   });
+
+  // PATCH /batch-status - Batch order status updates
+  fastify.patch<{ Body: BatchUpdateStatusBody }>(
+    '/batch-status',
+    async (request, reply) => {
+      const { saleIds, newStatus, note } = request.body;
+
+      if (
+        !Array.isArray(saleIds) ||
+        saleIds.length === 0 ||
+        saleIds.some((id) => !Number.isInteger(id) || id <= 0)
+      ) {
+        return reply.code(400).send({
+          error: 'saleIds must be a non-empty array of positive integers',
+        });
+      }
+
+      if (!validOrderStatuses.includes(newStatus)) {
+        return reply.code(400).send({ error: 'Invalid newStatus' });
+      }
+
+      const skipped: { id: number; reason: string }[] = [];
+      let updated = 0;
+
+      try {
+        for (const saleId of saleIds) {
+          const [existingSale] = await db
+            .select()
+            .from(sales)
+            .where(eq(sales.id, saleId))
+            .limit(1);
+
+          if (!existingSale) {
+            skipped.push({ id: saleId, reason: 'Sale not found' });
+            continue;
+          }
+
+          if (!isValidTransition(existingSale.orderStatus, newStatus)) {
+            skipped.push({
+              id: saleId,
+              reason: `Invalid orderStatus transition from ${existingSale.orderStatus} to ${newStatus}`,
+            });
+            continue;
+          }
+
+          const [updatedSale] = await db
+            .update(sales)
+            .set({
+              orderStatus: newStatus,
+              updatedAt: new Date(),
+            })
+            .where(eq(sales.id, saleId))
+            .returning();
+
+          if (!updatedSale) {
+            skipped.push({ id: saleId, reason: 'Sale not found' });
+            continue;
+          }
+
+          await db.insert(saleStatusHistory).values({
+            saleId: existingSale.id,
+            previousStatus: existingSale.orderStatus,
+            newStatus,
+            source: 'manual',
+            note: note ?? null,
+          });
+
+          if (newStatus === 'cancelled' && existingSale.cardId !== null) {
+            const [linkedCard] = await db
+              .select()
+              .from(cards)
+              .where(eq(cards.id, existingSale.cardId))
+              .limit(1);
+
+            if (linkedCard) {
+              const restoredQuantity =
+                linkedCard.quantity + existingSale.quantitySold;
+
+              await db
+                .update(cards)
+                .set({
+                  quantity: restoredQuantity,
+                  status:
+                    linkedCard.status === 'sold' && restoredQuantity > 0
+                      ? 'listed'
+                      : linkedCard.status,
+                  updatedAt: new Date(),
+                })
+                .where(eq(cards.id, linkedCard.id));
+            }
+          }
+
+          updated += 1;
+        }
+
+        return reply.send({
+          updated,
+          skipped,
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply
+          .code(500)
+          .send({ error: 'Failed to batch update sales status' });
+      }
+    },
+  );
 
   // GET /:id - Sale detail
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
