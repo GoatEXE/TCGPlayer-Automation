@@ -13,6 +13,10 @@ import type {
   GetSalesParams,
   GetSalesResponse,
   SalesStats,
+  GetSaleHistoryResponse,
+  BatchStatusUpdateRequest,
+  BatchStatusUpdateResponse,
+  GetSalesPipelineResponse,
 } from './types';
 
 const API_BASE = '/api';
@@ -167,6 +171,23 @@ class ApiClient {
 
   async getSalesStats(): Promise<SalesStats> {
     return this.request<SalesStats>('/sales/stats');
+  }
+
+  async getSaleStatusHistory(saleId: number): Promise<GetSaleHistoryResponse> {
+    return this.request<GetSaleHistoryResponse>(`/sales/${saleId}/history`);
+  }
+
+  async batchUpdateSaleStatus(
+    request: BatchStatusUpdateRequest,
+  ): Promise<BatchStatusUpdateResponse> {
+    return this.request<BatchStatusUpdateResponse>('/sales/batch-status', {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async getSalesPipeline(): Promise<GetSalesPipelineResponse> {
+    return this.request<GetSalesPipelineResponse>('/sales/pipeline');
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

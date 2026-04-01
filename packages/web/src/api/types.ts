@@ -153,6 +153,40 @@ export interface GetSalesResponse {
   limit: number;
 }
 
+export interface SaleStatusHistoryEntry {
+  id: number;
+  previousStatus: OrderStatus | null;
+  newStatus: OrderStatus;
+  source: 'manual' | 'api_sync';
+  note: string | null;
+  changedAt: string;
+}
+
+export interface GetSaleHistoryResponse {
+  history: SaleStatusHistoryEntry[];
+}
+
+export interface BatchStatusUpdateRequest {
+  saleIds: number[];
+  newStatus: OrderStatus;
+  note?: string | null;
+}
+
+export interface BatchStatusUpdateResponse {
+  updated: number;
+  skipped: { id: number; reason: string }[];
+}
+
+export interface SalesPipelineEntry {
+  status: OrderStatus;
+  count: number;
+  totalCents: number;
+}
+
+export interface GetSalesPipelineResponse {
+  pipeline: SalesPipelineEntry[];
+}
+
 export interface SalesStats {
   totalSales: number;
   totalRevenueCents: number;

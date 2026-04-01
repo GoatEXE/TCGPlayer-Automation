@@ -332,6 +332,78 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('getSaleStatusHistory', () => {
+    it('fetches status history for a sale', async () => {
+      const mockResponse = {
+        history: [
+          {
+            id: 1,
+            previousStatus: 'pending',
+            newStatus: 'confirmed',
+            source: 'manual',
+            note: null,
+            changedAt: '2026-03-30T14:00:00.000Z',
+          },
+        ],
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.getSaleStatusHistory(5);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales/5/history',
+        expect.objectContaining({ headers: {} }),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('batchUpdateSaleStatus', () => {
+    it('sends PATCH with saleIds, newStatus, and optional note', async () => {
+      const mockResponse = { updated: 2, skipped: [] };
+      mockFetch(mockResponse);
+
+      const result = await api.batchUpdateSaleStatus({
+        saleIds: [1, 2],
+        newStatus: 'shipped',
+        note: 'Shipped via USPS',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales/batch-status',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            saleIds: [1, 2],
+            newStatus: 'shipped',
+            note: 'Shipped via USPS',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('getSalesPipeline', () => {
+    it('fetches sales pipeline summary', async () => {
+      const mockResponse = {
+        pipeline: [
+          { status: 'pending', count: 3, totalCents: 1500 },
+          { status: 'confirmed', count: 5, totalCents: 2500 },
+        ],
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.getSalesPipeline();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/sales/pipeline', {
+        headers: {},
+      });
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
   describe('error handling', () => {
     it('throws error with message from API', async () => {
       mockFetch({ error: 'Card not found' }, false, 404);
