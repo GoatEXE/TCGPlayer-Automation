@@ -1,5 +1,10 @@
 import { env } from '../../config/env.js';
 
+export interface NeedsAttentionAlertInput {
+  cardId: number;
+  productName: string;
+}
+
 export async function sendTelegramMessage(text: string): Promise<boolean> {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
     return false;
@@ -24,4 +29,18 @@ export async function sendTelegramMessage(text: string): Promise<boolean> {
   }
 
   return true;
+}
+
+export async function sendNeedsAttentionAlert({
+  cardId,
+  productName,
+}: NeedsAttentionAlertInput): Promise<boolean> {
+  return sendTelegramMessage(
+    [
+      '⚠️ Card needs attention',
+      `Card ID: ${cardId}`,
+      `Product: ${productName}`,
+      'Reason: Market price not found during scheduled price check',
+    ].join('\n'),
+  );
 }

@@ -9,6 +9,7 @@ const {
   dbWhere,
   dbInsert,
   dbValues,
+  dbReturning,
   calculatePrice,
   applyFloorPriceCents,
   mockGetSets,
@@ -25,6 +26,7 @@ const {
   dbWhere: vi.fn(),
   dbInsert: vi.fn(),
   dbValues: vi.fn(),
+  dbReturning: vi.fn(),
   calculatePrice: vi.fn(),
   applyFloorPriceCents: vi.fn(({ listingPrice, floorPriceCents }) => {
     if (listingPrice === null || floorPriceCents == null) {
@@ -73,7 +75,8 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     dbWhere.mockResolvedValue(undefined);
 
     dbInsert.mockReturnValue({ values: dbValues });
-    dbValues.mockResolvedValue(undefined);
+    dbValues.mockReturnValue({ returning: dbReturning });
+    dbReturning.mockResolvedValue([{ id: 999 }]);
 
     mockGetSets.mockResolvedValue([{ id: 1, name: 'Origins' }]);
     mockGetPricing.mockResolvedValue({
@@ -104,6 +107,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     mockGetPricing.mockResolvedValueOnce({
       prices: {},
     });
+    dbReturning.mockResolvedValueOnce([{ id: 501 }]);
 
     const result = await runPriceCheck({ source: 'scheduled' });
 
@@ -130,12 +134,51 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         checkedAt: expect.any(Date),
       }),
     );
+    expect(dbReturning).toHaveBeenCalledWith({ id: expect.anything() });
     expect(result).toMatchObject({
       updated: 0,
       notFound: 1,
       drifted: 0,
       driftedCards: [],
+      driftedHistoryIds: [],
+      needsAttentionCards: [
+        {
+          cardId: 10,
+          productName: 'No Market Card',
+        },
+      ],
+      needsAttentionHistoryIds: [501],
       errors: [],
+    });
+  });
+
+  it('does not add needs_attention alerts when a missing-price card is already in needs_attention', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 11,
+        tcgProductId: 123,
+        productName: 'Still Missing',
+        condition: 'Near Mint',
+        marketPrice: null,
+        listingPrice: null,
+        status: 'needs_attention',
+        notes: null,
+      },
+    ]);
+
+    mockGetPricing.mockResolvedValueOnce({
+      prices: {},
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 502 }]);
+
+    const result = await runPriceCheck({ source: 'scheduled' });
+
+    expect(result).toMatchObject({
+      updated: 0,
+      notFound: 1,
+      driftedHistoryIds: [],
+      needsAttentionCards: [],
+      needsAttentionHistoryIds: [],
     });
   });
 
@@ -157,6 +200,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       status: 'matched',
       reason: 'drop',
     });
+    dbReturning.mockResolvedValueOnce([{ id: 601 }]);
 
     const result = await runPriceCheck({ source: 'manual' });
 
@@ -195,6 +239,9 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
           driftPercent: -20,
         },
       ],
+      driftedHistoryIds: [601],
+      needsAttentionCards: [],
+      needsAttentionHistoryIds: [],
     });
   });
 
@@ -217,6 +264,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       status: 'matched',
       reason: 'drop',
     });
+    dbReturning.mockResolvedValueOnce([{ id: 602 }]);
 
     const result = await runPriceCheck({ source: 'manual' });
 
@@ -255,6 +303,9 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
           driftPercent: 9.09,
         },
       ],
+      driftedHistoryIds: [602],
+      needsAttentionCards: [],
+      needsAttentionHistoryIds: [],
     });
   });
 
@@ -278,6 +329,9 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         status: nextStatus,
         reason: 'no listing price',
       });
+      dbReturning.mockResolvedValueOnce([
+        { id: nextStatus === 'needs_attention' ? 701 : 702 },
+      ]);
 
       const result = await runPriceCheck({ source: 'scheduled' });
 
@@ -303,6 +357,17 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         notFound: 0,
         drifted: 0,
         driftedCards: [],
+        driftedHistoryIds: [],
+        needsAttentionCards:
+          nextStatus === 'needs_attention'
+            ? [
+                {
+                  cardId: 2,
+                  productName: 'Yasuo',
+                },
+              ]
+            : [],
+        needsAttentionHistoryIds: nextStatus === 'needs_attention' ? [701] : [],
       });
     },
   );

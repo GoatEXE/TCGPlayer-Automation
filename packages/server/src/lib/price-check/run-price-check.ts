@@ -2,7 +2,10 @@ import { eq } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
 import { cards } from '../../db/schema/cards.js';
-import { priceHistory } from '../../db/schema/price-history.js';
+import {
+  priceHistory,
+  type NewPriceHistory,
+} from '../../db/schema/price-history.js';
 import { applyFloorPriceCents, calculatePrice } from '../pricing/index.js';
 import { capDownwardListingPriceChange } from './max-price-drop-safeguard.js';
 import { TCGTrackingClient } from '../tcgtracking/client.js';
@@ -22,11 +25,19 @@ export interface DriftedCardChange {
   driftPercent: number;
 }
 
+export interface NeedsAttentionCardAlert {
+  cardId: number;
+  productName: string;
+}
+
 export interface RunPriceCheckResult {
   updated: number;
   notFound: number;
   drifted: number;
   driftedCards: DriftedCardChange[];
+  driftedHistoryIds: number[];
+  needsAttentionCards: NeedsAttentionCardAlert[];
+  needsAttentionHistoryIds: number[];
   errors: string[];
 }
 
@@ -52,6 +63,17 @@ function calculateDriftPercent(
     ((newListingPrice - previousListingPrice) / previousListingPrice) * 100;
 
   return Number(drift.toFixed(2));
+}
+
+async function insertPriceHistoryEntry(
+  values: NewPriceHistory,
+): Promise<number> {
+  const [insertedHistory] = await db
+    .insert(priceHistory)
+    .values(values)
+    .returning({ id: priceHistory.id });
+
+  return insertedHistory.id;
 }
 
 export async function runPriceCheck(
@@ -95,6 +117,9 @@ export async function runPriceCheck(
   let notFound = 0;
   let drifted = 0;
   const driftedCards: DriftedCardChange[] = [];
+  const driftedHistoryIds: number[] = [];
+  const needsAttentionCards: NeedsAttentionCardAlert[] = [];
+  const needsAttentionHistoryIds: number[] = [];
 
   for (const card of allCards) {
     if (!card.tcgProductId) {
@@ -119,7 +144,7 @@ export async function runPriceCheck(
         })
         .where(eq(cards.id, card.id));
 
-      await db.insert(priceHistory).values({
+      const historyId = await insertPriceHistoryEntry({
         cardId: card.id,
         source,
         previousMarketPrice: previousMarketPrice?.toString() ?? null,
@@ -132,6 +157,14 @@ export async function runPriceCheck(
         notificationSent: false,
         checkedAt: new Date(),
       });
+
+      if (previousStatus !== 'needs_attention') {
+        needsAttentionCards.push({
+          cardId: card.id,
+          productName: card.productName,
+        });
+        needsAttentionHistoryIds.push(historyId);
+      }
 
       continue;
     }
@@ -172,7 +205,7 @@ export async function runPriceCheck(
         })
         .where(eq(cards.id, card.id));
 
-      await db.insert(priceHistory).values({
+      const historyId = await insertPriceHistoryEntry({
         cardId: card.id,
         source,
         previousMarketPrice: previousMarketPrice?.toString() ?? null,
@@ -185,6 +218,14 @@ export async function runPriceCheck(
         notificationSent: false,
         checkedAt: new Date(),
       });
+
+      if (previousStatus !== 'needs_attention') {
+        needsAttentionCards.push({
+          cardId: card.id,
+          productName: card.productName,
+        });
+        needsAttentionHistoryIds.push(historyId);
+      }
 
       continue;
     }
@@ -229,11 +270,11 @@ export async function runPriceCheck(
       previousListingPrice,
       newListingPrice,
     );
-
-    if (
+    const isThresholdDrift =
       driftPercent !== null &&
-      Math.abs(driftPercent) >= env.PRICE_DRIFT_THRESHOLD_PERCENT
-    ) {
+      Math.abs(driftPercent) >= env.PRICE_DRIFT_THRESHOLD_PERCENT;
+
+    if (isThresholdDrift) {
       drifted++;
       if (previousListingPrice !== null && newListingPrice !== null) {
         driftedCards.push({
@@ -258,7 +299,7 @@ export async function runPriceCheck(
       })
       .where(eq(cards.id, card.id));
 
-    await db.insert(priceHistory).values({
+    const historyId = await insertPriceHistoryEntry({
       cardId: card.id,
       source,
       previousMarketPrice: previousMarketPrice?.toString() ?? null,
@@ -272,6 +313,21 @@ export async function runPriceCheck(
       checkedAt: new Date(),
     });
 
+    if (isThresholdDrift) {
+      driftedHistoryIds.push(historyId);
+    }
+
+    if (
+      previousStatus !== 'needs_attention' &&
+      newStatus === 'needs_attention'
+    ) {
+      needsAttentionCards.push({
+        cardId: card.id,
+        productName: card.productName,
+      });
+      needsAttentionHistoryIds.push(historyId);
+    }
+
     updated++;
   }
 
@@ -280,6 +336,9 @@ export async function runPriceCheck(
     notFound,
     drifted,
     driftedCards,
+    driftedHistoryIds,
+    needsAttentionCards,
+    needsAttentionHistoryIds,
     errors,
   };
 }

@@ -1303,6 +1303,16 @@ describe('POST /api/cards/fetch-prices', () => {
     vi.clearAllMocks();
     mockGetSets.mockClear();
     mockGetPricing.mockClear();
+
+    let nextHistoryId = 1;
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi
+          .fn()
+          .mockImplementation(async () => [{ id: nextHistoryId++ }]),
+      }),
+    } as any);
+
     app = Fastify();
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
@@ -1488,7 +1498,9 @@ describe('POST /api/cards/fetch-prices', () => {
     } as any);
 
     vi.mocked(db.insert).mockReturnValue({
-      values: vi.fn().mockResolvedValue(undefined),
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+      }),
     } as any);
 
     const response = await app.inject({

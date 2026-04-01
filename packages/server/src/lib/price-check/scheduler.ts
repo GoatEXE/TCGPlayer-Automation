@@ -1,6 +1,12 @@
+import { inArray } from 'drizzle-orm';
 import { Queue, Worker, type RedisOptions } from 'bullmq';
 import { env } from '../../config/env.js';
-import { sendTelegramMessage } from '../notifications/telegram.js';
+import { db } from '../../db/index.js';
+import { priceHistory } from '../../db/schema/price-history.js';
+import {
+  sendNeedsAttentionAlert,
+  sendTelegramMessage,
+} from '../notifications/telegram.js';
 import type { RunPriceCheckResult } from './run-price-check.js';
 import { runPriceCheck } from './run-price-check.js';
 
@@ -90,6 +96,25 @@ export function buildScheduledPriceCheckMessage(
   return lines.join('\n');
 }
 
+async function markHistoryNotificationsSent(
+  historyIds: number[],
+  logger: LoggerLike,
+) {
+  const uniqueIds = [...new Set(historyIds)].filter((id) => id > 0);
+  if (uniqueIds.length === 0) {
+    return;
+  }
+
+  await db
+    .update(priceHistory)
+    .set({ notificationSent: true })
+    .where(inArray(priceHistory.id, uniqueIds));
+
+  logger.info(
+    `[price-check] marked notification_sent=true for ${uniqueIds.length} price_history rows`,
+  );
+}
+
 async function executeScheduledRun(logger: LoggerLike) {
   if (running) {
     logger.warn(
@@ -125,10 +150,34 @@ async function executeScheduledRun(logger: LoggerLike) {
       );
 
       try {
-        await sendTelegramMessage(message);
+        const sent = await sendTelegramMessage(message);
+        if (sent) {
+          await markHistoryNotificationsSent(result.driftedHistoryIds, logger);
+        }
       } catch (error) {
         logger.error(`[price-check] telegram notification failed: ${error}`);
       }
+    }
+
+    if (result.needsAttentionCards.length > 0) {
+      const sentNeedsAttentionHistoryIds: number[] = [];
+
+      for (const [index, card] of result.needsAttentionCards.entries()) {
+        try {
+          const sent = await sendNeedsAttentionAlert(card);
+          if (sent && result.needsAttentionHistoryIds[index]) {
+            sentNeedsAttentionHistoryIds.push(
+              result.needsAttentionHistoryIds[index],
+            );
+          }
+        } catch (error) {
+          logger.error(
+            `[price-check] needs_attention telegram notification failed for cardId=${card.cardId}: ${error}`,
+          );
+        }
+      }
+
+      await markHistoryNotificationsSent(sentNeedsAttentionHistoryIds, logger);
     }
   } catch (error) {
     lastRun = {

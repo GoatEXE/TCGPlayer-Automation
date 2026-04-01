@@ -12,6 +12,11 @@ const workerOn = vi.fn();
 
 const runPriceCheck = vi.fn();
 const sendTelegramMessage = vi.fn();
+const sendNeedsAttentionAlert = vi.fn();
+
+const dbUpdate = vi.fn();
+const dbSet = vi.fn();
+const dbWhere = vi.fn();
 
 let workerProcessor: ((job: { name: string }) => Promise<void>) | null = null;
 
@@ -51,6 +56,13 @@ vi.mock('../run-price-check.js', () => ({
 
 vi.mock('../../notifications/telegram.js', () => ({
   sendTelegramMessage,
+  sendNeedsAttentionAlert,
+}));
+
+vi.mock('../../../db/index.js', () => ({
+  db: {
+    update: dbUpdate,
+  },
 }));
 
 async function loadSchedulerModule() {
@@ -159,6 +171,10 @@ describe('BullMQ price check scheduler', () => {
     workerWaitUntilReady.mockResolvedValue(undefined);
     workerClose.mockResolvedValue(undefined);
     workerOn.mockReturnValue(undefined);
+
+    dbUpdate.mockReturnValue({ set: dbSet });
+    dbSet.mockReturnValue({ where: dbWhere });
+    dbWhere.mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -260,7 +276,11 @@ describe('BullMQ price check scheduler', () => {
           driftPercent: 14.29,
         },
       ],
+      driftedHistoryIds: [101],
+      needsAttentionCards: [],
+      needsAttentionHistoryIds: [],
     });
+    sendTelegramMessage.mockResolvedValueOnce(true);
 
     const logger = {
       info: vi.fn(),
@@ -273,6 +293,8 @@ describe('BullMQ price check scheduler', () => {
 
     expect(runPriceCheck).toHaveBeenCalledWith({ source: 'scheduled' });
     expect(sendTelegramMessage).toHaveBeenCalledOnce();
+    expect(dbUpdate).toHaveBeenCalled();
+    expect(dbSet).toHaveBeenCalledWith({ notificationSent: true });
 
     expect(getPriceCheckSchedulerStatus()).toMatchObject({
       enabled: true,
@@ -285,6 +307,81 @@ describe('BullMQ price check scheduler', () => {
         errors: ['Error fetching pricing for set Origins: timeout'],
       }),
     });
+  });
+
+  it('does not mark notifications as sent when telegram send fails', async () => {
+    const { startPriceCheckScheduler } = await loadSchedulerModule();
+
+    runPriceCheck.mockResolvedValue({
+      updated: 1,
+      notFound: 0,
+      drifted: 1,
+      errors: [],
+      driftedCards: [
+        {
+          cardId: 1,
+          productName: 'Jinx',
+          previousListingPrice: 1,
+          newListingPrice: 1.2,
+          driftPercent: 20,
+        },
+      ],
+      driftedHistoryIds: [201],
+      needsAttentionCards: [],
+      needsAttentionHistoryIds: [],
+    });
+    sendTelegramMessage.mockRejectedValueOnce(new Error('telegram down'));
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await startPriceCheckScheduler(logger);
+    await workerProcessor?.({ name: 'check-prices' });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('telegram notification failed'),
+    );
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('sends needs_attention alerts and marks successful notifications', async () => {
+    const { startPriceCheckScheduler } = await loadSchedulerModule();
+
+    runPriceCheck.mockResolvedValue({
+      updated: 0,
+      notFound: 1,
+      drifted: 0,
+      errors: [],
+      driftedCards: [],
+      driftedHistoryIds: [],
+      needsAttentionCards: [
+        { cardId: 10, productName: 'No Market Card' },
+        { cardId: 11, productName: 'Also Missing' },
+      ],
+      needsAttentionHistoryIds: [301, 302],
+    });
+
+    sendNeedsAttentionAlert
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error('telegram down'));
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await startPriceCheckScheduler(logger);
+    await workerProcessor?.({ name: 'check-prices' });
+
+    expect(sendNeedsAttentionAlert).toHaveBeenCalledTimes(2);
+    expect(dbSet).toHaveBeenCalledWith({ notificationSent: true });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('needs_attention telegram notification failed'),
+    );
   });
 
   it('stays disabled when BullMQ cannot connect to Redis', async () => {
