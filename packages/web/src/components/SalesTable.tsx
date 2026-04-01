@@ -1,5 +1,10 @@
 import { Fragment, useState, useEffect } from 'react';
-import type { Sale, OrderStatus, SaleStatusHistoryEntry } from '../api/types';
+import type {
+  Sale,
+  Shipment,
+  OrderStatus,
+  SaleStatusHistoryEntry,
+} from '../api/types';
 import { OrderStatusSelect } from './OrderStatusSelect';
 import { SaleStatusTimeline } from './SaleStatusTimeline';
 import { api } from '../api/client';
@@ -10,6 +15,8 @@ interface SalesTableProps {
   onStatusChange?: (saleId: number, newStatus: OrderStatus) => Promise<void>;
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
+  shipments?: Map<number, Shipment>;
+  onShip?: (saleId: number) => void;
 }
 
 function formatCents(cents: number): string {
@@ -26,19 +33,28 @@ function formatDate(iso: string): string {
 
 const terminalStatuses: OrderStatus[] = ['delivered', 'cancelled'];
 
+const shippableStatuses: OrderStatus[] = ['confirmed', 'shipped'];
+
 export function SalesTable({
   sales,
   loading,
   onStatusChange,
   selectedIds,
   onSelectionChange,
+  shipments,
+  onShip,
 }: SalesTableProps) {
   const [expandedSaleId, setExpandedSaleId] = useState<number | null>(null);
   const [history, setHistory] = useState<SaleStatusHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const selectable = !!onSelectionChange && !!selectedIds;
-  const colSpan = selectable ? 10 : 9;
+  const hasTracking = !!shipments;
+  const hasShipAction = !!onShip;
+  let colCount = 9; // base columns including expand
+  if (selectable) colCount += 1;
+  if (hasTracking) colCount += 1;
+  if (hasShipAction) colCount += 1;
 
   useEffect(() => {
     if (expandedSaleId === null) {
@@ -118,20 +134,22 @@ export function SalesTable({
             <th>Buyer</th>
             <th>Order ID</th>
             <th>Status</th>
+            {hasTracking && <th>Tracking</th>}
+            {hasShipAction && <th></th>}
             <th></th>
           </tr>
         </thead>
         <tbody>
           {loading && (
             <tr>
-              <td colSpan={colSpan} className="table-loading">
+              <td colSpan={colCount} className="table-loading">
                 Loading sales…
               </td>
             </tr>
           )}
           {!loading && sales.length === 0 && (
             <tr>
-              <td colSpan={colSpan} className="table-empty">
+              <td colSpan={colCount} className="table-empty">
                 No sales recorded yet.
               </td>
             </tr>
@@ -186,6 +204,34 @@ export function SalesTable({
                         </span>
                       )}
                     </td>
+                    {hasTracking && (
+                      <td className="tracking-cell">
+                        {shipments!.has(sale.id)
+                          ? (() => {
+                              const s = shipments!.get(sale.id)!;
+                              const parts = [
+                                s.carrier,
+                                s.trackingNumber,
+                              ].filter(Boolean);
+                              return parts.length > 0 ? parts.join(' · ') : '—';
+                            })()
+                          : '—'}
+                      </td>
+                    )}
+                    {hasShipAction && (
+                      <td>
+                        {shippableStatuses.includes(sale.orderStatus) ? (
+                          <button
+                            type="button"
+                            className="action-button ship-button"
+                            title="Record shipment"
+                            onClick={() => onShip!(sale.id)}
+                          >
+                            📦
+                          </button>
+                        ) : null}
+                      </td>
+                    )}
                     <td>
                       <button
                         type="button"
@@ -200,7 +246,7 @@ export function SalesTable({
                   </tr>
                   {isExpanded && (
                     <tr className="history-row">
-                      <td colSpan={colSpan} className="history-cell">
+                      <td colSpan={colCount} className="history-cell">
                         {historyLoading ? (
                           <span className="price-check-loading">
                             Loading history…

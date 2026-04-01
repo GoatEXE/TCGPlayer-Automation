@@ -287,3 +287,160 @@ describe('SalesTable history expansion', () => {
     });
   });
 });
+
+describe('SalesTable ship button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders ship button for confirmed sale', () => {
+    const onShip = vi.fn();
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'confirmed' })]}
+        loading={false}
+        onShip={onShip}
+      />,
+    );
+
+    expect(screen.getByTitle('Record shipment')).toBeTruthy();
+  });
+
+  it('renders ship button for shipped sale', () => {
+    const onShip = vi.fn();
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'shipped' })]}
+        loading={false}
+        onShip={onShip}
+      />,
+    );
+
+    expect(screen.getByTitle('Record shipment')).toBeTruthy();
+  });
+
+  it('does not render ship button for pending sale', () => {
+    const onShip = vi.fn();
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'pending' })]}
+        loading={false}
+        onShip={onShip}
+      />,
+    );
+
+    expect(screen.queryByTitle('Record shipment')).toBeNull();
+  });
+
+  it('does not render ship button for delivered sale', () => {
+    const onShip = vi.fn();
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'delivered' })]}
+        loading={false}
+        onShip={onShip}
+      />,
+    );
+
+    expect(screen.queryByTitle('Record shipment')).toBeNull();
+  });
+
+  it('does not render ship button for cancelled sale', () => {
+    const onShip = vi.fn();
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'cancelled' })]}
+        loading={false}
+        onShip={onShip}
+      />,
+    );
+
+    expect(screen.queryByTitle('Record shipment')).toBeNull();
+  });
+
+  it('calls onShip with sale id when ship button clicked', async () => {
+    const user = userEvent.setup();
+    const onShip = vi.fn();
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 42, orderStatus: 'confirmed' })]}
+        loading={false}
+        onShip={onShip}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Record shipment'));
+    expect(onShip).toHaveBeenCalledWith(42);
+  });
+});
+
+describe('SalesTable tracking column', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders Tracking header when shipments map provided', () => {
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1 })]}
+        loading={false}
+        shipments={new Map()}
+      />,
+    );
+
+    expect(screen.getByText('Tracking')).toBeTruthy();
+  });
+
+  it('displays carrier and tracking number when shipment exists', () => {
+    const shipmentsMap = new Map([
+      [
+        1,
+        {
+          id: 10,
+          saleId: 1,
+          carrier: 'USPS',
+          trackingNumber: '9400111899223',
+          shippedAt: null,
+          deliveredAt: null,
+          notes: null,
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+    ]);
+
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1 })]}
+        loading={false}
+        shipments={shipmentsMap}
+      />,
+    );
+
+    expect(screen.getByText('USPS · 9400111899223')).toBeTruthy();
+  });
+
+  it('displays dash when no shipment for sale', () => {
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1 })]}
+        loading={false}
+        shipments={new Map()}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    // Find the tracking cell (after status column)
+    const trackingCell = Array.from(cells).find((c) =>
+      c.classList.contains('tracking-cell'),
+    );
+    expect(trackingCell?.textContent).toBe('—');
+  });
+
+  it('does not render Tracking header when shipments not provided', () => {
+    render(<SalesTable sales={[makeSale({ id: 1 })]} loading={false} />);
+
+    expect(screen.queryByText('Tracking')).toBeNull();
+  });
+});
