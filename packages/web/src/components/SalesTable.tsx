@@ -252,7 +252,10 @@ export function SalesTable({
                             Loading history…
                           </span>
                         ) : (
-                          <SaleStatusTimeline history={history} />
+                          <SaleStatusTimeline
+                            history={history}
+                            shipment={shipments?.get(sale.id)}
+                          />
                         )}
                       </td>
                     </tr>

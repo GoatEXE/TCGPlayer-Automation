@@ -501,9 +501,9 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Tasks:**
 - [x] Create shipment records when orders are confirmed
-- [ ] UI to enter tracking number and carrier
-- [ ] Push tracking info back to TCGPlayer via their API (update order status)
-- [ ] Display shipment status timeline in dashboard
+- [x] UI to enter tracking number and carrier
+- [ ] Push tracking info back to TCGPlayer via their API (update order status) — blocked on API credentials
+- [x] Display shipment status timeline in dashboard
 
 ### 6.3 Invoice / Packing Slip Generation
 
@@ -724,7 +724,7 @@ docker compose up --build -d
 | 2.6 | Frontend Floor UI | UI controls for setting floor prices | 📋 TODO |
 | **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **🚧 IN PROGRESS** |
 | 3.1 | Sales Dashboard | Active listings + sales history + order status tracking | ✅ COMPLETE |
-| 3.2 | Shipment Tracking | Tracking entry + status sync | Medium |
+| 3.2 | Shipment Tracking | Tracking entry + timeline display (API push-back blocked) | ✅ LOCAL COMPLETE |
 | 3.3 | Invoicing | Printable invoice + packing slip | Small |
 | 3.4 | Telegram | Sale notifications | Small |
 | **3** | **Full Dashboard Complete** | **End-to-end selling workflow** | **—** |

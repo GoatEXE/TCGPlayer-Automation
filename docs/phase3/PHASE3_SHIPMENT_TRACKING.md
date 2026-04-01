@@ -1,7 +1,7 @@
 # Phase 3.2 — Shipment Tracking (Local-First)
 
 Date: 2026-04-01
-Status: COMPLETE — WP-S1 through WP-S8 implemented (TCGPlayer API push-back deferred)
+Status: LOCAL COMPLETE — WP-S1 through WP-S8 implemented; TCGPlayer API push-back remains blocked on seller API credentials
 Depends on: Phase 3.1 complete (sales + order-status infrastructure)
 
 ---

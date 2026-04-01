@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { SaleStatusTimeline } from '../SaleStatusTimeline';
-import type { SaleStatusHistoryEntry } from '../../api/types';
+import type { SaleStatusHistoryEntry, Shipment } from '../../api/types';
+
+const mockShipment: Shipment = {
+  id: 10,
+  saleId: 5,
+  carrier: 'USPS',
+  trackingNumber: '9400111899223',
+  shippedAt: '2026-03-31T15:00:00.000Z',
+  deliveredAt: '2026-04-02T10:00:00.000Z',
+  notes: 'Left at PO',
+  createdAt: '2026-03-31T15:00:00.000Z',
+  updatedAt: '2026-04-02T10:00:00.000Z',
+};
 
 const mockHistory: SaleStatusHistoryEntry[] = [
   {
@@ -77,5 +89,64 @@ describe('SaleStatusTimeline', () => {
     expect(timeElements[1].getAttribute('datetime')).toBe(
       '2026-03-31T14:30:00.000Z',
     );
+  });
+
+  it('renders shipment details when shipment is provided', () => {
+    render(
+      <SaleStatusTimeline history={mockHistory} shipment={mockShipment} />,
+    );
+
+    expect(screen.getByText('USPS')).toBeTruthy();
+    expect(screen.getByText('9400111899223')).toBeTruthy();
+    expect(screen.getByText('Left at PO')).toBeTruthy();
+  });
+
+  it('renders shipped and delivered dates from shipment', () => {
+    const { container } = render(
+      <SaleStatusTimeline history={[]} shipment={mockShipment} />,
+    );
+
+    const shipmentSection = container.querySelector('.timeline-shipment');
+    expect(shipmentSection).toBeTruthy();
+
+    const times = shipmentSection!.querySelectorAll('time');
+    expect(times.length).toBe(2);
+    expect(times[0].getAttribute('datetime')).toBe('2026-03-31T15:00:00.000Z');
+    expect(times[1].getAttribute('datetime')).toBe('2026-04-02T10:00:00.000Z');
+  });
+
+  it('omits delivered date when deliveredAt is null', () => {
+    const shipmentNoDelivery = { ...mockShipment, deliveredAt: null };
+    const { container } = render(
+      <SaleStatusTimeline history={[]} shipment={shipmentNoDelivery} />,
+    );
+
+    const shipmentSection = container.querySelector('.timeline-shipment');
+    expect(shipmentSection).toBeTruthy();
+
+    const times = shipmentSection!.querySelectorAll('time');
+    expect(times.length).toBe(1);
+  });
+
+  it('does not render shipment section when shipment is not provided', () => {
+    const { container } = render(<SaleStatusTimeline history={mockHistory} />);
+
+    expect(container.querySelector('.timeline-shipment')).toBeNull();
+  });
+
+  it('renders shipment with no carrier or tracking gracefully', () => {
+    const minimalShipment: Shipment = {
+      ...mockShipment,
+      carrier: null,
+      trackingNumber: null,
+      notes: null,
+      deliveredAt: null,
+    };
+    const { container } = render(
+      <SaleStatusTimeline history={[]} shipment={minimalShipment} />,
+    );
+
+    const shipmentSection = container.querySelector('.timeline-shipment');
+    expect(shipmentSection).toBeTruthy();
   });
 });
