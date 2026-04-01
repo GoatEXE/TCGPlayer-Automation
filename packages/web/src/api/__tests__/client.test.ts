@@ -244,6 +244,43 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('updatePriceCheckSettings', () => {
+    it('sends POST with intervalHours and returns updated status', async () => {
+      const mockResponse = {
+        enabled: true,
+        intervalHours: 12,
+        thresholdPercent: 10,
+        running: false,
+        lastRun: null,
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.updatePriceCheckSettings({ intervalHours: 12 });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/cards/price-check-settings',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ intervalHours: 12 }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('throws on server validation error', async () => {
+      mockFetch(
+        { error: 'intervalHours must be an integer between 1 and 168' },
+        false,
+        400,
+      );
+
+      await expect(
+        api.updatePriceCheckSettings({ intervalHours: 0 }),
+      ).rejects.toThrow('intervalHours must be an integer between 1 and 168');
+    });
+  });
+
   describe('error handling', () => {
     it('throws error with message from API', async () => {
       mockFetch({ error: 'Card not found' }, false, 404);

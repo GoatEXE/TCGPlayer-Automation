@@ -1,9 +1,11 @@
 import type { PriceCheckStatus } from '../api/types';
+import { IntervalSettingsControl } from './IntervalSettingsControl';
 
 interface PriceCheckStatusCardProps {
   status: PriceCheckStatus | null;
   loading?: boolean;
   error?: boolean;
+  onUpdateInterval?: (intervalHours: number) => Promise<void>;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -21,6 +23,7 @@ export function PriceCheckStatusCard({
   status,
   loading,
   error,
+  onUpdateInterval,
 }: PriceCheckStatusCardProps) {
   if (error) {
     return null; // fail gracefully — don't render anything
@@ -57,9 +60,16 @@ export function PriceCheckStatusCard({
 
       <div className="price-check-body">
         <div className="price-check-config">
-          <span className="price-check-meta">
-            Every <strong>{status.intervalHours}h</strong>
-          </span>
+          {onUpdateInterval ? (
+            <IntervalSettingsControl
+              currentIntervalHours={status.intervalHours}
+              onSaved={onUpdateInterval}
+            />
+          ) : (
+            <span className="price-check-meta">
+              Every <strong>{status.intervalHours}h</strong>
+            </span>
+          )}
           <span className="price-check-meta">
             Drift ≥ <strong>{status.thresholdPercent}%</strong>
           </span>

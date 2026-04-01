@@ -8,6 +8,7 @@ import type {
   FetchPricesResult,
   MarkListedResult,
   PriceCheckStatus,
+  UpdatePriceCheckSettingsRequest,
   GetPriceHistoryResponse,
 } from './types';
 
@@ -124,6 +125,15 @@ class ApiClient {
 
   async getPriceCheckStatus(): Promise<PriceCheckStatus> {
     return this.request<PriceCheckStatus>('/cards/price-check-status');
+  }
+
+  async updatePriceCheckSettings(
+    settings: UpdatePriceCheckSettingsRequest,
+  ): Promise<PriceCheckStatus> {
+    return this.request<PriceCheckStatus>('/cards/price-check-settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
   }
 
   async getCardPriceHistory(

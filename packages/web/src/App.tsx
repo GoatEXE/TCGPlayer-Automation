@@ -170,6 +170,11 @@ export function App() {
     }
   };
 
+  const handleUpdateInterval = async (intervalHours: number) => {
+    const updated = await api.updatePriceCheckSettings({ intervalHours });
+    setPriceCheckStatus(updated);
+  };
+
   const handleUnlist = async (id: number) => {
     try {
       const updatedCard = await api.unlistCard(id);
@@ -225,6 +230,7 @@ export function App() {
             status={priceCheckStatus}
             loading={priceCheckLoading}
             error={priceCheckError}
+            onUpdateInterval={handleUpdateInterval}
           />
         </div>
 

@@ -110,6 +110,10 @@ export interface GetPriceHistoryResponse {
   history: PriceHistoryEntry[];
 }
 
+export interface UpdatePriceCheckSettingsRequest {
+  intervalHours: number;
+}
+
 export interface ApiError {
   error: string;
   message: string;

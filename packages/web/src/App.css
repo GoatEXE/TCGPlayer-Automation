@@ -273,6 +273,61 @@ body {
   background: #fef3c7;
 }
 
+/* Interval Settings Control */
+.interval-settings-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.interval-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.interval-label {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.interval-input {
+  width: 4rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.interval-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.interval-input[aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+.interval-input:disabled {
+  opacity: 0.5;
+}
+
+.interval-save-button {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.interval-error {
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+
 @media (max-width: 768px) {
   .actions-row {
     flex-direction: column;
