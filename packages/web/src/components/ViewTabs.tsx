@@ -1,4 +1,4 @@
-export type ViewMode = 'inventory' | 'active-listings';
+export type ViewMode = 'inventory' | 'active-listings' | 'sales-history';
 
 interface ViewTabsProps {
   activeView: ViewMode;
@@ -8,6 +8,7 @@ interface ViewTabsProps {
 const tabs: { value: ViewMode; label: string }[] = [
   { value: 'inventory', label: '📦 Inventory' },
   { value: 'active-listings', label: '🏷️ Active Listings' },
+  { value: 'sales-history', label: '💰 Sales History' },
 ];
 
 export function ViewTabs({ activeView, onChangeView }: ViewTabsProps) {

@@ -370,6 +370,41 @@ body {
   border-bottom-color: var(--color-primary);
 }
 
+/* Sales Status Badges */
+.sales-status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.sales-status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.sales-status-confirmed {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.sales-status-shipped {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.sales-status-delivered {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.sales-status-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 /* Cards Section */
 .cards-section {
   background: var(--color-bg);

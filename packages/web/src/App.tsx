@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from './api/client';
-import type { Card, CardStats, PriceCheckStatus } from './api/types';
+import type { Card, CardStats, PriceCheckStatus, Sale } from './api/types';
+import { SalesTable } from './components/SalesTable';
 import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
@@ -28,6 +29,11 @@ export function App() {
     useState<PriceCheckStatus | null>(null);
   const [priceCheckLoading, setPriceCheckLoading] = useState(true);
   const [priceCheckError, setPriceCheckError] = useState(false);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [salesTotalItems, setSalesTotalItems] = useState(0);
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesSearch, setSalesSearch] = useState('');
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -61,9 +67,38 @@ export function App() {
     }
   };
 
+  const fetchSales = async () => {
+    setSalesLoading(true);
+    try {
+      const response = await api.getSales({
+        search: salesSearch || undefined,
+        page: salesPage,
+        limit: itemsPerPage,
+      });
+      setSales(response.sales);
+      setSalesTotalItems(response.total);
+    } catch (err) {
+      console.error('Failed to fetch sales:', err);
+      alert(err instanceof Error ? err.message : 'Failed to load sales');
+    } finally {
+      setSalesLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchCards();
-  }, [statusFilter, searchQuery, currentPage]);
+    if (activeView === 'sales-history') {
+      fetchSales();
+    } else {
+      fetchCards();
+    }
+  }, [
+    activeView,
+    statusFilter,
+    searchQuery,
+    currentPage,
+    salesPage,
+    salesSearch,
+  ]);
 
   const fetchPriceCheckStatus = async () => {
     setPriceCheckLoading(true);
@@ -201,9 +236,14 @@ export function App() {
 
   const handleChangeView = (view: ViewMode) => {
     setActiveView(view);
-    setStatusFilter(view === 'active-listings' ? 'listed' : 'all');
-    setSearchQuery('');
-    setCurrentPage(1);
+    if (view === 'sales-history') {
+      setSalesSearch('');
+      setSalesPage(1);
+    } else {
+      setStatusFilter(view === 'active-listings' ? 'listed' : 'all');
+      setSearchQuery('');
+      setCurrentPage(1);
+    }
   };
 
   const handleStatusFilter = (status: StatusFilter) => {
@@ -246,78 +286,116 @@ export function App() {
 
         <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
 
-        <section className="cards-section">
-          <div className="section-header">
-            <h2>
-              {activeView === 'active-listings'
-                ? 'Active Listings'
-                : 'Card Inventory'}
-            </h2>
-            <div className="button-group">
-              <button
-                onClick={handleFetchPrices}
-                disabled={fetchingPrices}
-                className="button-primary"
-                title="Fetch latest market prices from TCGTracking API"
-              >
-                {fetchingPrices ? '⏳ Fetching...' : '🔄 Fetch Latest Prices'}
-              </button>
-              <button
-                onClick={handleRepriceAll}
-                disabled={repricingAll || cards.length === 0}
-                className="button-primary"
-              >
-                {repricingAll ? '⏳ Re-pricing...' : '💰 Re-price All'}
-              </button>
+        {activeView === 'sales-history' ? (
+          <section className="cards-section">
+            <div className="section-header">
+              <h2>Sales History</h2>
             </div>
-          </div>
 
-          <div className="filters">
-            {activeView === 'inventory' && (
-              <div className="status-filters">
-                {statusFilters.map((filter) => (
-                  <button
-                    key={filter.value}
-                    onClick={() => handleStatusFilter(filter.value)}
-                    className={`filter-button ${statusFilter === filter.value ? 'active' : ''}`}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
+            <div className="filters">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setSalesPage(1);
+                }}
+                className="search-form"
+              >
+                <input
+                  type="text"
+                  placeholder="Search by card, buyer, or order ID..."
+                  value={salesSearch}
+                  onChange={(e) => setSalesSearch(e.target.value)}
+                  className="search-input"
+                />
+                <button type="submit" className="search-button">
+                  🔍
+                </button>
+              </form>
+            </div>
+
+            <SalesTable sales={sales} loading={salesLoading} />
+
+            <Pagination
+              currentPage={salesPage}
+              totalItems={salesTotalItems}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setSalesPage}
+            />
+          </section>
+        ) : (
+          <section className="cards-section">
+            <div className="section-header">
+              <h2>
+                {activeView === 'active-listings'
+                  ? 'Active Listings'
+                  : 'Card Inventory'}
+              </h2>
+              <div className="button-group">
+                <button
+                  onClick={handleFetchPrices}
+                  disabled={fetchingPrices}
+                  className="button-primary"
+                  title="Fetch latest market prices from TCGTracking API"
+                >
+                  {fetchingPrices ? '⏳ Fetching...' : '🔄 Fetch Latest Prices'}
+                </button>
+                <button
+                  onClick={handleRepriceAll}
+                  disabled={repricingAll || cards.length === 0}
+                  className="button-primary"
+                >
+                  {repricingAll ? '⏳ Re-pricing...' : '💰 Re-price All'}
+                </button>
               </div>
-            )}
+            </div>
 
-            <form onSubmit={handleSearch} className="search-form">
-              <input
-                type="text"
-                placeholder="Search by card name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="search-input"
-              />
-              <button type="submit" className="search-button">
-                🔍
-              </button>
-            </form>
-          </div>
+            <div className="filters">
+              {activeView === 'inventory' && (
+                <div className="status-filters">
+                  {statusFilters.map((filter) => (
+                    <button
+                      key={filter.value}
+                      onClick={() => handleStatusFilter(filter.value)}
+                      className={`filter-button ${statusFilter === filter.value ? 'active' : ''}`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-          <CardTable
-            cards={cards}
-            loading={loading}
-            onReprice={handleReprice}
-            onDelete={handleDelete}
-            onMarkListed={handleMarkListed}
-            onUnlist={handleUnlist}
-            onUpdateCard={handleUpdateCard}
-          />
+              <form onSubmit={handleSearch} className="search-form">
+                <input
+                  type="text"
+                  placeholder="Search by card name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
+                <button type="submit" className="search-button">
+                  🔍
+                </button>
+              </form>
+            </div>
 
-          <Pagination
-            currentPage={currentPage}
-            totalItems={totalItems}
-            itemsPerPage={itemsPerPage}
-            onPageChange={setCurrentPage}
-          />
-        </section>
+            <CardTable
+              cards={cards}
+              loading={loading}
+              onReprice={handleReprice}
+              onDelete={handleDelete}
+              onMarkListed={handleMarkListed}
+              onUnlist={handleUnlist}
+              onUpdateCard={handleUpdateCard}
+            />
+
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+            />
+          </section>
+        )}
       </main>
     </div>
   );

@@ -10,6 +10,8 @@ import type {
   PriceCheckStatus,
   UpdatePriceCheckSettingsRequest,
   GetPriceHistoryResponse,
+  GetSalesParams,
+  GetSalesResponse,
 } from './types';
 
 const API_BASE = '/api';
@@ -146,6 +148,20 @@ class ApiClient {
     return this.request<GetPriceHistoryResponse>(
       `/cards/${cardId}/price-history${query ? `?${query}` : ''}`,
     );
+  }
+
+  async getSales(params?: GetSalesParams): Promise<GetSalesResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.orderStatus)
+      searchParams.set('orderStatus', params.orderStatus);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+
+    const query = searchParams.toString();
+    return this.request<GetSalesResponse>(`/sales${query ? `?${query}` : ''}`);
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

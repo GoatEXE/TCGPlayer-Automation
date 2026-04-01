@@ -8,6 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   getStats: vi.fn(),
   getPriceCheckStatus: vi.fn(),
   updatePriceCheckSettings: vi.fn(),
+  getSales: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
@@ -47,6 +48,12 @@ describe('App view tabs', () => {
       running: false,
       lastRun: null,
     });
+    apiMocks.getSales.mockResolvedValue({
+      sales: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+    });
   });
 
   it('switches to Active Listings mode and requests listed cards', async () => {
@@ -72,5 +79,27 @@ describe('App view tabs', () => {
       screen.getByRole('heading', { level: 2, name: 'Active Listings' }),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'All' })).toBeNull();
+  });
+
+  it('switches to Sales History mode and requests sales data', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /sales history/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.getSales).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page: 1,
+          limit: 50,
+          search: undefined,
+        }),
+      );
+    });
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Sales History' }),
+    ).toBeTruthy();
   });
 });

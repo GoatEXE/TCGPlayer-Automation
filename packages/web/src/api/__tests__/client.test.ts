@@ -281,6 +281,37 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('getSales', () => {
+    it('fetches sales with no params', async () => {
+      const mockResponse = { sales: [], total: 0, page: 1, limit: 50 };
+      mockFetch(mockResponse);
+
+      const result = await api.getSales();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/sales', {
+        headers: {},
+      });
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('fetches sales with query params', async () => {
+      const mockResponse = { sales: [], total: 0, page: 2, limit: 25 };
+      mockFetch(mockResponse);
+
+      await api.getSales({
+        page: 2,
+        limit: 25,
+        orderStatus: 'shipped',
+        search: 'buyer',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales?page=2&limit=25&orderStatus=shipped&search=buyer',
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('error handling', () => {
     it('throws error with message from API', async () => {
       mockFetch({ error: 'Card not found' }, false, 404);

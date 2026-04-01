@@ -114,6 +114,45 @@ export interface UpdatePriceCheckSettingsRequest {
   intervalHours: number;
 }
 
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled';
+
+export interface Sale {
+  id: number;
+  cardId: number | null;
+  tcgplayerOrderId: string | null;
+  quantitySold: number;
+  salePriceCents: number;
+  buyerName: string | null;
+  orderStatus: OrderStatus;
+  soldAt: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  cardProductName: string | null;
+  cardSetName: string | null;
+}
+
+export interface GetSalesParams {
+  page?: number;
+  limit?: number;
+  orderStatus?: OrderStatus;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface GetSalesResponse {
+  sales: Sale[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ApiError {
   error: string;
   message: string;
