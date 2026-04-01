@@ -1,7 +1,7 @@
 # Phase 3.1 — Order Status Tracking (Local-First)
 
 Date: 2026-04-01
-Status: IN PROGRESS (WP-A through WP-E implemented)
+Status: IN PROGRESS (WP-A through WP-G implemented)
 Depends on: `PHASE3_SALES_HISTORY.md` WP-1 through WP-4 (sales schema + routes must exist)
 
 ---
