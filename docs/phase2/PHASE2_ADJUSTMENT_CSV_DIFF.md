@@ -31,7 +31,7 @@ File:
 - listing price changed,
 - drift meets/exceeds configured threshold (`PRICE_DRIFT_THRESHOLD_PERCENT`).
 
-Otherwise, `adjustedToPrice` is stored as `null`.
+For listed cards below threshold drift, the existing listing price is intentionally held (no listed-price adjustment is applied), and `adjustedToPrice` remains `null`.
 
 ### 3) CSV diff generation per cycle
 Files:

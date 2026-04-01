@@ -99,7 +99,7 @@ Implementation details:
 - **Bidirectional threshold management:** ✅ Implemented
   - Listed card drops below `$0.05` market → transition to gift
   - Gift card rises above `$0.05` → transition to matched (relist queue)
-  - Listed card with `>2%` price drift → tracked as drifted in scheduled checks
+  - Listed card with `>2%` price drift → listing price is updated and tracked as drifted
 - **Optional per-card floor price:** ✅ Implemented end-to-end
   - Cards can have individual `floorPriceCents` minimum listing price
   - Floor enforced during price checks and manual repricing

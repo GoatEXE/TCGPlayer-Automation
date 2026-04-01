@@ -462,7 +462,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Tasks:**
 - [x] Compare current listing price to 98% of current market price
-- [ ] If difference exceeds threshold (configurable, default: ≥2%), update the listing
+- [x] If difference exceeds threshold (configurable, default: ≥2%), update the listing
 - [ ] Call TCGPlayer inventory API to update price
 - [x] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
