@@ -207,7 +207,7 @@ The packing slip uses the same grouping logic.
 
 ---
 
-### WP-I6: API client + types (web)
+### WP-I6: API client + types (web) ✅
 
 **Files:**
 
@@ -222,7 +222,7 @@ The packing slip uses the same grouping logic.
 
 ---
 
-### WP-I7: Print buttons in SalesTable (web)
+### WP-I7: Print buttons in SalesTable (web) ✅
 
 **Files:**
 
@@ -242,7 +242,7 @@ The packing slip uses the same grouping logic.
 
 ---
 
-### WP-I8: Frontend tests (web)
+### WP-I8: Frontend tests (web) ✅
 
 **Files:**
 
@@ -269,10 +269,10 @@ WP-I3  Renderer tests                    [server]
 WP-I4  Invoice routes                    [server]  ←── test-first with WP-I5
 WP-I5  Route tests                       [server]
   ↓
-WP-I6  API client URL builders           [web]
+WP-I6  API client URL builders           [web] ✅
   ↓
-WP-I7  Print buttons in SalesTable       [web]  ←── test-first with WP-I8
-WP-I8  Frontend tests                    [web]
+WP-I7  Print buttons in SalesTable       [web] ✅ ←── test-first with WP-I8
+WP-I8  Frontend tests                    [web] ✅
 ```
 
 **Parallelizable:** WP-I2 + WP-I3 (test-first pair). WP-I4 + WP-I5 (test-first pair). WP-I7 + WP-I8 (test-first pair).

@@ -216,6 +216,14 @@ class ApiClient {
     return this.request<Shipment>(`/sales/${saleId}/shipment`);
   }
 
+  getInvoiceUrl(saleId: number): string {
+    return `${API_BASE}/sales/${saleId}/invoice`;
+  }
+
+  getPackingSlipUrl(saleId: number): string {
+    return `${API_BASE}/sales/${saleId}/packing-slip`;
+  }
+
   async updateShipment(
     shipmentId: number,
     data: UpdateShipmentRequest,

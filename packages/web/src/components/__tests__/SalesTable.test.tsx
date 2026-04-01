@@ -3,16 +3,21 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SalesTable } from '../SalesTable';
 import type { Sale } from '../../api/types';
+import { api } from '../../api/client';
 
-// Mock api for history fetching
 vi.mock('../../api/client', () => ({
   api: {
     getSaleStatusHistory: vi.fn(),
+    getInvoiceUrl: vi.fn((saleId: number) => `/api/sales/${saleId}/invoice`),
+    getPackingSlipUrl: vi.fn(
+      (saleId: number) => `/api/sales/${saleId}/packing-slip`,
+    ),
   },
 }));
 
-import { api } from '../../api/client';
 const mockGetHistory = vi.mocked(api.getSaleStatusHistory);
+const mockGetInvoiceUrl = vi.mocked(api.getInvoiceUrl);
+const mockGetPackingSlipUrl = vi.mocked(api.getPackingSlipUrl);
 
 function makeSale(overrides: Partial<Sale> = {}): Sale {
   return {
@@ -285,6 +290,98 @@ describe('SalesTable history expansion', () => {
     await waitFor(() => {
       expect(screen.queryByText('No status changes recorded.')).toBeNull();
     });
+  });
+});
+
+describe('SalesTable invoice and packing slip buttons', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders invoice button for non-cancelled sale', () => {
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'confirmed' })]}
+        loading={false}
+      />,
+    );
+
+    expect(screen.getByTitle('Open invoice')).toBeTruthy();
+  });
+
+  it('hides invoice button for cancelled sale', () => {
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'cancelled' })]}
+        loading={false}
+      />,
+    );
+
+    expect(screen.queryByTitle('Open invoice')).toBeNull();
+  });
+
+  it('renders packing slip button for confirmed sale', () => {
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'confirmed' })]}
+        loading={false}
+      />,
+    );
+
+    expect(screen.getByTitle('Open packing slip')).toBeTruthy();
+  });
+
+  it('renders packing slip button for shipped sale', () => {
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 1, orderStatus: 'shipped' })]}
+        loading={false}
+      />,
+    );
+
+    expect(screen.getByTitle('Open packing slip')).toBeTruthy();
+  });
+
+  it('hides packing slip button for pending delivered and cancelled sales', () => {
+    for (const status of ['pending', 'delivered', 'cancelled'] as const) {
+      render(
+        <SalesTable
+          sales={[makeSale({ id: 1, orderStatus: status })]}
+          loading={false}
+        />,
+      );
+      expect(screen.queryByTitle('Open packing slip')).toBeNull();
+    }
+  });
+
+  it('opens the invoice and packing slip urls in a new tab', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    render(
+      <SalesTable
+        sales={[makeSale({ id: 42, orderStatus: 'confirmed' })]}
+        loading={false}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Open invoice'));
+    await user.click(screen.getByTitle('Open packing slip'));
+
+    expect(mockGetInvoiceUrl).toHaveBeenCalledWith(42);
+    expect(mockGetPackingSlipUrl).toHaveBeenCalledWith(42);
+    expect(openSpy).toHaveBeenCalledWith(
+      '/api/sales/42/invoice',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(openSpy).toHaveBeenCalledWith(
+      '/api/sales/42/packing-slip',
+      '_blank',
+      'noopener,noreferrer',
+    );
+
+    openSpy.mockRestore();
   });
 });
 

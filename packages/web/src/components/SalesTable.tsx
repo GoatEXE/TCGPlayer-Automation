@@ -51,10 +51,12 @@ export function SalesTable({
   const selectable = !!onSelectionChange && !!selectedIds;
   const hasTracking = !!shipments;
   const hasShipAction = !!onShip;
+  const hasInvoiceActions = true;
   let colCount = 9; // base columns including expand
   if (selectable) colCount += 1;
   if (hasTracking) colCount += 1;
   if (hasShipAction) colCount += 1;
+  if (hasInvoiceActions) colCount += 1;
 
   useEffect(() => {
     if (expandedSaleId === null) {
@@ -136,6 +138,7 @@ export function SalesTable({
             <th>Status</th>
             {hasTracking && <th>Tracking</th>}
             {hasShipAction && <th></th>}
+            {hasInvoiceActions && <th></th>}
             <th></th>
           </tr>
         </thead>
@@ -229,6 +232,44 @@ export function SalesTable({
                           >
                             📦
                           </button>
+                        ) : null}
+                      </td>
+                    )}
+                    {hasInvoiceActions && (
+                      <td>
+                        {!terminalStatuses.includes(sale.orderStatus) ? (
+                          <>
+                            <button
+                              type="button"
+                              className="action-button"
+                              title="Open invoice"
+                              onClick={() =>
+                                window.open(
+                                  api.getInvoiceUrl(sale.id),
+                                  '_blank',
+                                  'noopener,noreferrer',
+                                )
+                              }
+                            >
+                              🧾
+                            </button>
+                            {shippableStatuses.includes(sale.orderStatus) ? (
+                              <button
+                                type="button"
+                                className="action-button"
+                                title="Open packing slip"
+                                onClick={() =>
+                                  window.open(
+                                    api.getPackingSlipUrl(sale.id),
+                                    '_blank',
+                                    'noopener,noreferrer',
+                                  )
+                                }
+                              >
+                                📋
+                              </button>
+                            ) : null}
+                          </>
                         ) : null}
                       </td>
                     )}
