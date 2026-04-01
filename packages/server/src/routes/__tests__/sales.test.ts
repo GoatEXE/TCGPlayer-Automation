@@ -248,6 +248,80 @@ describe('sales routes', () => {
     });
   });
 
+  describe('GET /api/sales/stats', () => {
+    it('returns dashboard summary stats and mirrors totalListedCount to active listed quantity for now', async () => {
+      vi.mocked(db.select)
+        .mockReturnValueOnce({
+          from: vi.fn().mockResolvedValue([
+            {
+              totalSales: 3,
+              totalRevenueCents: 950,
+              averageSaleCents: 317,
+            },
+          ]),
+        } as any)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([
+              {
+                activeListingCount: 7,
+              },
+            ]),
+          }),
+        } as any);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/stats',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        totalSales: 3,
+        totalRevenueCents: 950,
+        averageSaleCents: 317,
+        activeListingCount: 7,
+        totalListedCount: 7,
+      });
+    });
+
+    it('returns zero defaults when there are no sales or listed quantities', async () => {
+      vi.mocked(db.select)
+        .mockReturnValueOnce({
+          from: vi.fn().mockResolvedValue([
+            {
+              totalSales: 0,
+              totalRevenueCents: 0,
+              averageSaleCents: 0,
+            },
+          ]),
+        } as any)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([
+              {
+                activeListingCount: 0,
+              },
+            ]),
+          }),
+        } as any);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/stats',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        totalSales: 0,
+        totalRevenueCents: 0,
+        averageSaleCents: 0,
+        activeListingCount: 0,
+        totalListedCount: 0,
+      });
+    });
+  });
+
   describe('GET /api/sales/:id', () => {
     it('returns 404 when sale is not found', async () => {
       vi.mocked(db.select).mockReturnValueOnce({

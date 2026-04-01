@@ -260,6 +260,40 @@ export async function salesRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // GET /stats - Dashboard summary statistics
+  fastify.get('/stats', async (request, reply) => {
+    try {
+      const [salesSummary] = await db
+        .select({
+          totalSales: sql<number>`count(*)::int`,
+          totalRevenueCents: sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
+          averageSaleCents: sql<number>`coalesce(round(avg(${sales.salePriceCents})), 0)::int`,
+        })
+        .from(sales);
+
+      const [listedSummary] = await db
+        .select({
+          activeListingCount: sql<number>`coalesce(sum(${cards.quantity}), 0)::int`,
+        })
+        .from(cards)
+        .where(eq(cards.status, 'listed'));
+
+      const activeListingCount = listedSummary?.activeListingCount ?? 0;
+
+      return reply.send({
+        totalSales: salesSummary?.totalSales ?? 0,
+        totalRevenueCents: salesSummary?.totalRevenueCents ?? 0,
+        averageSaleCents: salesSummary?.averageSaleCents ?? 0,
+        activeListingCount,
+        // For now, total listed count uses the same quantity-based semantics as active listings.
+        totalListedCount: activeListingCount,
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to fetch sales stats' });
+    }
+  });
+
   // GET /:id - Sale detail
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const saleId = Number.parseInt(request.params.id, 10);
