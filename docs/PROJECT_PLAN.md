@@ -493,6 +493,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Sales history view — completed sales with date, card, price, buyer, order status
 - [x] Summary stats cards: total listed, total sales revenue, active listing count, average sale price
 - [ ] Order status tracking — sync order statuses from TCGPlayer API on a schedule
+  - Local-first foundation complete: `sale_status_history` audit table + transition state machine + cancellation quantity-restore handling (API sync scheduler still blocked)
 
 ### 6.2 Shipment Tracking
 
