@@ -461,16 +461,16 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 ### 5.2 Auto-Adjustment Logic
 
 **Tasks:**
-- [ ] Compare current listing price to 98% of current market price
+- [x] Compare current listing price to 98% of current market price
 - [ ] If difference exceeds threshold (configurable, default: ≥2%), update the listing
 - [ ] Call TCGPlayer inventory API to update price
-- [ ] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
+- [x] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [x] Add backend support for a floor price option per card (optional, default: none) to prevent listing below a minimum
 - [x] Add floor price controls in the dashboard UI (set/clear per-card `floorPriceCents`)
 - [x] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
 - [x] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market (`matched` status)
-- [ ] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes
+- [x] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes
 
 ### 5.3 Monitoring UI
 
