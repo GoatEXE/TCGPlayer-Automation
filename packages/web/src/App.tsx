@@ -6,6 +6,8 @@ import { StatsBar } from './components/StatsBar';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
 import { CardTable } from './components/CardTable';
 import { Pagination } from './components/Pagination';
+import { ViewTabs } from './components/ViewTabs';
+import type { ViewMode } from './components/ViewTabs';
 import './App.css';
 
 type StatusFilter = 'all' | Card['status'];
@@ -15,6 +17,7 @@ export function App() {
   const [stats, setStats] = useState<CardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [activeView, setActiveView] = useState<ViewMode>('inventory');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -196,6 +199,13 @@ export function App() {
     }
   };
 
+  const handleChangeView = (view: ViewMode) => {
+    setActiveView(view);
+    setStatusFilter(view === 'active-listings' ? 'listed' : 'all');
+    setSearchQuery('');
+    setCurrentPage(1);
+  };
+
   const handleStatusFilter = (status: StatusFilter) => {
     setStatusFilter(status);
     setCurrentPage(1);
@@ -234,9 +244,15 @@ export function App() {
           />
         </div>
 
+        <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
+
         <section className="cards-section">
           <div className="section-header">
-            <h2>Card Inventory</h2>
+            <h2>
+              {activeView === 'active-listings'
+                ? 'Active Listings'
+                : 'Card Inventory'}
+            </h2>
             <div className="button-group">
               <button
                 onClick={handleFetchPrices}
@@ -257,17 +273,19 @@ export function App() {
           </div>
 
           <div className="filters">
-            <div className="status-filters">
-              {statusFilters.map((filter) => (
-                <button
-                  key={filter.value}
-                  onClick={() => handleStatusFilter(filter.value)}
-                  className={`filter-button ${statusFilter === filter.value ? 'active' : ''}`}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
+            {activeView === 'inventory' && (
+              <div className="status-filters">
+                {statusFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    onClick={() => handleStatusFilter(filter.value)}
+                    className={`filter-button ${statusFilter === filter.value ? 'active' : ''}`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <form onSubmit={handleSearch} className="search-form">
               <input
