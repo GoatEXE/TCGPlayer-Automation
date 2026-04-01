@@ -500,7 +500,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 ### 6.2 Shipment Tracking
 
 **Tasks:**
-- [ ] Create shipment records when orders are confirmed
+- [x] Create shipment records when orders are confirmed
 - [ ] UI to enter tracking number and carrier
 - [ ] Push tracking info back to TCGPlayer via their API (update order status)
 - [ ] Display shipment status timeline in dashboard

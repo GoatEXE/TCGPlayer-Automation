@@ -1,7 +1,7 @@
 # Phase 3.2 — Shipment Tracking (Local-First)
 
 Date: 2026-04-01
-Status: IN PROGRESS — WP-S1 complete
+Status: IN PROGRESS — WP-S1, WP-S2, and WP-S3 complete
 Depends on: Phase 3.1 complete (sales + order-status infrastructure)
 
 ---
@@ -80,6 +80,8 @@ shipments
 
 ### WP-S2: Shipment routes (server)
 
+**Completed:** 2026-04-01
+
 **Files:**
 - `packages/server/src/routes/shipments.ts` — **new file**:
   - `POST /api/sales/:id/ship` — create shipment for a sale
@@ -108,6 +110,8 @@ shipments
 ---
 
 ### WP-S3: Shipment route tests (server)
+
+**Completed:** 2026-04-01
 
 **Files:**
 - `packages/server/src/routes/__tests__/shipments.test.ts` — **new file**
@@ -271,14 +275,13 @@ WP-S8  Wire into App                   [web]
 
 ## 7. Checklist Mapping (PROJECT_PLAN.md §6.2)
 
-After all WPs complete, the §6.2 checklist should read:
+Current §6.2 checklist after WP-S1/WP-S2/WP-S3 should read:
 
 ```
 - [x] Create shipment records when orders are confirmed
-- [x] UI to enter tracking number and carrier
+- [ ] UI to enter tracking number and carrier
 - [ ] Push tracking info back to TCGPlayer via their API (update order status)
-      ↳ Blocked: requires TCGPlayer Seller API credentials
-- [x] Display shipment status timeline in dashboard
+- [ ] Display shipment status timeline in dashboard
 ```
 
-Milestone 3.2 status: **partial** (3 of 4 tasks complete; 1 API-blocked).
+Milestone 3.2 status: **in progress** (server shipment model/routes/tests complete; web UI and dashboard timeline remain).
