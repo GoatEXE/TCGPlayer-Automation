@@ -10,6 +10,10 @@ const apiMocks = vi.hoisted(() => ({
   updatePriceCheckSettings: vi.fn(),
   getSales: vi.fn(),
   getSalesStats: vi.fn(),
+  getSalesPipeline: vi.fn(),
+  updateSale: vi.fn(),
+  batchUpdateSaleStatus: vi.fn(),
+  getSaleStatusHistory: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
@@ -62,6 +66,13 @@ describe('App view tabs', () => {
       activeListingCount: 0,
       totalListedCount: 0,
     });
+    apiMocks.getSalesPipeline.mockResolvedValue({ pipeline: [] });
+    apiMocks.updateSale.mockResolvedValue({});
+    apiMocks.batchUpdateSaleStatus.mockResolvedValue({
+      updated: 0,
+      skipped: [],
+    });
+    apiMocks.getSaleStatusHistory.mockResolvedValue({ history: [] });
   });
 
   it('switches to Active Listings mode and requests listed cards', async () => {
@@ -110,5 +121,38 @@ describe('App view tabs', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Sales History' }),
     ).toBeTruthy();
+  });
+
+  it('fetches pipeline when switching to sales-history view', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /sales history/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.getSalesPipeline).toHaveBeenCalled();
+    });
+  });
+
+  it('passes orderStatus filter to getSales when pipeline status is clicked', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /sales history/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.getSalesPipeline).toHaveBeenCalled();
+    });
+
+    // Click the 'pending' pipeline card
+    await user.click(screen.getByText('pending'));
+
+    await waitFor(() => {
+      expect(apiMocks.getSales).toHaveBeenLastCalledWith(
+        expect.objectContaining({ orderStatus: 'pending' }),
+      );
+    });
   });
 });

@@ -536,6 +536,15 @@ body {
   max-width: fit-content;
 }
 
+/* History expansion row */
+.history-row {
+  background: var(--color-surface);
+}
+
+.history-cell {
+  padding: 0.75rem 1.5rem;
+}
+
 @media (max-width: 768px) {
   .pipeline-grid {
     gap: 0.5rem;

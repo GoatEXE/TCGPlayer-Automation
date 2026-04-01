@@ -3,14 +3,17 @@ import { api } from './api/client';
 import type {
   Card,
   CardStats,
+  OrderStatus,
   PriceCheckStatus,
   Sale,
   SalesStats,
+  SalesPipelineEntry,
 } from './api/types';
 import { SalesTable } from './components/SalesTable';
 import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
 import { SalesStatsBar } from './components/SalesStatsBar';
+import { SalesPipelineCard } from './components/SalesPipelineCard';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
 import { CardTable } from './components/CardTable';
 import { Pagination } from './components/Pagination';
@@ -43,6 +46,13 @@ export function App() {
   const [salesSearch, setSalesSearch] = useState('');
   const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
   const [salesStatsLoading, setSalesStatsLoading] = useState(false);
+  const [pipeline, setPipeline] = useState<SalesPipelineEntry[]>([]);
+  const [salesStatusFilter, setSalesStatusFilter] = useState<
+    OrderStatus | undefined
+  >(undefined);
+  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<number>>(
+    new Set(),
+  );
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -88,11 +98,21 @@ export function App() {
     }
   };
 
+  const fetchPipeline = async () => {
+    try {
+      const data = await api.getSalesPipeline();
+      setPipeline(data.pipeline);
+    } catch (err) {
+      console.error('Failed to fetch pipeline:', err);
+    }
+  };
+
   const fetchSales = async () => {
     setSalesLoading(true);
     try {
       const response = await api.getSales({
         search: salesSearch || undefined,
+        orderStatus: salesStatusFilter,
         page: salesPage,
         limit: itemsPerPage,
       });
@@ -110,6 +130,7 @@ export function App() {
     if (activeView === 'sales-history') {
       fetchSales();
       fetchSalesStats();
+      fetchPipeline();
     } else {
       fetchCards();
     }
@@ -120,6 +141,7 @@ export function App() {
     currentPage,
     salesPage,
     salesSearch,
+    salesStatusFilter,
   ]);
 
   const fetchPriceCheckStatus = async () => {
@@ -256,11 +278,57 @@ export function App() {
     }
   };
 
+  const handleSaleStatusChange = async (
+    saleId: number,
+    newStatus: OrderStatus,
+  ) => {
+    try {
+      await api.updateSale(saleId, { orderStatus: newStatus });
+      fetchSales();
+      fetchPipeline();
+      fetchSalesStats();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : 'Failed to update sale status',
+      );
+    }
+  };
+
+  const handleBatchStatusUpdate = async (newStatus: OrderStatus) => {
+    if (selectedSaleIds.size === 0) return;
+    try {
+      const result = await api.batchUpdateSaleStatus({
+        saleIds: Array.from(selectedSaleIds),
+        newStatus,
+      });
+      let message = `✅ Updated ${result.updated} sale${result.updated !== 1 ? 's' : ''}`;
+      if (result.skipped.length > 0) {
+        message += `\n\n⚠️ Skipped ${result.skipped.length}:\n${result.skipped.map((s) => `#${s.id}: ${s.reason}`).join('\n')}`;
+      }
+      alert(message);
+      setSelectedSaleIds(new Set());
+      fetchSales();
+      fetchPipeline();
+      fetchSalesStats();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : 'Failed to batch update status',
+      );
+    }
+  };
+
+  const handlePipelineSelect = (status: OrderStatus) => {
+    setSalesStatusFilter((prev) => (prev === status ? undefined : status));
+    setSalesPage(1);
+  };
+
   const handleChangeView = (view: ViewMode) => {
     setActiveView(view);
     if (view === 'sales-history') {
       setSalesSearch('');
       setSalesPage(1);
+      setSalesStatusFilter(undefined);
+      setSelectedSaleIds(new Set());
     } else {
       setStatusFilter(view === 'active-listings' ? 'listed' : 'all');
       setSearchQuery('');
@@ -316,6 +384,45 @@ export function App() {
 
             <SalesStatsBar stats={salesStats} loading={salesStatsLoading} />
 
+            <SalesPipelineCard
+              pipeline={pipeline}
+              activeStatus={salesStatusFilter}
+              onSelectStatus={handlePipelineSelect}
+            />
+
+            {selectedSaleIds.size > 0 && (
+              <div className="selection-actions">
+                <span>
+                  {selectedSaleIds.size} sale
+                  {selectedSaleIds.size !== 1 ? 's' : ''} selected
+                </span>
+                <button
+                  className="button-primary"
+                  onClick={() => handleBatchStatusUpdate('confirmed')}
+                >
+                  ✅ Confirm
+                </button>
+                <button
+                  className="button-primary"
+                  onClick={() => handleBatchStatusUpdate('shipped')}
+                >
+                  📦 Ship
+                </button>
+                <button
+                  className="button-primary"
+                  onClick={() => handleBatchStatusUpdate('delivered')}
+                >
+                  🏠 Delivered
+                </button>
+                <button
+                  className="button-secondary"
+                  onClick={() => handleBatchStatusUpdate('cancelled')}
+                >
+                  ❌ Cancel
+                </button>
+              </div>
+            )}
+
             <div className="filters">
               <form
                 onSubmit={(e) => {
@@ -337,7 +444,13 @@ export function App() {
               </form>
             </div>
 
-            <SalesTable sales={sales} loading={salesLoading} />
+            <SalesTable
+              sales={sales}
+              loading={salesLoading}
+              onStatusChange={handleSaleStatusChange}
+              selectedIds={selectedSaleIds}
+              onSelectionChange={setSelectedSaleIds}
+            />
 
             <Pagination
               currentPage={salesPage}

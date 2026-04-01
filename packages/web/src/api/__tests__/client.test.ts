@@ -281,6 +281,24 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('updateSale', () => {
+    it('sends PATCH request with sale update data', async () => {
+      const mockSale = { id: 3, orderStatus: 'shipped' };
+      mockFetch(mockSale);
+
+      await api.updateSale(3, { orderStatus: 'shipped' });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales/3',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ orderStatus: 'shipped' }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+  });
+
   describe('getSalesStats', () => {
     it('fetches sales stats', async () => {
       const mockStats = {

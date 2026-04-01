@@ -10,9 +10,11 @@ import type {
   PriceCheckStatus,
   UpdatePriceCheckSettingsRequest,
   GetPriceHistoryResponse,
+  Sale,
   GetSalesParams,
   GetSalesResponse,
   SalesStats,
+  UpdateSaleRequest,
   GetSaleHistoryResponse,
   BatchStatusUpdateRequest,
   BatchStatusUpdateResponse,
@@ -167,6 +169,13 @@ class ApiClient {
 
     const query = searchParams.toString();
     return this.request<GetSalesResponse>(`/sales${query ? `?${query}` : ''}`);
+  }
+
+  async updateSale(id: number, data: UpdateSaleRequest): Promise<Sale> {
+    return this.request<Sale>(`/sales/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 
   async getSalesStats(): Promise<SalesStats> {

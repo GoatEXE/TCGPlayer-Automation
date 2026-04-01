@@ -492,8 +492,10 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Active listings view — sortable/filterable table with current price, market price, quantity, status
 - [x] Sales history view — completed sales with date, card, price, buyer, order status
 - [x] Summary stats cards: total listed, total sales revenue, active listing count, average sale price
-- [ ] Order status tracking — sync order statuses from TCGPlayer API on a schedule
-  - Local-first foundation complete: `sale_status_history` audit table + transition state machine + cancellation quantity-restore handling (API sync scheduler still blocked)
+- [x] Order status tracking — local-first pipeline, inline status updates, batch status changes, status history timeline
+  - `sale_status_history` audit table + transition state machine + cancellation quantity-restore
+  - Pipeline widget, inline OrderStatusSelect, batch actions, per-row history expansion
+  - API sync scheduler blocked on TCGPlayer credentials
 
 ### 6.2 Shipment Tracking
 
@@ -721,7 +723,7 @@ docker compose up --build -d
 | 2.5 | Auto-Adjust Logic | Price drift detection + bidirectional threshold management | 📋 TODO |
 | 2.6 | Frontend Floor UI | UI controls for setting floor prices | 📋 TODO |
 | **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **🚧 IN PROGRESS** |
-| 3.1 | Sales Dashboard | Active listings + sales history views | Medium |
+| 3.1 | Sales Dashboard | Active listings + sales history + order status tracking | ✅ COMPLETE |
 | 3.2 | Shipment Tracking | Tracking entry + status sync | Medium |
 | 3.3 | Invoicing | Printable invoice + packing slip | Small |
 | 3.4 | Telegram | Sale notifications | Small |

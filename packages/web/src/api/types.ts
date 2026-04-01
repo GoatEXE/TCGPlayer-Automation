@@ -153,6 +153,14 @@ export interface GetSalesResponse {
   limit: number;
 }
 
+export interface UpdateSaleRequest {
+  buyerName?: string | null;
+  tcgplayerOrderId?: string | null;
+  orderStatus?: OrderStatus;
+  soldAt?: string;
+  notes?: string | null;
+}
+
 export interface SaleStatusHistoryEntry {
   id: number;
   previousStatus: OrderStatus | null;
