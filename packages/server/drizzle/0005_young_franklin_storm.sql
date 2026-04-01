@@ -1,0 +1,1 @@
+ALTER TABLE "price_history" ADD COLUMN "adjusted_to_price" numeric(10, 2);

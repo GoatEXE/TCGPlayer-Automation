@@ -7,6 +7,12 @@ import {
   type NewPriceHistory,
 } from '../../db/schema/price-history.js';
 import { applyFloorPriceCents, calculatePrice } from '../pricing/index.js';
+import {
+  buildPriceCheckCsvDiff,
+  type PriceCheckCsvDiff,
+  type PriceCheckCsvDiffAction,
+  type PriceCheckCsvDiffRow,
+} from './csv-diff.js';
 import { capDownwardListingPriceChange } from './max-price-drop-safeguard.js';
 import { TCGTrackingClient } from '../tcgtracking/client.js';
 import type { TCGTrackingProductPrice } from '../tcgtracking/types.js';
@@ -38,6 +44,7 @@ export interface RunPriceCheckResult {
   driftedHistoryIds: number[];
   needsAttentionCards: NeedsAttentionCardAlert[];
   needsAttentionHistoryIds: number[];
+  csvDiff: PriceCheckCsvDiff;
   errors: string[];
 }
 
@@ -63,6 +70,56 @@ function calculateDriftPercent(
     ((newListingPrice - previousListingPrice) / previousListingPrice) * 100;
 
   return Number(drift.toFixed(2));
+}
+
+function hasListingPriceChanged(
+  previousListingPrice: number | null,
+  newListingPrice: number | null,
+): boolean {
+  if (previousListingPrice === null || newListingPrice === null) {
+    return previousListingPrice !== newListingPrice;
+  }
+
+  return previousListingPrice !== newListingPrice;
+}
+
+function getCsvDiffAction(params: {
+  previousStatus: PriceCheckCsvDiffRow['previousStatus'];
+  newStatus: PriceCheckCsvDiffRow['newStatus'];
+  previousListingPrice: number | null;
+  newListingPrice: number | null;
+  isThresholdDrift: boolean;
+}): PriceCheckCsvDiffAction | null {
+  const {
+    previousStatus,
+    newStatus,
+    previousListingPrice,
+    newListingPrice,
+    isThresholdDrift,
+  } = params;
+
+  if (previousStatus === 'listed' && newStatus !== 'listed') {
+    return 'remove_listing';
+  }
+
+  if (
+    previousStatus !== 'listed' &&
+    newStatus === 'matched' &&
+    newListingPrice !== null
+  ) {
+    return 'add_listing';
+  }
+
+  if (
+    previousStatus === 'listed' &&
+    newStatus === 'listed' &&
+    hasListingPriceChanged(previousListingPrice, newListingPrice) &&
+    isThresholdDrift
+  ) {
+    return 'price_change';
+  }
+
+  return null;
 }
 
 async function insertPriceHistoryEntry(
@@ -120,6 +177,7 @@ export async function runPriceCheck(
   const driftedHistoryIds: number[] = [];
   const needsAttentionCards: NeedsAttentionCardAlert[] = [];
   const needsAttentionHistoryIds: number[] = [];
+  const csvDiffRows: PriceCheckCsvDiffRow[] = [];
 
   for (const card of allCards) {
     if (!card.tcgProductId) {
@@ -151,6 +209,7 @@ export async function runPriceCheck(
         newMarketPrice: null,
         previousListingPrice: previousListingPrice?.toString() ?? null,
         newListingPrice: null,
+        adjustedToPrice: null,
         previousStatus,
         newStatus: 'needs_attention',
         driftPercent: null,
@@ -164,6 +223,27 @@ export async function runPriceCheck(
           productName: card.productName,
         });
         needsAttentionHistoryIds.push(historyId);
+      }
+
+      const csvDiffAction = getCsvDiffAction({
+        previousStatus,
+        newStatus: 'needs_attention',
+        previousListingPrice,
+        newListingPrice: null,
+        isThresholdDrift: false,
+      });
+
+      if (csvDiffAction) {
+        csvDiffRows.push({
+          action: csvDiffAction,
+          cardId: card.id,
+          productName: card.productName,
+          previousStatus,
+          newStatus: 'needs_attention',
+          previousListingPrice,
+          newListingPrice: null,
+          driftPercent: null,
+        });
       }
 
       continue;
@@ -212,6 +292,7 @@ export async function runPriceCheck(
         newMarketPrice: null,
         previousListingPrice: previousListingPrice?.toString() ?? null,
         newListingPrice: null,
+        adjustedToPrice: null,
         previousStatus,
         newStatus: 'needs_attention',
         driftPercent: null,
@@ -225,6 +306,27 @@ export async function runPriceCheck(
           productName: card.productName,
         });
         needsAttentionHistoryIds.push(historyId);
+      }
+
+      const csvDiffAction = getCsvDiffAction({
+        previousStatus,
+        newStatus: 'needs_attention',
+        previousListingPrice,
+        newListingPrice: null,
+        isThresholdDrift: false,
+      });
+
+      if (csvDiffAction) {
+        csvDiffRows.push({
+          action: csvDiffAction,
+          cardId: card.id,
+          productName: card.productName,
+          previousStatus,
+          newStatus: 'needs_attention',
+          previousListingPrice,
+          newListingPrice: null,
+          driftPercent: null,
+        });
       }
 
       continue;
@@ -299,6 +401,17 @@ export async function runPriceCheck(
       })
       .where(eq(cards.id, card.id));
 
+    const csvDiffAction = getCsvDiffAction({
+      previousStatus,
+      newStatus,
+      previousListingPrice,
+      newListingPrice,
+      isThresholdDrift,
+    });
+
+    const adjustedToPrice =
+      csvDiffAction === 'price_change' ? newListingPrice : null;
+
     const historyId = await insertPriceHistoryEntry({
       cardId: card.id,
       source,
@@ -306,6 +419,7 @@ export async function runPriceCheck(
       newMarketPrice: newMarketPrice.toString(),
       previousListingPrice: previousListingPrice?.toString() ?? null,
       newListingPrice: newListingPrice?.toString() ?? null,
+      adjustedToPrice: adjustedToPrice?.toString() ?? null,
       previousStatus,
       newStatus,
       driftPercent: driftPercent?.toString() ?? null,
@@ -315,6 +429,19 @@ export async function runPriceCheck(
 
     if (isThresholdDrift) {
       driftedHistoryIds.push(historyId);
+    }
+
+    if (csvDiffAction) {
+      csvDiffRows.push({
+        action: csvDiffAction,
+        cardId: card.id,
+        productName: card.productName,
+        previousStatus,
+        newStatus,
+        previousListingPrice,
+        newListingPrice,
+        driftPercent,
+      });
     }
 
     if (
@@ -339,6 +466,7 @@ export async function runPriceCheck(
     driftedHistoryIds,
     needsAttentionCards,
     needsAttentionHistoryIds,
+    csvDiff: buildPriceCheckCsvDiff(csvDiffRows),
     errors,
   };
 }

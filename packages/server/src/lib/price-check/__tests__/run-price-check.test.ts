@@ -128,6 +128,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         newMarketPrice: null,
         previousListingPrice: '1',
         newListingPrice: null,
+        adjustedToPrice: null,
         previousStatus: 'listed',
         newStatus: 'needs_attention',
         driftPercent: null,
@@ -148,6 +149,16 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         },
       ],
       needsAttentionHistoryIds: [501],
+      csvDiff: {
+        rows: [
+          expect.objectContaining({
+            action: 'remove_listing',
+            cardId: 10,
+            previousStatus: 'listed',
+            newStatus: 'needs_attention',
+          }),
+        ],
+      },
       errors: [],
     });
   });
@@ -179,6 +190,9 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       driftedHistoryIds: [],
       needsAttentionCards: [],
       needsAttentionHistoryIds: [],
+      csvDiff: {
+        rows: [],
+      },
     });
   });
 
@@ -220,6 +234,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         source: 'manual',
         previousListingPrice: '1',
         newListingPrice: '0.8',
+        adjustedToPrice: '0.8',
         previousStatus: 'listed',
         newStatus: 'listed',
         driftPercent: '-20',
@@ -242,6 +257,60 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       driftedHistoryIds: [601],
       needsAttentionCards: [],
       needsAttentionHistoryIds: [],
+      csvDiff: {
+        rows: [
+          expect.objectContaining({
+            action: 'price_change',
+            cardId: 1,
+            previousStatus: 'listed',
+            newStatus: 'listed',
+            previousListingPrice: 1,
+            newListingPrice: 0.8,
+            driftPercent: -20,
+          }),
+        ],
+      },
+    });
+  });
+
+  it('leaves adjustedToPrice null when listed price change is below drift threshold', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 7,
+        tcgProductId: 123,
+        productName: 'Low Drift Card',
+        condition: 'Near Mint',
+        marketPrice: '1.00',
+        listingPrice: '1.00',
+        status: 'listed',
+        notes: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: 1.01,
+      status: 'matched',
+      reason: 'tiny increase',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 605 }]);
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 7,
+        adjustedToPrice: null,
+        previousStatus: 'listed',
+        newStatus: 'listed',
+        driftPercent: '1',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      drifted: 0,
+      driftedHistoryIds: [],
+      csvDiff: {
+        rows: [],
+      },
     });
   });
 
@@ -284,6 +353,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         source: 'manual',
         previousListingPrice: '0.55',
         newListingPrice: '0.6',
+        adjustedToPrice: '0.6',
         previousStatus: 'listed',
         newStatus: 'listed',
         driftPercent: '9.09',
@@ -306,7 +376,61 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       driftedHistoryIds: [602],
       needsAttentionCards: [],
       needsAttentionHistoryIds: [],
+      csvDiff: {
+        rows: [
+          expect.objectContaining({
+            action: 'price_change',
+            cardId: 2,
+            previousStatus: 'listed',
+            newStatus: 'listed',
+            previousListingPrice: 0.55,
+            newListingPrice: 0.6,
+            driftPercent: 9.09,
+          }),
+        ],
+      },
     });
+  });
+
+  it('adds add_listing CSV diff rows when a non-listed card becomes matched', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 8,
+        tcgProductId: 123,
+        productName: 'Relist Me',
+        condition: 'Near Mint',
+        marketPrice: '0.02',
+        listingPrice: null,
+        status: 'gift',
+        notes: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: 0.5,
+      status: 'matched',
+      reason: 'price recovered',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 710 }]);
+
+    const result = await runPriceCheck({ source: 'scheduled' });
+
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 8,
+        previousStatus: 'gift',
+        newStatus: 'matched',
+        adjustedToPrice: null,
+      }),
+    );
+
+    expect(result.csvDiff.rows).toEqual([
+      expect.objectContaining({
+        action: 'add_listing',
+        cardId: 8,
+        previousStatus: 'gift',
+        newStatus: 'matched',
+      }),
+    ]);
   });
 
   it.each(['gift', 'needs_attention'] as const)(
@@ -347,6 +471,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
           cardId: 2,
           source: 'scheduled',
           newListingPrice: null,
+          adjustedToPrice: null,
           previousStatus: 'listed',
           newStatus: nextStatus,
           driftPercent: null,
@@ -368,6 +493,16 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
               ]
             : [],
         needsAttentionHistoryIds: nextStatus === 'needs_attention' ? [701] : [],
+        csvDiff: {
+          rows: [
+            expect.objectContaining({
+              action: 'remove_listing',
+              cardId: 2,
+              previousStatus: 'listed',
+              newStatus: nextStatus,
+            }),
+          ],
+        },
       });
     },
   );

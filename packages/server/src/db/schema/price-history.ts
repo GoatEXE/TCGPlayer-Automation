@@ -36,6 +36,10 @@ export const priceHistory = pgTable('price_history', {
     precision: 10,
     scale: 2,
   }),
+  adjustedToPrice: numeric('adjusted_to_price', {
+    precision: 10,
+    scale: 2,
+  }),
   previousStatus: cardStatusEnum('previous_status'),
   newStatus: cardStatusEnum('new_status'),
   driftPercent: numeric('drift_percent', {
