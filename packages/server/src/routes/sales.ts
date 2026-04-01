@@ -1,4 +1,5 @@
 import {
+  asc,
   desc,
   eq,
   getTableColumns,
@@ -309,6 +310,35 @@ export async function salesRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // GET /pipeline - Order pipeline summary by status
+  fastify.get('/pipeline', async (request, reply) => {
+    try {
+      const statusOrder = new Map(
+        validOrderStatuses.map((status, index) => [status, index]),
+      );
+
+      const pipeline = await db
+        .select({
+          status: sales.orderStatus,
+          count: sql<number>`count(*)::int`,
+          totalCents: sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
+        })
+        .from(sales)
+        .groupBy(sales.orderStatus);
+
+      pipeline.sort(
+        (left, right) =>
+          (statusOrder.get(left.status) ?? Number.MAX_SAFE_INTEGER) -
+          (statusOrder.get(right.status) ?? Number.MAX_SAFE_INTEGER),
+      );
+
+      return reply.send({ pipeline });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to fetch sales pipeline' });
+    }
+  });
+
   // PATCH /batch-status - Batch order status updates
   fastify.patch<{ Body: BatchUpdateStatusBody }>(
     '/batch-status',
@@ -412,6 +442,37 @@ export async function salesRoutes(fastify: FastifyInstance) {
         return reply
           .code(500)
           .send({ error: 'Failed to batch update sales status' });
+      }
+    },
+  );
+
+  // GET /:id/history - Sale status history timeline
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/history',
+    async (request, reply) => {
+      const saleId = Number.parseInt(request.params.id, 10);
+      if (Number.isNaN(saleId) || saleId <= 0) {
+        return reply.code(400).send({ error: 'Invalid sale id' });
+      }
+
+      try {
+        const history = await db
+          .select({
+            id: saleStatusHistory.id,
+            previousStatus: saleStatusHistory.previousStatus,
+            newStatus: saleStatusHistory.newStatus,
+            source: saleStatusHistory.source,
+            note: saleStatusHistory.note,
+            changedAt: saleStatusHistory.changedAt,
+          })
+          .from(saleStatusHistory)
+          .where(eq(saleStatusHistory.saleId, saleId))
+          .orderBy(asc(saleStatusHistory.changedAt));
+
+        return reply.send({ history });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.code(500).send({ error: 'Failed to fetch sale history' });
       }
     },
   );

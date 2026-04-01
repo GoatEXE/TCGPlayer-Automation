@@ -397,6 +397,113 @@ describe('sales routes', () => {
     });
   });
 
+  describe('GET /api/sales/pipeline', () => {
+    it('returns grouped pipeline counts and totals', async () => {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          groupBy: vi.fn().mockResolvedValue([
+            {
+              status: 'pending',
+              count: 2,
+              totalCents: 725,
+            },
+            {
+              status: 'shipped',
+              count: 1,
+              totalCents: 400,
+            },
+          ]),
+        }),
+      } as any);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/pipeline',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        pipeline: [
+          {
+            status: 'pending',
+            count: 2,
+            totalCents: 725,
+          },
+          {
+            status: 'shipped',
+            count: 1,
+            totalCents: 400,
+          },
+        ],
+      });
+    });
+  });
+
+  describe('GET /api/sales/:id/history', () => {
+    it('returns status history entries', async () => {
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue([
+              {
+                id: 1,
+                previousStatus: null,
+                newStatus: 'pending',
+                source: 'manual',
+                note: null,
+                changedAt: new Date('2026-04-01T10:00:00.000Z'),
+              },
+              {
+                id: 2,
+                previousStatus: 'pending',
+                newStatus: 'confirmed',
+                source: 'manual',
+                note: 'Payment cleared',
+                changedAt: new Date('2026-04-01T11:00:00.000Z'),
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/history',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.history).toHaveLength(2);
+      expect(body.history[0]).toEqual(
+        expect.objectContaining({
+          id: 1,
+          previousStatus: null,
+          newStatus: 'pending',
+        }),
+      );
+      expect(body.history[1]).toEqual(
+        expect.objectContaining({
+          id: 2,
+          previousStatus: 'pending',
+          newStatus: 'confirmed',
+          note: 'Payment cleared',
+        }),
+      );
+    });
+
+    it('returns 400 for invalid sale id', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/not-a-number/history',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'Invalid sale id',
+      });
+    });
+  });
+
   describe('PATCH /api/sales/batch-status', () => {
     it('updates multiple sales when transitions are valid', async () => {
       mockSaleSelectResult([
