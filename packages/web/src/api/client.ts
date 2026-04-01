@@ -12,6 +12,7 @@ import type {
   GetPriceHistoryResponse,
   GetSalesParams,
   GetSalesResponse,
+  SalesStats,
 } from './types';
 
 const API_BASE = '/api';
@@ -162,6 +163,10 @@ class ApiClient {
 
     const query = searchParams.toString();
     return this.request<GetSalesResponse>(`/sales${query ? `?${query}` : ''}`);
+  }
+
+  async getSalesStats(): Promise<SalesStats> {
+    return this.request<SalesStats>('/sales/stats');
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

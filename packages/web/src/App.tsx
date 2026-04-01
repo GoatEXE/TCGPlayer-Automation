@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
 import { api } from './api/client';
-import type { Card, CardStats, PriceCheckStatus, Sale } from './api/types';
+import type {
+  Card,
+  CardStats,
+  PriceCheckStatus,
+  Sale,
+  SalesStats,
+} from './api/types';
 import { SalesTable } from './components/SalesTable';
 import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
+import { SalesStatsBar } from './components/SalesStatsBar';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
 import { CardTable } from './components/CardTable';
 import { Pagination } from './components/Pagination';
@@ -34,6 +41,8 @@ export function App() {
   const [salesTotalItems, setSalesTotalItems] = useState(0);
   const [salesPage, setSalesPage] = useState(1);
   const [salesSearch, setSalesSearch] = useState('');
+  const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
+  const [salesStatsLoading, setSalesStatsLoading] = useState(false);
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -67,6 +76,18 @@ export function App() {
     }
   };
 
+  const fetchSalesStats = async () => {
+    setSalesStatsLoading(true);
+    try {
+      const data = await api.getSalesStats();
+      setSalesStats(data);
+    } catch (err) {
+      console.error('Failed to fetch sales stats:', err);
+    } finally {
+      setSalesStatsLoading(false);
+    }
+  };
+
   const fetchSales = async () => {
     setSalesLoading(true);
     try {
@@ -88,6 +109,7 @@ export function App() {
   useEffect(() => {
     if (activeView === 'sales-history') {
       fetchSales();
+      fetchSalesStats();
     } else {
       fetchCards();
     }
@@ -291,6 +313,8 @@ export function App() {
             <div className="section-header">
               <h2>Sales History</h2>
             </div>
+
+            <SalesStatsBar stats={salesStats} loading={salesStatsLoading} />
 
             <div className="filters">
               <form

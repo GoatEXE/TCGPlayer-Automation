@@ -153,6 +153,14 @@ export interface GetSalesResponse {
   limit: number;
 }
 
+export interface SalesStats {
+  totalSales: number;
+  totalRevenueCents: number;
+  averageSaleCents: number;
+  activeListingCount: number;
+  totalListedCount: number;
+}
+
 export interface ApiError {
   error: string;
   message: string;

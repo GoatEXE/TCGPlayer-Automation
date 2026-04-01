@@ -491,7 +491,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 **Tasks:**
 - [x] Active listings view — sortable/filterable table with current price, market price, quantity, status
 - [x] Sales history view — completed sales with date, card, price, buyer, order status
-- [ ] Summary stats cards: total listed, total sales revenue, active listing count, average sale price
+- [x] Summary stats cards: total listed, total sales revenue, active listing count, average sale price
 - [ ] Order status tracking — sync order statuses from TCGPlayer API on a schedule
 
 ### 6.2 Shipment Tracking

@@ -110,6 +110,7 @@ Implementation details:
 
 - **Active Listings view preset** ✅ Implemented — dedicated `🏷️ Active Listings` tab that defaults to listed cards while preserving sortable/filterable table behavior
 - **Sales History view** ✅ Implemented — dedicated `💰 Sales History` tab with date/card/price/buyer/order-status table, search, and pagination
+- **Summary stats cards** ✅ Implemented — Sales History shows total listed, total revenue, average sale price, and active listing count
 - Shipment tracking with carrier/tracking number entry
 - Invoice and packing slip generation (printable from dashboard)
 - Full Telegram notification suite (sales, shipments, price adjustments)
@@ -117,6 +118,7 @@ Implementation details:
 Implementation details:
 - [Phase 3.1 Active Listings View](docs/phase3/PHASE3_ACTIVE_LISTINGS_VIEW.md)
 - [Phase 3.1 Sales History View](docs/phase3/PHASE3_SALES_HISTORY_VIEW.md)
+- [Phase 3.1 Summary Stats Cards](docs/phase3/PHASE3_SUMMARY_STATS_CARDS.md)
 
 ### Future — When Level 4 is Reached
 

@@ -281,6 +281,26 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('getSalesStats', () => {
+    it('fetches sales stats', async () => {
+      const mockStats = {
+        totalSales: 5,
+        totalRevenueCents: 2500,
+        averageSaleCents: 500,
+        activeListingCount: 12,
+        totalListedCount: 12,
+      };
+      mockFetch(mockStats);
+
+      const result = await api.getSalesStats();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/sales/stats', {
+        headers: {},
+      });
+      expect(result).toEqual(mockStats);
+    });
+  });
+
   describe('getSales', () => {
     it('fetches sales with no params', async () => {
       const mockResponse = { sales: [], total: 0, page: 1, limit: 50 };

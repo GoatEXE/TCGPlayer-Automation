@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   getPriceCheckStatus: vi.fn(),
   updatePriceCheckSettings: vi.fn(),
   getSales: vi.fn(),
+  getSalesStats: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
@@ -54,6 +55,13 @@ describe('App view tabs', () => {
       page: 1,
       limit: 50,
     });
+    apiMocks.getSalesStats.mockResolvedValue({
+      totalSales: 0,
+      totalRevenueCents: 0,
+      averageSaleCents: 0,
+      activeListingCount: 0,
+      totalListedCount: 0,
+    });
   });
 
   it('switches to Active Listings mode and requests listed cards', async () => {
@@ -96,6 +104,7 @@ describe('App view tabs', () => {
           search: undefined,
         }),
       );
+      expect(apiMocks.getSalesStats).toHaveBeenCalled();
     });
 
     expect(
