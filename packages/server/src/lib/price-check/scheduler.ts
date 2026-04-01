@@ -34,6 +34,7 @@ let queue: Queue | null = null;
 let worker: Worker | null = null;
 let running = false;
 let lastRun: PriceCheckLastRun | null = null;
+let runtimeIntervalHours = env.PRICE_CHECK_INTERVAL_HOURS;
 
 function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -203,6 +204,43 @@ async function executeScheduledRun(logger: LoggerLike) {
   }
 }
 
+export async function updatePriceCheckIntervalHours(
+  intervalHours: number,
+  logger: LoggerLike,
+): Promise<void> {
+  runtimeIntervalHours = intervalHours;
+
+  if (!queue || !worker || env.NODE_ENV === 'test') {
+    logger.info(`[price-check] updated intervalHours=${runtimeIntervalHours}`);
+    return;
+  }
+
+  const existingRepeatJobs = await queue.getRepeatableJobs();
+  const repeatJobsToRemove = existingRepeatJobs.filter(
+    (job) =>
+      job.name === PRICE_CHECK_JOB || job.id === PRICE_CHECK_REPEAT_JOB_ID,
+  );
+
+  for (const job of repeatJobsToRemove) {
+    await queue.removeRepeatableByKey(job.key);
+  }
+
+  const intervalMs = Math.max(1000, runtimeIntervalHours * 60 * 60 * 1000);
+
+  await queue.add(
+    PRICE_CHECK_JOB,
+    {},
+    {
+      jobId: PRICE_CHECK_REPEAT_JOB_ID,
+      repeat: { every: intervalMs },
+    },
+  );
+
+  logger.info(
+    `[price-check] updated intervalHours=${runtimeIntervalHours}, re-registeredRepeatJobs=${repeatJobsToRemove.length}`,
+  );
+}
+
 export async function startPriceCheckScheduler(logger: LoggerLike) {
   if (env.NODE_ENV === 'test') {
     return;
@@ -242,10 +280,7 @@ export async function startPriceCheckScheduler(logger: LoggerLike) {
       logger.error(`[price-check] worker error: ${error}`);
     });
 
-    const intervalMs = Math.max(
-      1000,
-      env.PRICE_CHECK_INTERVAL_HOURS * 60 * 60 * 1000,
-    );
+    const intervalMs = Math.max(1000, runtimeIntervalHours * 60 * 60 * 1000);
 
     const existingRepeatJobs = await queue.getRepeatableJobs();
     const repeatJobsToRemove = existingRepeatJobs.filter(
@@ -269,7 +304,7 @@ export async function startPriceCheckScheduler(logger: LoggerLike) {
     );
 
     logger.info(
-      `[price-check] bullmq scheduler enabled, interval=${env.PRICE_CHECK_INTERVAL_HOURS}h, clearedExistingRepeatJobs=${repeatJobsToRemove.length}`,
+      `[price-check] bullmq scheduler enabled, interval=${runtimeIntervalHours}h, clearedExistingRepeatJobs=${repeatJobsToRemove.length}`,
     );
   } catch (error) {
     logger.error(
@@ -304,7 +339,7 @@ export async function stopPriceCheckScheduler() {
 export function getPriceCheckSchedulerStatus() {
   return {
     enabled: queue !== null && worker !== null && env.NODE_ENV !== 'test',
-    intervalHours: env.PRICE_CHECK_INTERVAL_HOURS,
+    intervalHours: runtimeIntervalHours,
     thresholdPercent: env.PRICE_DRIFT_THRESHOLD_PERCENT,
     running,
     lastRun,

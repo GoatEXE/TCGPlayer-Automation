@@ -19,6 +19,7 @@ import { applyFloorPriceCents, calculatePrice } from '../lib/pricing/index.js';
 import {
   runPriceCheck,
   getPriceCheckSchedulerStatus,
+  updatePriceCheckIntervalHours,
 } from '../lib/price-check/index.js';
 import type { ImportedCard } from '../lib/importers/index.js';
 import type { Card } from '../db/schema/cards.js';
@@ -519,6 +520,34 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'Failed to fetch prices' });
     }
   });
+
+  // POST /price-check-settings - Update scheduler interval
+  fastify.post<{ Body: { intervalHours: number } }>(
+    '/price-check-settings',
+    async (request, reply) => {
+      const { intervalHours } = request.body;
+
+      if (
+        !Number.isInteger(intervalHours) ||
+        intervalHours < 1 ||
+        intervalHours > 168
+      ) {
+        return reply.code(400).send({
+          error: 'intervalHours must be an integer between 1 and 168',
+        });
+      }
+
+      try {
+        await updatePriceCheckIntervalHours(intervalHours, fastify.log);
+        return reply.send(getPriceCheckSchedulerStatus());
+      } catch (error) {
+        fastify.log.error(error);
+        return reply
+          .code(500)
+          .send({ error: 'Failed to update price check settings' });
+      }
+    },
+  );
 
   // GET /price-check-status - Get scheduler status and last run metadata
   fastify.get('/price-check-status', async (_request, reply) => {

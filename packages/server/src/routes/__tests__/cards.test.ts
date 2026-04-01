@@ -50,6 +50,24 @@ vi.mock('../../lib/pricing/index.js', () => ({
   }),
 }));
 
+// Mock price check settings
+const priceCheckMocks = vi.hoisted(() => ({
+  getPriceCheckSchedulerStatus: vi.fn(),
+  updatePriceCheckIntervalHours: vi.fn(),
+}));
+vi.mock('../../lib/price-check/index.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../lib/price-check/index.js')
+  >('../../lib/price-check/index.js');
+
+  return {
+    ...actual,
+    getPriceCheckSchedulerStatus: priceCheckMocks.getPriceCheckSchedulerStatus,
+    updatePriceCheckIntervalHours:
+      priceCheckMocks.updatePriceCheckIntervalHours,
+  };
+});
+
 // Mock the TCGTracking client
 const mockGetSets = vi.fn();
 const mockGetPricing = vi.fn();
@@ -261,6 +279,13 @@ describe('GET /api/cards', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    priceCheckMocks.getPriceCheckSchedulerStatus.mockReturnValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      running: false,
+      lastRun: null,
+    });
     app = Fastify();
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
@@ -1936,6 +1961,61 @@ describe('GET /api/cards/price-check-status', () => {
     expect(body).toHaveProperty('thresholdPercent');
     expect(body).toHaveProperty('running');
     expect(body).toHaveProperty('lastRun');
+  });
+});
+
+describe('POST /api/cards/price-check-settings', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    priceCheckMocks.getPriceCheckSchedulerStatus.mockReturnValue({
+      enabled: true,
+      intervalHours: 6,
+      thresholdPercent: 2,
+      running: false,
+      lastRun: null,
+    });
+    priceCheckMocks.updatePriceCheckIntervalHours.mockResolvedValue(undefined);
+    app = Fastify();
+    await app.register(cardsRoutes, { prefix: '/api/cards' });
+  });
+
+  it('updates the interval and returns scheduler status', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: { intervalHours: 6 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(priceCheckMocks.updatePriceCheckIntervalHours).toHaveBeenCalledWith(
+      6,
+      expect.any(Object),
+    );
+    expect(JSON.parse(response.body)).toEqual({
+      enabled: true,
+      intervalHours: 6,
+      thresholdPercent: 2,
+      running: false,
+      lastRun: null,
+    });
+  });
+
+  it('returns 400 for invalid payloads', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: { intervalHours: 0 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'intervalHours must be an integer between 1 and 168',
+    });
+    expect(
+      priceCheckMocks.updatePriceCheckIntervalHours,
+    ).not.toHaveBeenCalled();
   });
 });
 

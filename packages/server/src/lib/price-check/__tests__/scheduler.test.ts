@@ -214,6 +214,54 @@ describe('BullMQ price check scheduler', () => {
     });
   });
 
+  it('re-registers repeat jobs when the interval is updated at runtime', async () => {
+    queueGetRepeatableJobs.mockResolvedValueOnce([
+      {
+        key: 'repeat:legacy-check-prices',
+        name: 'check-prices',
+        id: 'legacy-job-id',
+      },
+    ]);
+
+    const { startPriceCheckScheduler, updatePriceCheckIntervalHours } =
+      await loadSchedulerModule();
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await startPriceCheckScheduler(logger);
+    vi.clearAllMocks();
+
+    queueGetRepeatableJobs.mockResolvedValueOnce([
+      {
+        key: 'repeat:legacy-check-prices',
+        name: 'check-prices',
+        id: 'legacy-job-id',
+      },
+    ]);
+
+    await updatePriceCheckIntervalHours(6, logger);
+
+    expect(queueGetRepeatableJobs).toHaveBeenCalledOnce();
+    expect(queueRemoveRepeatableByKey).toHaveBeenCalledOnce();
+    expect(queueRemoveRepeatableByKey).toHaveBeenCalledWith(
+      'repeat:legacy-check-prices',
+    );
+    expect(queueAdd).toHaveBeenLastCalledWith(
+      'check-prices',
+      {},
+      expect.objectContaining({
+        jobId: 'check-prices-repeat',
+        repeat: { every: 6 * 60 * 60 * 1000 },
+      }),
+    );
+    const { getPriceCheckSchedulerStatus } = await loadSchedulerModule();
+    expect(getPriceCheckSchedulerStatus()).toMatchObject({ intervalHours: 6 });
+  });
+
   it('removes existing repeat jobs for the scheduler before adding the current one', async () => {
     queueGetRepeatableJobs.mockResolvedValueOnce([
       {
