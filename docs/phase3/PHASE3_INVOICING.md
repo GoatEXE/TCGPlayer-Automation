@@ -1,7 +1,7 @@
 # Phase 3.3 — Invoice / Packing Slip Generation
 
 Date: 2026-04-01
-Status: IN PROGRESS — WP-I1 through WP-I3 complete
+Status: IN PROGRESS — WP-I1 through WP-I5 complete
 Depends on: Phase 3.1 (sales) + Phase 3.2 (shipments) complete
 
 ---
@@ -156,6 +156,8 @@ The packing slip uses the same grouping logic.
 
 ### WP-I4: Invoice/packing-slip routes (server)
 
+**Completed:** 2026-04-01
+
 **Files:**
 
 - `packages/server/src/routes/invoices.ts` — **new file**
@@ -184,6 +186,8 @@ The packing slip uses the same grouping logic.
 ---
 
 ### WP-I5: Invoice route tests (server)
+
+**Completed:** 2026-04-01
 
 **Files:**
 
