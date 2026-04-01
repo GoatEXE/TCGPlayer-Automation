@@ -1,7 +1,7 @@
 # Phase 3.2 — Shipment Tracking (Local-First)
 
 Date: 2026-04-01
-Status: IN PROGRESS — WP-S1 through WP-S6 complete (WP-S7 tests done)
+Status: COMPLETE — WP-S1 through WP-S8 implemented (TCGPlayer API push-back deferred)
 Depends on: Phase 3.1 complete (sales + order-status infrastructure)
 
 ---

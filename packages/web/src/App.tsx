@@ -8,12 +8,15 @@ import type {
   Sale,
   SalesStats,
   SalesPipelineEntry,
+  Shipment,
 } from './api/types';
 import { SalesTable } from './components/SalesTable';
 import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
 import { SalesStatsBar } from './components/SalesStatsBar';
 import { SalesPipelineCard } from './components/SalesPipelineCard';
+import { ShipmentFormModal } from './components/ShipmentFormModal';
+import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
 import { CardTable } from './components/CardTable';
 import { Pagination } from './components/Pagination';
@@ -53,6 +56,10 @@ export function App() {
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<number>>(
     new Set(),
   );
+  const [shipmentsMap, setShipmentsMap] = useState<Map<number, Shipment>>(
+    new Map(),
+  );
+  const [shipModalSaleId, setShipModalSaleId] = useState<number | null>(null);
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -126,6 +133,21 @@ export function App() {
     }
   };
 
+  const fetchShipments = async (saleIds: number[]) => {
+    const next = new Map(shipmentsMap);
+    await Promise.all(
+      saleIds.map(async (id) => {
+        try {
+          const shipment = await api.getShipment(id);
+          next.set(id, shipment);
+        } catch {
+          // 404 = no shipment, skip
+        }
+      }),
+    );
+    setShipmentsMap(next);
+  };
+
   useEffect(() => {
     if (activeView === 'sales-history') {
       fetchSales();
@@ -143,6 +165,13 @@ export function App() {
     salesSearch,
     salesStatusFilter,
   ]);
+
+  useEffect(() => {
+    if (activeView === 'sales-history' && sales.length > 0) {
+      const saleIds = sales.map((s) => s.id);
+      fetchShipments(saleIds);
+    }
+  }, [sales]);
 
   const fetchPriceCheckStatus = async () => {
     setPriceCheckLoading(true);
@@ -322,6 +351,31 @@ export function App() {
     setSalesPage(1);
   };
 
+  const handleShipAction = (saleId: number) => {
+    setShipModalSaleId(saleId);
+  };
+
+  const handleShipmentSubmit = async (payload: ShipmentSubmitPayload) => {
+    if (payload.mode === 'create') {
+      await api.createShipment(payload.saleId, payload.data);
+    } else {
+      await api.updateShipment(payload.shipmentId, payload.data);
+    }
+    setShipModalSaleId(null);
+    fetchSales();
+    fetchPipeline();
+    fetchSalesStats();
+    // Refresh shipment for the affected sale
+    const saleId =
+      payload.mode === 'create' ? payload.saleId : shipModalSaleId!;
+    try {
+      const shipment = await api.getShipment(saleId);
+      setShipmentsMap((prev) => new Map(prev).set(saleId, shipment));
+    } catch {
+      // ignore
+    }
+  };
+
   const handleChangeView = (view: ViewMode) => {
     setActiveView(view);
     if (view === 'sales-history') {
@@ -329,6 +383,8 @@ export function App() {
       setSalesPage(1);
       setSalesStatusFilter(undefined);
       setSelectedSaleIds(new Set());
+      setShipmentsMap(new Map());
+      setShipModalSaleId(null);
     } else {
       setStatusFilter(view === 'active-listings' ? 'listed' : 'all');
       setSearchQuery('');
@@ -450,7 +506,18 @@ export function App() {
               onStatusChange={handleSaleStatusChange}
               selectedIds={selectedSaleIds}
               onSelectionChange={setSelectedSaleIds}
+              shipments={shipmentsMap}
+              onShip={handleShipAction}
             />
+
+            {shipModalSaleId !== null && (
+              <ShipmentFormModal
+                saleId={shipModalSaleId}
+                shipment={shipmentsMap.get(shipModalSaleId) ?? null}
+                onSubmit={handleShipmentSubmit}
+                onClose={() => setShipModalSaleId(null)}
+              />
+            )}
 
             <Pagination
               currentPage={salesPage}

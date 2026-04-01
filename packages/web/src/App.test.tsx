@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 
@@ -14,6 +14,9 @@ const apiMocks = vi.hoisted(() => ({
   updateSale: vi.fn(),
   batchUpdateSaleStatus: vi.fn(),
   getSaleStatusHistory: vi.fn(),
+  getShipment: vi.fn(),
+  createShipment: vi.fn(),
+  updateShipment: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
@@ -73,6 +76,19 @@ describe('App view tabs', () => {
       skipped: [],
     });
     apiMocks.getSaleStatusHistory.mockResolvedValue({ history: [] });
+    apiMocks.getShipment.mockRejectedValue(new Error('Not found'));
+    apiMocks.createShipment.mockResolvedValue({
+      id: 1,
+      saleId: 1,
+      carrier: null,
+      trackingNumber: null,
+      shippedAt: null,
+      deliveredAt: null,
+      notes: null,
+      createdAt: '2026-04-01T00:00:00Z',
+      updatedAt: '2026-04-01T00:00:00Z',
+    });
+    apiMocks.updateShipment.mockResolvedValue({});
   });
 
   it('switches to Active Listings mode and requests listed cards', async () => {
@@ -153,6 +169,115 @@ describe('App view tabs', () => {
       expect(apiMocks.getSales).toHaveBeenLastCalledWith(
         expect.objectContaining({ orderStatus: 'pending' }),
       );
+    });
+  });
+
+  it('opens shipment modal when ship button clicked and calls createShipment on submit', async () => {
+    const user = userEvent.setup();
+    apiMocks.getSales.mockResolvedValue({
+      sales: [
+        {
+          id: 42,
+          cardId: 1,
+          tcgplayerOrderId: 'ORD-1',
+          quantitySold: 1,
+          salePriceCents: 500,
+          buyerName: 'Buyer',
+          orderStatus: 'confirmed',
+          soldAt: '2026-04-01T00:00:00Z',
+          notes: null,
+          createdAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+          cardProductName: 'Test Card',
+          cardSetName: 'Origins',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /sales history/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Card')).toBeTruthy();
+    });
+
+    await user.click(screen.getByTitle('Record shipment'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+
+    const dialog = screen.getByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Carrier'), 'USPS');
+    await user.click(within(dialog).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createShipment).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ carrier: 'USPS' }),
+      );
+    });
+  });
+
+  it('refreshes sales and pipeline after shipment save', async () => {
+    const user = userEvent.setup();
+    apiMocks.getSales.mockResolvedValue({
+      sales: [
+        {
+          id: 10,
+          cardId: 1,
+          tcgplayerOrderId: null,
+          quantitySold: 1,
+          salePriceCents: 200,
+          buyerName: null,
+          orderStatus: 'confirmed',
+          soldAt: '2026-04-01T00:00:00Z',
+          notes: null,
+          createdAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+          cardProductName: 'Card A',
+          cardSetName: 'Set A',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /sales history/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Card A')).toBeTruthy();
+    });
+
+    // Clear call counts before ship action
+    apiMocks.getSales.mockClear();
+    apiMocks.getSalesPipeline.mockClear();
+    apiMocks.getSalesStats.mockClear();
+
+    await user.click(screen.getByTitle('Record shipment'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+
+    const dialog2 = screen.getByRole('dialog');
+    await user.click(within(dialog2).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createShipment).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.getSales).toHaveBeenCalled();
+      expect(apiMocks.getSalesPipeline).toHaveBeenCalled();
+      expect(apiMocks.getSalesStats).toHaveBeenCalled();
     });
   });
 });
