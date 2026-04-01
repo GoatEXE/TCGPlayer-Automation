@@ -19,6 +19,9 @@ import type {
   BatchStatusUpdateRequest,
   BatchStatusUpdateResponse,
   GetSalesPipelineResponse,
+  Shipment,
+  CreateShipmentRequest,
+  UpdateShipmentRequest,
 } from './types';
 
 const API_BASE = '/api';
@@ -197,6 +200,30 @@ class ApiClient {
 
   async getSalesPipeline(): Promise<GetSalesPipelineResponse> {
     return this.request<GetSalesPipelineResponse>('/sales/pipeline');
+  }
+
+  async createShipment(
+    saleId: number,
+    data: CreateShipmentRequest,
+  ): Promise<Shipment> {
+    return this.request<Shipment>(`/sales/${saleId}/ship`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getShipment(saleId: number): Promise<Shipment> {
+    return this.request<Shipment>(`/sales/${saleId}/shipment`);
+  }
+
+  async updateShipment(
+    shipmentId: number,
+    data: UpdateShipmentRequest,
+  ): Promise<Shipment> {
+    return this.request<Shipment>(`/shipments/${shipmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

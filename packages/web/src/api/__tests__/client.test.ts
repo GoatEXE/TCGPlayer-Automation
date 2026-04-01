@@ -422,6 +422,71 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('createShipment', () => {
+    it('sends POST to /sales/:id/ship with shipment data', async () => {
+      const mockShipment = { id: 1, saleId: 5, carrier: 'USPS' };
+      mockFetch(mockShipment);
+
+      const result = await api.createShipment(5, {
+        carrier: 'USPS',
+        trackingNumber: '9400111899223',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales/5/ship',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            carrier: 'USPS',
+            trackingNumber: '9400111899223',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockShipment);
+    });
+  });
+
+  describe('getShipment', () => {
+    it('fetches shipment by sale id', async () => {
+      const mockShipment = { id: 1, saleId: 5, carrier: 'USPS' };
+      mockFetch(mockShipment);
+
+      const result = await api.getShipment(5);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales/5/shipment',
+        expect.objectContaining({ headers: {} }),
+      );
+      expect(result).toEqual(mockShipment);
+    });
+  });
+
+  describe('updateShipment', () => {
+    it('sends PATCH to /shipments/:id with update data', async () => {
+      const mockShipment = { id: 3, saleId: 5, carrier: 'UPS' };
+      mockFetch(mockShipment);
+
+      const result = await api.updateShipment(3, {
+        carrier: 'UPS',
+        deliveredAt: '2026-04-01T12:00:00Z',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/shipments/3',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            carrier: 'UPS',
+            deliveredAt: '2026-04-01T12:00:00Z',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockShipment);
+    });
+  });
+
   describe('error handling', () => {
     it('throws error with message from API', async () => {
       mockFetch({ error: 'Card not found' }, false, 404);

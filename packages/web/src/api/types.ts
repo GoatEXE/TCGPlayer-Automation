@@ -203,6 +203,33 @@ export interface SalesStats {
   totalListedCount: number;
 }
 
+export interface Shipment {
+  id: number;
+  saleId: number;
+  carrier: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateShipmentRequest {
+  carrier?: string | null;
+  trackingNumber?: string | null;
+  shippedAt?: string;
+  notes?: string | null;
+}
+
+export interface UpdateShipmentRequest {
+  carrier?: string | null;
+  trackingNumber?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
+  notes?: string | null;
+}
+
 export interface ApiError {
   error: string;
   message: string;
