@@ -18,7 +18,8 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -403,6 +404,146 @@ body {
 .sales-status-cancelled {
   background: #fee2e2;
   color: #991b1b;
+}
+
+/* Pipeline Grid */
+.pipeline-grid {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.pipeline-card {
+  flex: 1 1 0;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pipeline-card:hover {
+  border-color: var(--color-primary);
+}
+
+.pipeline-card-active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.pipeline-count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pipeline-label {
+  font-size: 0.78rem;
+  text-transform: capitalize;
+  color: var(--color-text-muted);
+}
+
+.pipeline-total {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+/* Order Status Select */
+.order-status-select {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.order-status-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+/* Status Timeline */
+.timeline-empty {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  padding: 1rem 0;
+}
+
+.status-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.timeline-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-border);
+}
+
+.timeline-transition {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.timeline-arrow {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.timeline-initial {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.timeline-meta {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.timeline-source {
+  font-style: italic;
+}
+
+.timeline-note {
+  font-size: 0.82rem;
+  color: var(--color-text);
+  padding: 0.25rem 0.5rem;
+  background: var(--color-surface);
+  border-radius: 4px;
+  max-width: fit-content;
+}
+
+@media (max-width: 768px) {
+  .pipeline-grid {
+    gap: 0.5rem;
+  }
+
+  .pipeline-card {
+    min-width: 90px;
+  }
 }
 
 /* Cards Section */
