@@ -555,6 +555,49 @@ body {
   }
 }
 
+/* Shipment Form */
+.shipment-form {
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shipment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.shipment-field label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.shipment-select,
+.shipment-input,
+.shipment-textarea {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.shipment-select:focus,
+.shipment-input:focus,
+.shipment-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.shipment-textarea {
+  resize: vertical;
+}
+
 /* Cards Section */
 .cards-section {
   background: var(--color-bg);
