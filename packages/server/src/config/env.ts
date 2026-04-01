@@ -18,6 +18,8 @@ const envSchema = z.object({
   PRICE_DRIFT_THRESHOLD_PERCENT: z.coerce.number().default(2),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
+  SELLER_NAME: z.string().default(''),
+  SELLER_ID: z.string().default(''),
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
   NODE_ENV: z

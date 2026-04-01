@@ -1,300 +1,426 @@
 # Phase 3.3 — Invoice / Packing Slip Generation
 
 Date: 2026-04-01
-Status: PLAN (not yet implemented)
-Depends on: Phase 3.1 (sales) + Phase 3.2 (shipments) complete
 
----
+## Summary
+Implements printable invoice and packing slip generation for completed sales. This phase delivers browser-based print templates that include all required transaction details for customer records and shipment inclusion.
 
-## 1. Routing Check
+## Scope
+This phase covers:
+- Printable invoice template (HTML with print CSS)
+- Printable packing slip template (simplified variant)
+- Print button workflow from sales dashboard
+- Required field verification and display
+- PDF generation endpoint (optional/deferred)
 
-**Next strict-order item:** `PROJECT_PLAN.md` §6.3 — all 4 tasks:
+## Status
+📋 TODO — No implementation yet, local-first work (no external API dependencies)
 
+## Dependencies
+### Required (unblocked)
+- Phase 3.1 (Sales Dashboard) ✅ COMPLETE — sale records with buyer info exist
+- Phase 3.2 (Shipment Tracking) ✅ LOCAL COMPLETE — shipment records available
+
+### Blocked/Deferred
+- **PDF generation library integration** — deferred; browser print is sufficient for MVP
+- **TCGPlayer API sync** — N/A for invoicing; all required data is local
+
+## Architecture
+
+### Data Flow
 ```
-[ ] Build printable invoice template (HTML → PDF or browser print)
-[ ] Include: buyer info, card details, sale price, order ID, your seller info
-[ ] "Print" button on each sale that opens print-friendly view
-[ ] Packing slip variant — simpler format for including in shipment
-```
-
-**Blocked by TCGPlayer API?** No. All 4 tasks are entirely local — HTML template rendering + browser `window.print()`. Zero external dependencies.
-
----
-
-## 2. Approach
-
-### Why server-rendered HTML, not client-side React
-
-The invoice/packing-slip endpoints return **standalone HTML pages** from the server (`GET /api/sales/:id/invoice`, `GET /api/sales/:id/packing-slip`). The frontend opens them in a new tab and calls `window.print()`.
-
-Rationale:
-- Print CSS works best on a clean page without the SPA shell (no header, nav, sidebar in print output).
-- The server already has direct DB access — one query joins sale + card + shipment into a complete invoice payload. No extra API round-trip from the client.
-- The HTML is self-contained (inline CSS) — can be saved as a file or piped to a PDF library later without browser rendering.
-- Matches the `PROJECT_PLAN.md` §6.5 endpoint spec (`GET /api/sales/:id/invoice`, `GET /api/sales/:id/packing-slip`).
-
-### Data available for invoices
-
-From the existing schema (no new tables needed):
-
-| Field | Source |
-|---|---|
-| Order ID | `sales.tcgplayerOrderId` |
-| Sale date | `sales.soldAt` |
-| Buyer name | `sales.buyerName` |
-| Card name | `cards.productName` (via join) |
-| Card set | `cards.setName` (via join) |
-| Card condition | `cards.condition` (via join) |
-| Qty sold | `sales.quantitySold` |
-| Sale price | `sales.salePriceCents` |
-| Order status | `sales.orderStatus` |
-| Carrier | `shipments.carrier` (via join) |
-| Tracking # | `shipments.trackingNumber` (via join) |
-| Shipped date | `shipments.shippedAt` (via join) |
-| Sale notes | `sales.notes` |
-
-### Seller info
-
-No seller profile table exists. For this slice, seller info is configured via **env vars** (new):
-
-```
-SELLER_NAME=        # e.g. "Dustin's Card Shop"
-SELLER_ID=          # e.g. TCGPlayer seller username (optional)
-```
-
-Defaults to empty strings. The template conditionally hides the seller block when unconfigured. A seller-settings table can replace this later without changing the template contract.
-
-### Multi-card order grouping
-
-Multiple `sales` rows can share the same `tcgplayerOrderId`. The invoice endpoint supports:
-- **Single-sale invoice:** `GET /api/sales/:id/invoice` — one sale line-item
-- **Order-grouped invoice:** `GET /api/sales/:id/invoice` — when the sale has a `tcgplayerOrderId`, the template includes ALL sales with that same order ID as line items. This gives a proper multi-line invoice for bundled orders.
-
-The packing slip uses the same grouping logic.
-
----
-
-## 3. Work Packages
-
-### WP-I1: Env config for seller info
-
-**Files:**
-- `packages/server/src/config/env.ts` — add `SELLER_NAME` (string, optional, default `''`) and `SELLER_ID` (string, optional, default `''`)
-- `.env.example` — add `SELLER_NAME=` and `SELLER_ID=` with comments
-
-**Acceptance criteria:**
-- App starts with or without these vars set
-- `pnpm --filter server test` passes
-
-**Risk:** Low. Additive config only.
-
----
-
-### WP-I2: Invoice HTML renderer (server)
-
-**Files:**
-- `packages/server/src/lib/invoices/render-invoice.ts` — **new file**
-  - `renderInvoiceHtml(data: InvoiceData): string`
-  - Pure function: takes typed data, returns self-contained HTML string with inline CSS
-  - Template includes:
-    - Header: seller name/ID (if configured), "Invoice" title, date
-    - Order info: TCGPlayer order ID, buyer name, order status
-    - Line items table: card name, set, condition, qty, unit price, line total
-    - Totals row: subtotal (sum of line items)
-    - Shipping info: carrier, tracking number, shipped date (if shipment exists)
-    - Footer: notes, "Thank you" message
-  - Print-optimized CSS: `@media print` rules, no background colors, clean borders
-- `packages/server/src/lib/invoices/render-packing-slip.ts` — **new file**
-  - `renderPackingSlipHtml(data: PackingSlipData): string`
-  - Simplified variant: card name, set, condition, qty only (no prices)
-  - Includes: order ID, buyer name, shipping info, gift-pool items note if applicable
-  - Compact layout designed for folding into a PWE or small package
-- `packages/server/src/lib/invoices/types.ts` — **new file**
-  - `InvoiceData`, `PackingSlipData`, `InvoiceLineItem`, `InvoiceShipment`, `InvoiceSellerInfo` interfaces
-- `packages/server/src/lib/invoices/index.ts` — **new file**: barrel export
-
-**Acceptance criteria:**
-- `renderInvoiceHtml()` returns valid HTML with all sections populated
-- `renderPackingSlipHtml()` returns valid HTML without price data
-- Both are pure functions with no DB/IO dependency (testable in isolation)
-- HTML passes basic structure validation (has `<html>`, `<head>`, `<body>`, `<table>`)
-
-**Risk:** Low. Pure template functions.
-
----
-
-### WP-I3: Invoice renderer tests (server)
-
-**Files:**
-- `packages/server/src/lib/invoices/__tests__/render-invoice.test.ts` — **new file**
-  1. Renders invoice with all fields populated
-  2. Renders invoice with missing optional fields (no buyer, no shipment, no seller info)
-  3. Multi-line-item invoice renders all rows with correct totals
-  4. Prices formatted as dollars (not cents)
-  5. Contains `@media print` CSS
-  6. Seller block hidden when `sellerName` is empty
-- `packages/server/src/lib/invoices/__tests__/render-packing-slip.test.ts` — **new file**
-  7. Renders packing slip with card details but no prices
-  8. Renders shipping info when present
-  9. Renders without shipping info gracefully
-  10. Compact layout (no price columns)
-
-**Acceptance criteria:** All 10 cases pass. `pnpm --filter server test` green.
-
-> Test-first: write before WP-I2.
-
----
-
-### WP-I4: Invoice/packing-slip routes (server)
-
-**Files:**
-- `packages/server/src/routes/invoices.ts` — **new file**
-  - `GET /api/sales/:id/invoice`
-    - Loads sale by ID; if sale has `tcgplayerOrderId`, loads all sales with that order ID
-    - Joins card data for each sale line item
-    - Left-joins shipment data (picks first shipment in the order group)
-    - Reads `SELLER_NAME` / `SELLER_ID` from env
-    - Calls `renderInvoiceHtml()`, returns `Content-Type: text/html`
-    - 404 if sale not found
-  - `GET /api/sales/:id/packing-slip`
-    - Same data loading as invoice
-    - Calls `renderPackingSlipHtml()`, returns `Content-Type: text/html`
-    - 404 if sale not found
-- `packages/server/src/routes/index.ts` — register invoice routes
-
-**Acceptance criteria:**
-- `GET /api/sales/1/invoice` returns HTML with `Content-Type: text/html`
-- Multi-card order groups all line items
-- Missing sale returns 404 JSON error
-- Shipment data included when present, gracefully absent when not
-
-**Risk:** Low-medium. The order-grouping query (find all sales with same `tcgplayerOrderId`) needs a null guard — sales without an order ID should NOT group with other null-order sales.
-
----
-
-### WP-I5: Invoice route tests (server)
-
-**Files:**
-- `packages/server/src/routes/__tests__/invoices.test.ts` — **new file**
-  1. `GET /api/sales/:id/invoice` — returns HTML with correct content-type
-  2. `GET /api/sales/:id/invoice` — includes card name, price, buyer in output
-  3. `GET /api/sales/:id/invoice` — groups multiple sales with same `tcgplayerOrderId`
-  4. `GET /api/sales/:id/invoice` — sale without `tcgplayerOrderId` renders single line item (no grouping with other null-order sales)
-  5. `GET /api/sales/:id/invoice` — includes shipment data when present
-  6. `GET /api/sales/:id/invoice` — sale not found → 404
-  7. `GET /api/sales/:id/packing-slip` — returns HTML without price data
-  8. `GET /api/sales/:id/packing-slip` — sale not found → 404
-
-**Acceptance criteria:** All 8 cases pass.
-
-> Test-first: write before WP-I4.
-
----
-
-### WP-I6: API client + types (web)
-
-**Files:**
-- `packages/web/src/api/types.ts` — no new types needed (endpoints return HTML, not JSON)
-- `packages/web/src/api/client.ts` — add methods:
-  - `getInvoiceUrl(saleId: number): string` — returns URL string `/api/sales/${saleId}/invoice` (not a fetch — opens in new tab)
-  - `getPackingSlipUrl(saleId: number): string` — returns URL string `/api/sales/${saleId}/packing-slip`
-
-**Acceptance criteria:** `pnpm --filter web build` passes.
-
-**Risk:** Low. These are URL builders, not fetch calls.
-
----
-
-### WP-I7: Print buttons in SalesTable (web)
-
-**Files:**
-- `packages/web/src/components/SalesTable.tsx` — add action buttons:
-  - 🧾 "Invoice" button — visible for all non-cancelled sales; `onClick` opens `api.getInvoiceUrl(sale.id)` in new tab via `window.open()`
-  - 📋 "Packing Slip" button — visible for `confirmed`/`shipped` sales; opens packing slip URL in new tab
-- `packages/web/src/components/SalesTable.tsx` — update `colCount` to account for new action column width
-
-**Acceptance criteria:**
-- Invoice button visible for pending/confirmed/shipped/delivered sales
-- Packing slip button visible for confirmed/shipped sales only
-- Buttons open new browser tab with the HTML document
-- `window.print()` is NOT auto-called (user can preview first, then print from browser)
-
-**Risk:** Low. Small addition to existing component.
-
----
-
-### WP-I8: Frontend tests (web)
-
-**Files:**
-- `packages/web/src/components/__tests__/SalesTable.test.tsx` — **add cases**
-  1. Invoice button renders for non-cancelled sale
-  2. Invoice button hidden for cancelled sale
-  3. Packing slip button renders for confirmed sale
-  4. Packing slip button renders for shipped sale
-  5. Packing slip button hidden for pending/delivered/cancelled sale
-  6. Buttons have correct href/target attributes
-
-**Acceptance criteria:** `pnpm --filter web test` passes.
-
----
-
-## 4. Implementation Order
-
-```
-WP-I1  Env config (seller info)          [server, quick]
+Sale record (with buyer info)
   ↓
-WP-I2  Invoice + packing slip renderers  [server]  ←── test-first with WP-I3
-WP-I3  Renderer tests                    [server]
+GET /api/sales/:id/invoice
   ↓
-WP-I4  Invoice routes                    [server]  ←── test-first with WP-I5
-WP-I5  Route tests                       [server]
+Render invoice template with:
+  - Seller info (from env/config)
+  - Buyer info (from sale.buyerName + order metadata)
+  - Card details (from listing → card)
+  - Pricing (sale.salePriceCents)
+  - Order metadata (sale.tcgplayerOrderId, soldAt)
   ↓
-WP-I6  API client URL builders           [web]
+Return HTML with print-optimized CSS
   ↓
-WP-I7  Print buttons in SalesTable       [web]  ←── test-first with WP-I8
-WP-I8  Frontend tests                    [web]
+Frontend opens in new window/tab
+  ↓
+User triggers browser print (Ctrl+P / Cmd+P)
 ```
 
-**Parallelizable:** WP-I2 + WP-I3 (test-first pair). WP-I4 + WP-I5 (test-first pair). WP-I7 + WP-I8 (test-first pair).
-**Sequential bottleneck:** WP-I1 first (env config); WP-I4 depends on WP-I2.
+### Template Variants
+Two templates share common structure but differ in included fields:
+
+#### Invoice Template
+**Purpose:** Customer receipt for tax/accounting records
+
+**Required fields:**
+- **Seller information**
+  - Business/seller name
+  - Address (if registered business)
+  - Contact email
+  - TCGPlayer seller ID (optional)
+- **Buyer information**
+  - Name (from `sale.buyerName`)
+  - Shipping address (from order metadata if available)
+- **Order information**
+  - Order ID (`sale.tcgplayerOrderId`)
+  - Order date (`sale.soldAt`)
+  - Payment method (TCGPlayer marketplace)
+- **Line items**
+  - Card name (`card.name`)
+  - Set name (`card.setName`)
+  - Condition (`card.condition`)
+  - Quantity sold (`sale.quantitySold`)
+  - Unit price (calculated: `sale.salePriceCents / sale.quantitySold`)
+  - Line total (`sale.salePriceCents`)
+- **Pricing summary**
+  - Subtotal (sum of line items)
+  - Shipping (if known from order metadata)
+  - Tax (if applicable, from order metadata)
+  - **Total** (`sale.salePriceCents` or calculated total)
+- **Footer**
+  - "Thank you for your purchase"
+  - Return policy reference (if applicable)
+  - "Questions? Contact [seller email]"
+
+#### Packing Slip Template
+**Purpose:** Shipment verification, included in package
+
+**Required fields:**
+- **Seller name** (brief, no full address needed)
+- **Buyer name and shipping address**
+- **Order ID** (`sale.tcgplayerOrderId`)
+- **Order date** (`sale.soldAt`)
+- **Line items** (card name, set, condition, quantity only — **no prices**)
+- **Shipment tracking** (if available from `shipment` table)
+- **Footer**
+  - "Thank you for your order!"
+  - "Please leave feedback on TCGPlayer"
+  - QR code linking to seller profile (optional, Phase 4 enhancement)
+
+### Print CSS Strategy
+Templates use `@media print` rules to:
+- Hide navigation/chrome when printing
+- Force single-column layout
+- Ensure page breaks between multiple items (if batch printing)
+- Use black text on white background (ink-efficient)
+- Set appropriate margins for standard 8.5x11" paper
+
+Example:
+```css
+@media print {
+  body { margin: 0; padding: 1in; }
+  .no-print { display: none; }
+  .page-break { page-break-after: always; }
+  * { color: black !important; background: white !important; }
+}
+```
+
+## API Endpoints
+
+### Invoice Endpoint
+```
+GET /api/sales/:id/invoice
+```
+
+**Response:**
+- Content-Type: `text/html`
+- Renders full HTML invoice template with embedded CSS
+- Includes `<title>Invoice - Order #{tcgplayerOrderId}</title>` for browser tab/print preview
+
+**Error cases:**
+- Sale not found → 404
+- Sale missing buyer info → 500 (should not happen if sale workflow enforces this)
+
+### Packing Slip Endpoint
+```
+GET /api/sales/:id/packing-slip
+```
+
+**Response:**
+- Content-Type: `text/html`
+- Renders packing slip template with embedded CSS
+- Includes `<title>Packing Slip - Order #{tcgplayerOrderId}</title>`
+
+**Error cases:**
+- Sale not found → 404
+
+### Optional: PDF Generation Endpoint (Deferred)
+```
+GET /api/sales/:id/invoice.pdf
+GET /api/sales/:id/packing-slip.pdf
+```
+
+**Implementation:**
+- Use library like `puppeteer` or `@pdfme/generator`
+- Render HTML template to PDF buffer
+- Return as `application/pdf` with `Content-Disposition: attachment`
+
+**Deferral rationale:** Browser print-to-PDF is sufficient for MVP. PDF generation adds dependency weight (headless Chrome for puppeteer) and complexity. Re-evaluate if user requests programmatic PDF storage or automated email attachment.
+
+## Frontend Changes
+
+### Sales Dashboard Integration
+Add print actions to each sale row:
+
+**Option A: Dropdown menu (preferred for multiple actions)**
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger>Actions</DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem onClick={() => printInvoice(sale.id)}>
+      Print Invoice
+    </DropdownMenuItem>
+    <DropdownMenuItem onClick={() => printPackingSlip(sale.id)}>
+      Print Packing Slip
+    </DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+**Option B: Icon buttons (faster access, more visual space)**
+```tsx
+<div className="flex gap-2">
+  <Button size="sm" variant="ghost" onClick={() => printInvoice(sale.id)}>
+    <FileText className="h-4 w-4" />
+  </Button>
+  <Button size="sm" variant="ghost" onClick={() => printPackingSlip(sale.id)}>
+    <Package className="h-4 w-4" />
+  </Button>
+</div>
+```
+
+### Print Workflow
+```typescript
+function printInvoice(saleId: string) {
+  const url = `/api/sales/${saleId}/invoice`;
+  const printWindow = window.open(url, '_blank');
+  
+  // Optional: auto-trigger print dialog after load
+  printWindow?.addEventListener('load', () => {
+    printWindow.print();
+  });
+}
+
+function printPackingSlip(saleId: string) {
+  const url = `/api/sales/${saleId}/packing-slip`;
+  const printWindow = window.open(url, '_blank');
+  
+  printWindow?.addEventListener('load', () => {
+    printWindow.print();
+  });
+}
+```
+
+**Alternative:** Keep window open for review before printing (remove auto-trigger, let user press Ctrl+P).
+
+## Database Schema
+
+### Seller Configuration (New Table)
+Store seller information for invoice generation:
+
+```typescript
+export const sellerConfig = pgTable('seller_config', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  businessName: text('business_name').notNull(),
+  contactEmail: text('contact_email').notNull(),
+  address: text('address'), // Optional for registered businesses
+  phone: text('phone'),
+  tcgplayerSellerId: text('tcgplayer_seller_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+```
+
+**Note:** Single-row table (enforced by application logic). If multi-user support is added later, add `userId` foreign key.
+
+### Sales Table Enhancement (Already Exists)
+Verify `sales` table includes required fields:
+- `buyerName` — ✅ exists (varchar, nullable)
+- `tcgplayerOrderId` — ✅ exists (varchar, not null)
+- `soldAt` — ✅ exists (timestamp, not null)
+- `salePriceCents` — ✅ exists (integer, not null)
+- `quantitySold` — ✅ exists (integer, not null)
+
+**Additional field for order metadata (optional):**
+```typescript
+orderMetadata: jsonb('order_metadata'), // { shippingAddress, tax, shippingCost, etc. }
+```
+
+If order metadata is not available from TCGPlayer API sync, omit shipping address from invoice. This is acceptable for MVP since TCGPlayer handles payment processing and the invoice is primarily for seller records.
+
+## Implementation Plan
+
+### Work Packages (Test-First)
+
+#### Package 1: Seller Configuration
+**Tests:**
+- `POST /api/seller-config` creates initial configuration
+- `GET /api/seller-config` returns current configuration
+- `PUT /api/seller-config` updates existing configuration
+- Validation: `businessName` and `contactEmail` are required
+
+**Implementation:**
+- Create `seller_config` table migration
+- Create `/api/seller-config` CRUD endpoints
+- Create settings page in dashboard for seller info entry
+
+**Acceptance:**
+- Seller can enter business name, email, optional address
+- Configuration persists across restarts
+- Validation errors display in UI
 
 ---
 
-## 5. Test Summary
+#### Package 2: Invoice Template + Endpoint
+**Tests:**
+- `GET /api/sales/:id/invoice` returns HTML with correct Content-Type
+- Invoice includes all required fields from sale + seller config
+- Invoice calculates subtotal/total correctly
+- Print CSS hides non-print elements
+- Missing seller config returns 500 with helpful error
 
-### Server (18 test cases)
+**Implementation:**
+- Create invoice HTML template (embedded in endpoint or separate `.html` file with templating)
+- Implement `/api/sales/:id/invoice` endpoint
+- Fetch sale + listing + card + seller config data
+- Render template with data interpolation
+- Add print CSS rules
 
-| Area | Cases | Key assertions |
-|---|---|---|
-| `render-invoice.test.ts` | 6 | All fields, missing optionals, multi-line, price formatting, print CSS, seller block |
-| `render-packing-slip.test.ts` | 4 | No prices, shipping info present/absent, compact layout |
-| `invoices.test.ts` (routes) | 8 | HTML content-type, card/buyer/price in output, order grouping, null-order guard, shipment, 404s |
-
-### Web (6 test cases)
-
-| Area | Cases | Key assertions |
-|---|---|---|
-| `SalesTable.test.tsx` additions | 6 | Button visibility by status, correct URL targets |
-
----
-
-## 6. Blocked Items
-
-**None.** All 4 §6.3 tasks are fully local. No external API dependency.
-
-The only future enhancement that would need external access is auto-populating buyer shipping address on the invoice (from TCGPlayer order data), which is not in scope and not in the checklist.
+**Acceptance:**
+- Opening `/api/sales/:id/invoice` in browser displays formatted invoice
+- Ctrl+P shows print preview with proper layout
+- All required fields populate correctly
+- No seller info → clear error message in UI
 
 ---
 
-## 7. Checklist Mapping (PROJECT_PLAN.md §6.3)
+#### Package 3: Packing Slip Template + Endpoint
+**Tests:**
+- `GET /api/sales/:id/packing-slip` returns HTML
+- Packing slip includes order info and line items WITHOUT prices
+- Shipment tracking displays if available
+- Print CSS optimized for simple layout
 
-After all WPs complete:
+**Implementation:**
+- Create packing slip HTML template (similar to invoice, simplified)
+- Implement `/api/sales/:id/packing-slip` endpoint
+- Join sale + shipment data if tracking exists
+- Render template without pricing fields
 
-```
-- [x] Build printable invoice template (HTML → PDF or browser print)
-- [x] Include: buyer info, card details, sale price, order ID, your seller info
-- [x] "Print" button on each sale that opens print-friendly view
-- [x] Packing slip variant — simpler format for including in shipment
-```
+**Acceptance:**
+- Packing slip displays order verification info
+- No pricing visible (prevents price-based returns)
+- Tracking number included if shipment exists
 
-Milestone 3.3 status: **complete** (4 of 4 tasks, no blockers).
+---
+
+#### Package 4: Dashboard Print Integration
+**Tests:**
+- Print invoice button opens new window with correct URL
+- Print packing slip button opens new window with correct URL
+- Auto-print triggers after load (or verify manual trigger works)
+
+**Implementation:**
+- Add print action buttons to sales table rows
+- Implement `printInvoice()` and `printPackingSlip()` helpers
+- Optional: add loading state while window opens
+
+**Acceptance:**
+- User can click "Print Invoice" from sale row
+- New tab opens with invoice, ready to print
+- Same flow works for packing slip
+- Print dialog appears (if auto-trigger enabled)
+
+---
+
+#### Package 5: Batch Printing (Optional Enhancement)
+**Tests:**
+- Select multiple sales → "Print All Packing Slips" generates single HTML with page breaks
+- Each slip on separate page in print preview
+
+**Implementation:**
+- Add multi-select to sales table
+- Create `POST /api/sales/batch-packing-slips` endpoint accepting array of sale IDs
+- Render templates with `page-break-after: always` between each slip
+
+**Acceptance:**
+- User can select 5 orders and print all packing slips in one job
+- Each slip prints on separate page
+- Browser print dialog shows correct page count
+
+**Deferral:** Deferred to Phase 4 if needed; single-sale printing is sufficient for MVP.
+
+## Testing Strategy
+
+### Unit Tests
+- Template rendering with mock data
+- Seller config CRUD operations
+- Data fetching and joining (sale + listing + card + shipment)
+
+### Integration Tests
+- Full endpoint flow: request → DB query → template render → HTML response
+- Error handling: missing sale, missing seller config
+
+### Manual Validation
+- Open invoice in browser, verify all fields populate
+- Trigger browser print, verify layout in print preview
+- Print to PDF, verify output quality
+- Test with missing optional fields (address, shipment tracking)
+- Test with long card names, multiple line items
+
+### Accessibility
+- Print templates use semantic HTML (`<table>`, `<th>`, `<td>` for line items)
+- Sufficient contrast for readability
+- Font size >= 10pt for print legibility
+
+## Configuration
+
+### Environment Variables
+No new env vars required. Seller info stored in database via settings UI.
+
+### Seller Config Defaults
+On first run, if no seller config exists:
+- Redirect admin to `/settings/seller` before allowing invoice generation
+- OR: use placeholder values with warning banner: "Configure seller info in Settings"
+
+Recommended: **block invoice generation** until seller config exists (return 500 with clear message).
+
+## Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| **Browser print inconsistencies** | Invoice layout breaks in some browsers | Test in Chrome, Firefox, Safari; use standard CSS print rules; avoid complex flexbox/grid in print styles |
+| **Missing buyer address** | Invoice incomplete if TCGPlayer order metadata unavailable | Make shipping address optional; note "Shipping handled by TCGPlayer marketplace" if missing |
+| **Long card names overflow** | Layout breaks with verbose card titles | Use `word-wrap: break-word` and test with longest known card names |
+| **Printer paper size variance** | Layout optimized for US Letter may not fit A4 | Use flexible margins and test with A4 simulation; consider separate A4 template if international users |
+
+## Future Enhancements (Phase 4+)
+
+1. **PDF generation endpoint** — if user requests programmatic storage or email automation
+2. **Batch printing** — select multiple sales, print all packing slips in one job
+3. **QR codes** — link to TCGPlayer seller profile or order tracking
+4. **Custom branding** — logo upload, custom footer text
+5. **Multi-language support** — if selling internationally
+6. **Email integration** — auto-send invoice on sale confirmation
+
+## Success Criteria
+
+Phase 3.3 is complete when:
+- [ ] Seller configuration table and CRUD endpoints implemented
+- [ ] Settings page for seller info entry exists and validates required fields
+- [ ] Invoice template renders with all required fields from sale + seller config
+- [ ] Packing slip template renders with order info, line items (no prices), and tracking
+- [ ] Print buttons integrated into sales dashboard
+- [ ] Print workflow opens new window and displays correct template
+- [ ] Print CSS produces clean output in browser print preview
+- [ ] Unit tests pass for template rendering and endpoint logic
+- [ ] Integration tests pass for full endpoint flow
+- [ ] Manual validation confirms readable print output
+- [ ] Error handling for missing seller config or sale records
+
+## References
+- Phase 3.1 Sales Dashboard: `packages/web/src/pages/SalesPage.tsx`
+- Phase 3.2 Shipment tracking: `packages/server/src/db/schema.ts` (`shipment` table)
+- Sale model: `packages/server/src/db/schema.ts` (`sale` table)
+- Print CSS best practices: [MDN @media print](https://developer.mozilla.org/en-US/docs/Web/CSS/@media)
