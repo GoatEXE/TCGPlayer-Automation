@@ -32,6 +32,16 @@ function mockCardSelectResult(cardRows: any[]) {
   } as any);
 }
 
+function mockSaleSelectResult(saleRows: any[]) {
+  vi.mocked(db.select).mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(saleRows),
+      }),
+    }),
+  } as any);
+}
+
 describe('sales routes', () => {
   let app: FastifyInstance;
 
@@ -56,19 +66,23 @@ describe('sales routes', () => {
       });
       vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
 
-      vi.mocked(db.insert).mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            {
-              id: 10,
-              cardId: 1,
-              quantitySold: 1,
-              salePriceCents: 125,
-              orderStatus: 'pending',
-            },
-          ]),
-        }),
-      } as any);
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 10,
+                cardId: 1,
+                quantitySold: 1,
+                salePriceCents: 125,
+                orderStatus: 'pending',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -113,19 +127,23 @@ describe('sales routes', () => {
       });
       vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
 
-      vi.mocked(db.insert).mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            {
-              id: 11,
-              cardId: 2,
-              quantitySold: 1,
-              salePriceCents: 500,
-              orderStatus: 'pending',
-            },
-          ]),
-        }),
-      } as any);
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 11,
+                cardId: 2,
+                quantitySold: 1,
+                salePriceCents: 500,
+                orderStatus: 'pending',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -142,6 +160,63 @@ describe('sales routes', () => {
         expect.objectContaining({
           quantity: 0,
           status: 'sold',
+        }),
+      );
+    });
+
+    it('writes initial status history entry on sale creation', async () => {
+      mockCardSelectResult([
+        {
+          id: 12,
+          status: 'listed',
+          quantity: 2,
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      const historyValues = vi.fn().mockResolvedValue(undefined);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 55,
+                cardId: 12,
+                quantitySold: 1,
+                salePriceCents: 200,
+                orderStatus: 'confirmed',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: historyValues,
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 12,
+          quantitySold: 1,
+          salePriceCents: 200,
+          orderStatus: 'confirmed',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(historyValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          saleId: 55,
+          previousStatus: null,
+          newStatus: 'confirmed',
+          source: 'manual',
         }),
       );
     });
@@ -345,14 +420,23 @@ describe('sales routes', () => {
   });
 
   describe('PATCH /api/sales/:id', () => {
-    it('updates sale fields', async () => {
+    it('updates sale metadata fields', async () => {
+      mockSaleSelectResult([
+        {
+          id: 1,
+          cardId: 1,
+          quantitySold: 1,
+          orderStatus: 'confirmed',
+        },
+      ]);
+
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
             returning: vi.fn().mockResolvedValue([
               {
                 id: 1,
-                orderStatus: 'shipped',
+                orderStatus: 'confirmed',
                 tcgplayerOrderId: 'ORDER-1',
               },
             ]),
@@ -364,7 +448,6 @@ describe('sales routes', () => {
         method: 'PATCH',
         url: '/api/sales/1',
         payload: {
-          orderStatus: 'shipped',
           tcgplayerOrderId: 'ORDER-1',
         },
       });
@@ -373,19 +456,15 @@ describe('sales routes', () => {
       expect(JSON.parse(response.body)).toEqual(
         expect.objectContaining({
           id: 1,
-          orderStatus: 'shipped',
+          tcgplayerOrderId: 'ORDER-1',
+          orderStatus: 'confirmed',
         }),
       );
+      expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
     });
 
     it('returns 404 when updating unknown sale', async () => {
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([]),
-          }),
-        }),
-      } as any);
+      mockSaleSelectResult([]);
 
       const response = await app.inject({
         method: 'PATCH',
@@ -395,6 +474,254 @@ describe('sales routes', () => {
 
       expect(response.statusCode).toBe(404);
       expect(JSON.parse(response.body)).toEqual({ error: 'Sale not found' });
+    });
+
+    it('rejects invalid backward transitions', async () => {
+      mockSaleSelectResult([
+        {
+          id: 2,
+          cardId: 2,
+          quantitySold: 1,
+          orderStatus: 'shipped',
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/2',
+        payload: { orderStatus: 'pending' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual(
+        expect.objectContaining({
+          error: expect.stringContaining('Invalid orderStatus transition'),
+        }),
+      );
+    });
+
+    it('rejects transitions from terminal statuses', async () => {
+      mockSaleSelectResult([
+        {
+          id: 3,
+          cardId: 3,
+          quantitySold: 1,
+          orderStatus: 'delivered',
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/3',
+        payload: { orderStatus: 'cancelled' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual(
+        expect.objectContaining({
+          error: expect.stringContaining('Invalid orderStatus transition'),
+        }),
+      );
+    });
+
+    it('writes status history row on valid status transitions', async () => {
+      mockSaleSelectResult([
+        {
+          id: 4,
+          cardId: 4,
+          quantitySold: 1,
+          orderStatus: 'confirmed',
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 4,
+                orderStatus: 'shipped',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const historyValues = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(db.insert).mockReturnValue({ values: historyValues } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/4',
+        payload: { orderStatus: 'shipped' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(historyValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          saleId: 4,
+          previousStatus: 'confirmed',
+          newStatus: 'shipped',
+          source: 'manual',
+        }),
+      );
+    });
+
+    it('restores quantity and relists card when cancelling a fully sold sale', async () => {
+      vi.mocked(db.select)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: 5,
+                  cardId: 9,
+                  quantitySold: 2,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: 9,
+                  quantity: 0,
+                  status: 'sold',
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+      const saleUpdateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            {
+              id: 5,
+              orderStatus: 'cancelled',
+            },
+          ]),
+        }),
+      });
+
+      const cardUpdateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      vi.mocked(db.update)
+        .mockReturnValueOnce({ set: saleUpdateSet } as any)
+        .mockReturnValueOnce({ set: cardUpdateSet } as any);
+
+      vi.mocked(db.insert).mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/5',
+        payload: { orderStatus: 'cancelled' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(cardUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 2,
+          status: 'listed',
+          updatedAt: expect.any(Date),
+        }),
+      );
+    });
+
+    it('cancellation succeeds when sale has no linked card id', async () => {
+      mockSaleSelectResult([
+        {
+          id: 6,
+          cardId: null,
+          quantitySold: 1,
+          orderStatus: 'confirmed',
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 6,
+                orderStatus: 'cancelled',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      vi.mocked(db.insert).mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/6',
+        payload: { orderStatus: 'cancelled' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancellation succeeds when linked card is missing', async () => {
+      vi.mocked(db.select)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: 7,
+                  cardId: 99,
+                  quantitySold: 1,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        } as any);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 7,
+                orderStatus: 'cancelled',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      vi.mocked(db.insert).mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/7',
+        payload: { orderStatus: 'cancelled' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
     });
   });
 });

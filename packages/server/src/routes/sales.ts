@@ -11,7 +11,9 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
+import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
+import { isValidTransition } from '../lib/sales/status-machine.js';
 
 type OrderStatus =
   | 'pending'
@@ -144,6 +146,13 @@ export async function salesRoutes(fastify: FastifyInstance) {
           updatedAt: new Date(),
         })
         .returning();
+
+      await db.insert(saleStatusHistory).values({
+        saleId: sale.id,
+        previousStatus: null,
+        newStatus: orderStatus,
+        source: 'manual',
+      });
 
       return reply.code(201).send(sale);
     } catch (error) {
@@ -340,39 +349,60 @@ export async function salesRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'Invalid orderStatus' });
       }
 
-      const updateData: any = {
-        updatedAt: new Date(),
-      };
-
-      if (buyerName !== undefined) {
-        updateData.buyerName = buyerName;
-      }
-
-      if (tcgplayerOrderId !== undefined) {
-        updateData.tcgplayerOrderId = tcgplayerOrderId;
-      }
-
-      if (orderStatus !== undefined) {
-        updateData.orderStatus = orderStatus;
-      }
-
-      if (notes !== undefined) {
-        updateData.notes = notes;
-      }
-
-      if (soldAt !== undefined) {
-        const soldAtDate = parseDate(soldAt);
-        if (!soldAtDate) {
-          return reply.code(400).send({ error: 'Invalid soldAt date' });
-        }
-        updateData.soldAt = soldAtDate;
-      }
-
-      if (Object.keys(updateData).length === 1) {
-        return reply.code(400).send({ error: 'No valid fields to update' });
-      }
-
       try {
+        const [existingSale] = await db
+          .select()
+          .from(sales)
+          .where(eq(sales.id, saleId))
+          .limit(1);
+
+        if (!existingSale) {
+          return reply.code(404).send({ error: 'Sale not found' });
+        }
+
+        const updateData: any = {
+          updatedAt: new Date(),
+        };
+
+        if (buyerName !== undefined) {
+          updateData.buyerName = buyerName;
+        }
+
+        if (tcgplayerOrderId !== undefined) {
+          updateData.tcgplayerOrderId = tcgplayerOrderId;
+        }
+
+        if (notes !== undefined) {
+          updateData.notes = notes;
+        }
+
+        if (soldAt !== undefined) {
+          const soldAtDate = parseDate(soldAt);
+          if (!soldAtDate) {
+            return reply.code(400).send({ error: 'Invalid soldAt date' });
+          }
+          updateData.soldAt = soldAtDate;
+        }
+
+        let nextStatus: OrderStatus | null = null;
+        if (
+          orderStatus !== undefined &&
+          orderStatus !== existingSale.orderStatus
+        ) {
+          if (!isValidTransition(existingSale.orderStatus, orderStatus)) {
+            return reply.code(400).send({
+              error: `Invalid orderStatus transition from ${existingSale.orderStatus} to ${orderStatus}`,
+            });
+          }
+
+          updateData.orderStatus = orderStatus;
+          nextStatus = orderStatus;
+        }
+
+        if (Object.keys(updateData).length === 1) {
+          return reply.code(400).send({ error: 'No valid fields to update' });
+        }
+
         const [updatedSale] = await db
           .update(sales)
           .set(updateData)
@@ -381,6 +411,39 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
         if (!updatedSale) {
           return reply.code(404).send({ error: 'Sale not found' });
+        }
+
+        if (nextStatus) {
+          await db.insert(saleStatusHistory).values({
+            saleId: existingSale.id,
+            previousStatus: existingSale.orderStatus,
+            newStatus: nextStatus,
+            source: 'manual',
+          });
+
+          if (nextStatus === 'cancelled' && existingSale.cardId !== null) {
+            const [linkedCard] = await db
+              .select()
+              .from(cards)
+              .where(eq(cards.id, existingSale.cardId))
+              .limit(1);
+
+            if (linkedCard) {
+              const restoredQuantity =
+                linkedCard.quantity + existingSale.quantitySold;
+              await db
+                .update(cards)
+                .set({
+                  quantity: restoredQuantity,
+                  status:
+                    linkedCard.status === 'sold' && restoredQuantity > 0
+                      ? 'listed'
+                      : linkedCard.status,
+                  updatedAt: new Date(),
+                })
+                .where(eq(cards.id, linkedCard.id));
+            }
+          }
         }
 
         return reply.send(updatedSale);
