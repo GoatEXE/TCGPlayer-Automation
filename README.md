@@ -76,7 +76,7 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 
 ### Phase 2 — Price Monitoring
 
-**Status:** Phase 2.1–2.4 infrastructure complete — scheduler, history tracking, safeguards, and floor price backend
+**Status:** Phase 2 core workflows implemented — scheduler, history tracking, safeguards, floor controls, and notification tracking loop
 
 - **BullMQ + Redis scheduler** ✅ Implemented — persistent repeatable background checks every 12 hours (configurable)
 - **Lazy price checks** ✅ Implemented — runs via BullMQ repeatable job calling `runPriceCheck({ source: 'scheduled' })`
@@ -85,17 +85,19 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 - **Last Checked column** ✅ Implemented — sortable column in card table shows relative time since last price check (e.g., "2 hours ago")
 - **Max drop safeguard** ✅ Implemented — caps single-cycle listing price drops at 20% (configurable via `MAX_PRICE_DROP_PERCENT`)
 - **Per-card floor price** ✅ Implemented (backend + UI) — optional `floorPriceCents` is enforced during price checks/repricing and editable inline in the card table
+- **Notification tracking loop** ✅ Implemented — successful scheduler Telegram sends now mark matching `price_history.notificationSent = true` for drift and needs_attention alerts
 
 Implementation details:
 - [Phase 2.1 Scheduler Migration](docs/phase2/PHASE2_BULLMQ_REDIS.md)
 - [Phase 2.3 Price History UI](docs/phase2/PHASE2_PRICE_HISTORY_UI.md)
 - [Phase 2.2 Max Drop Safeguard](docs/phase2/PHASE2_MAX_DROP_SAFEGUARD.md)
 - [Phase 2.4 Floor Price Backend](docs/phase2/PHASE2_FLOOR_PRICE_BACKEND.md)
+- [Phase 2.5 Notification Loop](docs/phase2/PHASE2_NOTIFICATION_LOOP.md)
 
-- **Bidirectional threshold management:** (Planned for Phase 2.5)
-  - Listed card drops below `$0.05` market → recommend delisting, move to gift pool
-  - Gift card rises above `$0.05` → recommend listing
-  - Listed card with `>2%` price drift → recommend price update
+- **Bidirectional threshold management:** ✅ Implemented
+  - Listed card drops below `$0.05` market → transition to gift
+  - Gift card rises above `$0.05` → transition to matched (relist queue)
+  - Listed card with `>2%` price drift → tracked as drifted in scheduled checks
 - **Optional per-card floor price:** ✅ Implemented end-to-end
   - Cards can have individual `floorPriceCents` minimum listing price
   - Floor enforced during price checks and manual repricing

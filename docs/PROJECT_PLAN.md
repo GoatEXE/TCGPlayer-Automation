@@ -434,9 +434,16 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Goal:** Keep listings competitively priced by checking market prices on a lazy schedule and adjusting when drift exceeds a threshold.
 
-Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLMQ_REDIS.md)
+**Current Status:** Phase 2 infrastructure is largely complete (scheduler, history, safeguards, floor controls, notification tracking)
 
-### 5.1 Price Check Scheduler ✅ CORE COMPLETE (Phase 2.1 infrastructure)
+**Implementation docs:**
+- [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLMQ_REDIS.md)
+- [Phase 2.2 Max Drop Safeguard](./phase2/PHASE2_MAX_DROP_SAFEGUARD.md)
+- [Phase 2.3 Price History UI](./phase2/PHASE2_PRICE_HISTORY_UI.md)
+- [Phase 2.4 Floor Price Backend/UI](./phase2/PHASE2_FLOOR_PRICE_BACKEND.md)
+- [Phase 2.5 Notification Loop](./phase2/PHASE2_NOTIFICATION_LOOP.md)
+
+### 5.1 Price Check Scheduler ✅ CORE COMPLETE
 
 **Implementation details:** See [PHASE2_BULLMQ_REDIS.md](phase2/PHASE2_BULLMQ_REDIS.md)
 
@@ -448,6 +455,7 @@ Implementation notes: [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLM
 - [x] Worker calls `runPriceCheck({ source: 'scheduled' })` which updates all card prices/statuses
 - [ ] Expose price check interval in web UI settings
 - [x] Record each check in `PriceHistory` (implemented via `price_history` + `runPriceCheck`)
+- [x] Mark `price_history.notificationSent` only after successful scheduler Telegram sends (drift summary + needs_attention alerts)
 - [x] Re-check `needs_attention` cards during each price check cycle — if market price returns, recalculate at 98% and move to `matched` for relisting
 
 ### 5.2 Auto-Adjustment Logic
