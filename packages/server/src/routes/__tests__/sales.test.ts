@@ -20,6 +20,12 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+const mockCreateShipmentOnConfirm = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../lib/shipments/index.js', () => ({
+  createShipmentOnConfirm: (...args: any[]) =>
+    mockCreateShipmentOnConfirm(...args),
+}));
+
 import { db } from '../../db/index.js';
 
 function mockCardSelectResult(cardRows: any[]) {
@@ -47,6 +53,7 @@ describe('sales routes', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockCreateShipmentOnConfirm.mockResolvedValue(undefined);
     app = Fastify();
     await app.register(salesRoutes, { prefix: '/api/sales' });
   });
@@ -219,6 +226,104 @@ describe('sales routes', () => {
           source: 'manual',
         }),
       );
+    });
+
+    it('creates a shipment placeholder when initial status is confirmed', async () => {
+      mockCardSelectResult([
+        {
+          id: 14,
+          status: 'listed',
+          quantity: 2,
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 60,
+                cardId: 14,
+                quantitySold: 1,
+                salePriceCents: 200,
+                orderStatus: 'confirmed',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 14,
+          quantitySold: 1,
+          salePriceCents: 200,
+          orderStatus: 'confirmed',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
+        expect.anything(),
+        60,
+      );
+    });
+
+    it('does not create a shipment when initial status is pending', async () => {
+      mockCardSelectResult([
+        {
+          id: 15,
+          status: 'listed',
+          quantity: 2,
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 61,
+                cardId: 15,
+                quantitySold: 1,
+                salePriceCents: 200,
+                orderStatus: 'pending',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 15,
+          quantitySold: 1,
+          salePriceCents: 200,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockCreateShipmentOnConfirm).not.toHaveBeenCalled();
     });
 
     it('rejects sales for non-listed cards', async () => {
@@ -745,6 +850,75 @@ describe('sales routes', () => {
       );
     });
 
+    it('creates shipment placeholders when batch-updating to confirmed', async () => {
+      mockSaleSelectResult([
+        {
+          id: 50,
+          cardId: 50,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+      mockSaleSelectResult([
+        {
+          id: 51,
+          cardId: 51,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+
+      vi.mocked(db.update)
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 50,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 51,
+                  orderStatus: 'confirmed',
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+      vi.mocked(db.insert).mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/batch-status',
+        payload: {
+          saleIds: [50, 51],
+          newStatus: 'confirmed',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockCreateShipmentOnConfirm).toHaveBeenCalledTimes(2);
+      expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
+        expect.anything(),
+        50,
+      );
+      expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
+        expect.anything(),
+        51,
+      );
+    });
+
     it('writes one history row per updated sale and includes optional note', async () => {
       mockSaleSelectResult([
         {
@@ -952,6 +1126,82 @@ describe('sales routes', () => {
           error: expect.stringContaining('Invalid orderStatus transition'),
         }),
       );
+    });
+
+    it('creates shipment placeholder when patching sale to confirmed', async () => {
+      mockSaleSelectResult([
+        {
+          id: 40,
+          cardId: 40,
+          quantitySold: 1,
+          orderStatus: 'pending',
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 40,
+                orderStatus: 'confirmed',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const historyValues = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(db.insert).mockReturnValue({ values: historyValues } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/40',
+        payload: { orderStatus: 'confirmed' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
+        expect.anything(),
+        40,
+      );
+    });
+
+    it('does not create shipment when patching to shipped', async () => {
+      mockSaleSelectResult([
+        {
+          id: 41,
+          cardId: 41,
+          quantitySold: 1,
+          orderStatus: 'confirmed',
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 41,
+                orderStatus: 'shipped',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      vi.mocked(db.insert).mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      } as any);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/sales/41',
+        payload: { orderStatus: 'shipped' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockCreateShipmentOnConfirm).not.toHaveBeenCalled();
     });
 
     it('writes status history row on valid status transitions', async () => {

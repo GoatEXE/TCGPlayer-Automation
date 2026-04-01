@@ -15,6 +15,7 @@ import { cards } from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
 import { isValidTransition } from '../lib/sales/status-machine.js';
+import { createShipmentOnConfirm } from '../lib/shipments/index.js';
 
 type OrderStatus =
   | 'pending'
@@ -160,6 +161,10 @@ export async function salesRoutes(fastify: FastifyInstance) {
         newStatus: orderStatus,
         source: 'manual',
       });
+
+      if (orderStatus === 'confirmed') {
+        await createShipmentOnConfirm(db, sale.id);
+      }
 
       return reply.code(201).send(sale);
     } catch (error) {
@@ -405,6 +410,10 @@ export async function salesRoutes(fastify: FastifyInstance) {
             note: note ?? null,
           });
 
+          if (newStatus === 'confirmed') {
+            await createShipmentOnConfirm(db, existingSale.id);
+          }
+
           if (newStatus === 'cancelled' && existingSale.cardId !== null) {
             const [linkedCard] = await db
               .select()
@@ -594,6 +603,10 @@ export async function salesRoutes(fastify: FastifyInstance) {
             newStatus: nextStatus,
             source: 'manual',
           });
+
+          if (nextStatus === 'confirmed') {
+            await createShipmentOnConfirm(db, existingSale.id);
+          }
 
           if (nextStatus === 'cancelled' && existingSale.cardId !== null) {
             const [linkedCard] = await db

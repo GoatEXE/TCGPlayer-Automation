@@ -1,7 +1,7 @@
 # Phase 3.2 — Shipment Tracking (Local-First)
 
 Date: 2026-04-01
-Status: PLAN (not yet implemented)
+Status: IN PROGRESS — WP-S1 complete
 Depends on: Phase 3.1 complete (sales + order-status infrastructure)
 
 ---
@@ -66,10 +66,14 @@ shipments
 - Run `drizzle-kit generate` → new migration in `packages/server/drizzle/`
 
 **Acceptance criteria:**
-- Migration SQL creates `shipments` table with unique constraint on `sale_id`
-- `pnpm --filter server test` passes (no regressions)
-- `ShipmentSelect` / `NewShipment` types exported
+- ✅ Migration SQL creates `shipments` table with unique constraint on `sale_id`
+- ✅ `pnpm --filter server test` passes (no regressions)
+- ✅ `Shipment` / `NewShipment` types exported
+- ✅ Idempotent `createShipmentOnConfirm()` function created and wired into sales routes
+- ✅ Shipment auto-created when sale transitions to `confirmed` (POST, PATCH /:id, PATCH /batch-status)
+- ✅ Tests cover creation, duplicate prevention, and non-confirmed transitions
 
+**Completed:** 2026-04-01
 **Risk:** Low. Additive table only.
 
 ---
