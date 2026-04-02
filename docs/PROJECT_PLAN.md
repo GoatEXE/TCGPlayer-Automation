@@ -515,7 +515,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 ### 6.4 Telegram Notifications
 
-**Status:** 🚧 IN PROGRESS — backend sale-confirmed + order-shipped alerts are env-gated, wired, and now include richer message context across primary paths
+**Status:** 🚧 IN PROGRESS — backend Telegram notifications now have env-gated triggers, richer sale/shipment context, and persistent event logging with a read API foundation for future dashboard visibility
 
 **Tasks:**
 - [ ] Create Telegram bot via BotFather (operational setup)
@@ -526,7 +526,8 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Minimal backend slice: add env flags for sale-confirmed / shipped alerts, explicit helper functions, best-effort route wiring, and representative backend tests
 - [x] Finish richer message format/details (card name/order link in every path where available)
 - [x] Extend coverage for primary confirmed/shipped notification paths and graceful optional-field fallbacks
-- [ ] Add dashboard-visible notification history / controls if desired
+- [x] Add persistent notification event logging + backend read API foundation for dashboard-visible history
+- [ ] Add dashboard-visible notification history / controls in the web UI if desired
 
 ### 6.5 Additional API Endpoints (Phase 3)
 

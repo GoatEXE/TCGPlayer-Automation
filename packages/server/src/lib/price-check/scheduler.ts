@@ -151,7 +151,9 @@ async function executeScheduledRun(logger: LoggerLike) {
       );
 
       try {
-        const sent = await sendTelegramMessage(message);
+        const sent = await sendTelegramMessage(message, {
+          eventType: 'price_check_summary',
+        });
         if (sent) {
           await markHistoryNotificationsSent(result.driftedHistoryIds, logger);
         }
@@ -195,6 +197,9 @@ async function executeScheduledRun(logger: LoggerLike) {
     try {
       await sendTelegramMessage(
         `❌ Scheduled price check failed\n${String(error)}`,
+        {
+          eventType: 'price_check_failed',
+        },
       );
     } catch {
       // Ignore secondary notification errors

@@ -1,4 +1,8 @@
 import { env } from '../../config/env.js';
+import {
+  recordNotificationEvent,
+  type NotificationEventRecord,
+} from './events.js';
 
 export interface NeedsAttentionAlertInput {
   cardId: number;
@@ -20,6 +24,13 @@ export interface OrderShippedAlertInput extends SaleConfirmedAlertInput {
   carrier?: string | null;
   trackingNumber?: string | null;
   shippedAt?: string | Date | null;
+}
+
+export interface TelegramNotificationEventMetadata {
+  eventType: string;
+  saleId?: number | null;
+  cardId?: number | null;
+  tcgplayerOrderId?: string | null;
 }
 
 function formatPriceFromCents(value: number): string {
@@ -69,44 +80,86 @@ function buildSaleContextLines({
   return lines;
 }
 
-export async function sendTelegramMessage(text: string): Promise<boolean> {
+async function recordTelegramNotificationEvent(
+  metadata: TelegramNotificationEventMetadata | undefined,
+  message: string,
+  success: boolean,
+  error?: string | null,
+) {
+  if (!metadata) {
+    return;
+  }
+
+  const event: NotificationEventRecord = {
+    channel: 'telegram',
+    eventType: metadata.eventType,
+    message,
+    success,
+    error: error ?? null,
+    saleId: metadata.saleId ?? null,
+    cardId: metadata.cardId ?? null,
+    tcgplayerOrderId: metadata.tcgplayerOrderId ?? null,
+  };
+
+  await recordNotificationEvent(event);
+}
+
+export async function sendTelegramMessage(
+  text: string,
+  metadata?: TelegramNotificationEventMetadata,
+): Promise<boolean> {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+    await recordTelegramNotificationEvent(
+      metadata,
+      text,
+      false,
+      'Telegram config missing',
+    );
     return false;
   }
 
   const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: env.TELEGRAM_CHAT_ID,
-      text,
-      disable_web_page_preview: true,
-    }),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: env.TELEGRAM_CHAT_ID,
+        text,
+        disable_web_page_preview: true,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(
-      `Telegram API error: ${response.status} ${response.statusText}`,
-    );
+    if (!response.ok) {
+      throw new Error(
+        `Telegram API error: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    await recordTelegramNotificationEvent(metadata, text, true, null);
+    return true;
+  } catch (error) {
+    await recordTelegramNotificationEvent(metadata, text, false, String(error));
+    throw error;
   }
-
-  return true;
 }
 
 export async function sendNeedsAttentionAlert({
   cardId,
   productName,
 }: NeedsAttentionAlertInput): Promise<boolean> {
-  return sendTelegramMessage(
-    [
-      '⚠️ Card needs attention',
-      `Card ID: ${cardId}`,
-      `Product: ${productName}`,
-      'Reason: Market price not found during scheduled price check',
-    ].join('\n'),
-  );
+  const message = [
+    '⚠️ Card needs attention',
+    `Card ID: ${cardId}`,
+    `Product: ${productName}`,
+    'Reason: Market price not found during scheduled price check',
+  ].join('\n');
+
+  return sendTelegramMessage(message, {
+    eventType: 'needs_attention',
+    cardId,
+  });
 }
 
 export async function sendSaleConfirmedAlert(
@@ -116,13 +169,18 @@ export async function sendSaleConfirmedAlert(
     return false;
   }
 
-  return sendTelegramMessage(
-    [
-      '✅ Sale confirmed',
-      ...buildSaleContextLines(input),
-      `Sale ID: ${input.saleId}`,
-    ].join('\n'),
-  );
+  const message = [
+    '✅ Sale confirmed',
+    ...buildSaleContextLines(input),
+    `Sale ID: ${input.saleId}`,
+  ].join('\n');
+
+  return sendTelegramMessage(message, {
+    eventType: 'sale_confirmed',
+    saleId: input.saleId,
+    cardId: input.cardId,
+    tcgplayerOrderId: input.tcgplayerOrderId,
+  });
 }
 
 export async function sendOrderShippedAlert(
@@ -149,5 +207,10 @@ export async function sendOrderShippedAlert(
 
   lines.push(`Sale ID: ${input.saleId}`);
 
-  return sendTelegramMessage(lines.join('\n'));
+  return sendTelegramMessage(lines.join('\n'), {
+    eventType: 'order_shipped',
+    saleId: input.saleId,
+    cardId: input.cardId,
+    tcgplayerOrderId: input.tcgplayerOrderId,
+  });
 }

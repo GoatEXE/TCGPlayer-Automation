@@ -341,6 +341,12 @@ describe('BullMQ price check scheduler', () => {
 
     expect(runPriceCheck).toHaveBeenCalledWith({ source: 'scheduled' });
     expect(sendTelegramMessage).toHaveBeenCalledOnce();
+    expect(sendTelegramMessage).toHaveBeenCalledWith(
+      expect.stringContaining('📈 Scheduled price check completed'),
+      {
+        eventType: 'price_check_summary',
+      },
+    );
     expect(dbUpdate).toHaveBeenCalled();
     expect(dbSet).toHaveBeenCalledWith({ notificationSent: true });
 
@@ -426,6 +432,14 @@ describe('BullMQ price check scheduler', () => {
     await workerProcessor?.({ name: 'check-prices' });
 
     expect(sendNeedsAttentionAlert).toHaveBeenCalledTimes(2);
+    expect(sendNeedsAttentionAlert).toHaveBeenNthCalledWith(1, {
+      cardId: 10,
+      productName: 'No Market Card',
+    });
+    expect(sendNeedsAttentionAlert).toHaveBeenNthCalledWith(2, {
+      cardId: 11,
+      productName: 'Also Missing',
+    });
     expect(dbSet).toHaveBeenCalledWith({ notificationSent: true });
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('needs_attention telegram notification failed'),

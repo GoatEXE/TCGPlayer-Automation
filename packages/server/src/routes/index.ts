@@ -3,6 +3,7 @@ import { cardsRoutes } from './cards.js';
 import { salesRoutes } from './sales.js';
 import { shipmentsRoutes } from './shipments.js';
 import { invoiceRoutes } from './invoices.js';
+import { notificationsRoutes } from './notifications.js';
 
 export async function registerRoutes(fastify: FastifyInstance) {
   // Register all route plugins under /api prefix
@@ -10,4 +11,5 @@ export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(salesRoutes, { prefix: '/api/sales' });
   await fastify.register(shipmentsRoutes, { prefix: '/api' });
   await fastify.register(invoiceRoutes, { prefix: '/api' });
+  await fastify.register(notificationsRoutes, { prefix: '/api/notifications' });
 }
