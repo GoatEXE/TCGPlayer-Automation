@@ -13,6 +13,7 @@ export interface SaleConfirmedAlertInput {
   salePriceCents: number;
   buyerName?: string | null;
   tcgplayerOrderId?: string | null;
+  orderLinkText?: string | null;
 }
 
 export interface OrderShippedAlertInput extends SaleConfirmedAlertInput {
@@ -33,19 +34,19 @@ function formatOptionalDate(value: string | Date | null | undefined) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function buildSaleSummaryLines({
-  saleId,
+function buildSaleContextLines({
   productName,
   cardId,
   quantitySold,
   salePriceCents,
   buyerName,
   tcgplayerOrderId,
+  orderLinkText,
 }: SaleConfirmedAlertInput): string[] {
-  const lines = [`Sale ID: ${saleId}`];
+  const lines: string[] = [];
 
   if (productName) {
-    lines.push(`Product: ${productName}`);
+    lines.push(`Card: ${productName}`);
   } else if (cardId !== undefined && cardId !== null) {
     lines.push(`Card ID: ${cardId}`);
   }
@@ -59,6 +60,10 @@ function buildSaleSummaryLines({
 
   if (tcgplayerOrderId) {
     lines.push(`Order ID: ${tcgplayerOrderId}`);
+  }
+
+  if (orderLinkText) {
+    lines.push(`Order link: ${orderLinkText}`);
   }
 
   return lines;
@@ -112,7 +117,11 @@ export async function sendSaleConfirmedAlert(
   }
 
   return sendTelegramMessage(
-    ['✅ Sale confirmed', ...buildSaleSummaryLines(input)].join('\n'),
+    [
+      '✅ Sale confirmed',
+      ...buildSaleContextLines(input),
+      `Sale ID: ${input.saleId}`,
+    ].join('\n'),
   );
 }
 
@@ -123,7 +132,7 @@ export async function sendOrderShippedAlert(
     return false;
   }
 
-  const lines = ['📦 Order shipped', ...buildSaleSummaryLines(input)];
+  const lines = ['📦 Order shipped', ...buildSaleContextLines(input)];
 
   if (input.carrier) {
     lines.push(`Carrier: ${input.carrier}`);
@@ -137,6 +146,8 @@ export async function sendOrderShippedAlert(
   if (shippedAt) {
     lines.push(`Shipped at: ${shippedAt}`);
   }
+
+  lines.push(`Sale ID: ${input.saleId}`);
 
   return sendTelegramMessage(lines.join('\n'));
 }

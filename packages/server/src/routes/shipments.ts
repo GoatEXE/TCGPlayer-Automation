@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
+import { cards } from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
 import { shipments } from '../db/schema/shipments.js';
@@ -117,6 +118,28 @@ async function autoTransitionSaleStatus(
 }
 
 export async function shipmentsRoutes(fastify: FastifyInstance) {
+  async function getCardProductName(cardId: number | null | undefined) {
+    if (cardId === null || cardId === undefined) {
+      return null;
+    }
+
+    const [card] = await db
+      .select()
+      .from(cards)
+      .where(eq(cards.id, cardId))
+      .limit(1);
+
+    return card?.productName ?? null;
+  }
+
+  function buildOrderLinkText(tcgplayerOrderId: string | null) {
+    if (!tcgplayerOrderId) {
+      return undefined;
+    }
+
+    return 'Lookup in TCGplayer seller portal';
+  }
+
   async function sendOrderShippedAlertBestEffort(
     sale: {
       id: number;
@@ -133,13 +156,17 @@ export async function shipmentsRoutes(fastify: FastifyInstance) {
     },
   ) {
     try {
+      const productName = await getCardProductName(sale.cardId);
+
       await sendOrderShippedAlert({
         saleId: sale.id,
         cardId: sale.cardId,
+        productName,
         quantitySold: sale.quantitySold,
         salePriceCents: sale.salePriceCents,
         buyerName: sale.buyerName,
         tcgplayerOrderId: sale.tcgplayerOrderId,
+        orderLinkText: buildOrderLinkText(sale.tcgplayerOrderId),
         carrier: shipment.carrier,
         trackingNumber: shipment.trackingNumber,
         shippedAt: shipment.shippedAt,

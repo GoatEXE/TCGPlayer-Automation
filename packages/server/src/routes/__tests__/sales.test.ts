@@ -298,6 +298,7 @@ describe('sales routes', () => {
           salePriceCents: 200,
           buyerName: 'Test Buyer',
           tcgplayerOrderId: 'ORDER-60',
+          orderLinkText: 'Lookup in TCGplayer seller portal',
         }),
       );
     });
@@ -700,7 +701,16 @@ describe('sales routes', () => {
           id: 1,
           cardId: 1,
           quantitySold: 1,
+          salePriceCents: 125,
+          buyerName: 'Buyer One',
+          tcgplayerOrderId: 'ORDER-1',
           orderStatus: 'pending',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 1,
+          productName: 'Card One',
         },
       ]);
       mockSaleSelectResult([
@@ -708,7 +718,16 @@ describe('sales routes', () => {
           id: 2,
           cardId: 2,
           quantitySold: 1,
+          salePriceCents: 225,
+          buyerName: 'Buyer Two',
+          tcgplayerOrderId: 'ORDER-2',
           orderStatus: 'pending',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 2,
+          productName: 'Card Two',
         },
       ]);
 
@@ -946,6 +965,12 @@ describe('sales routes', () => {
           orderStatus: 'pending',
         },
       ]);
+      mockCardSelectResult([
+        {
+          id: 50,
+          productName: 'Batch Card One',
+        },
+      ]);
       mockSaleSelectResult([
         {
           id: 51,
@@ -955,6 +980,12 @@ describe('sales routes', () => {
           buyerName: 'Batch Buyer Two',
           tcgplayerOrderId: 'ORDER-51',
           orderStatus: 'pending',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 51,
+          productName: 'Batch Card Two',
         },
       ]);
 
@@ -1013,10 +1044,12 @@ describe('sales routes', () => {
         expect.objectContaining({
           saleId: 50,
           cardId: 50,
+          productName: 'Batch Card One',
           quantitySold: 1,
           salePriceCents: 250,
           buyerName: 'Batch Buyer One',
           tcgplayerOrderId: 'ORDER-50',
+          orderLinkText: 'Lookup in TCGplayer seller portal',
         }),
       );
       expect(mockSendSaleConfirmedAlert).toHaveBeenNthCalledWith(
@@ -1024,10 +1057,12 @@ describe('sales routes', () => {
         expect.objectContaining({
           saleId: 51,
           cardId: 51,
+          productName: 'Batch Card Two',
           quantitySold: 1,
           salePriceCents: 350,
           buyerName: 'Batch Buyer Two',
           tcgplayerOrderId: 'ORDER-51',
+          orderLinkText: 'Lookup in TCGplayer seller portal',
         }),
       );
     });
@@ -1038,7 +1073,16 @@ describe('sales routes', () => {
           id: 30,
           cardId: 30,
           quantitySold: 1,
+          salePriceCents: 175,
+          buyerName: 'Buyer Thirty',
+          tcgplayerOrderId: 'ORDER-30',
           orderStatus: 'pending',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 30,
+          productName: 'Card Thirty',
         },
       ]);
       mockSaleSelectResult([
@@ -1046,7 +1090,16 @@ describe('sales routes', () => {
           id: 31,
           cardId: 31,
           quantitySold: 1,
+          salePriceCents: 275,
+          buyerName: 'Buyer Thirty One',
+          tcgplayerOrderId: 'ORDER-31',
           orderStatus: 'pending',
+        },
+      ]);
+      mockCardSelectResult([
+        {
+          id: 31,
+          productName: 'Card Thirty One',
         },
       ]);
 
@@ -1253,6 +1306,12 @@ describe('sales routes', () => {
           orderStatus: 'pending',
         },
       ]);
+      mockCardSelectResult([
+        {
+          id: 40,
+          productName: 'Patch Card',
+        },
+      ]);
 
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -1285,10 +1344,12 @@ describe('sales routes', () => {
         expect.objectContaining({
           saleId: 40,
           cardId: 40,
+          productName: 'Patch Card',
           quantitySold: 1,
           salePriceCents: 425,
           buyerName: 'Patch Buyer',
           tcgplayerOrderId: 'ORDER-40',
+          orderLinkText: 'Lookup in TCGplayer seller portal',
         }),
       );
     });

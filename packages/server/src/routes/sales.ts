@@ -68,6 +68,28 @@ function parseDate(value: string): Date | null {
 }
 
 export async function salesRoutes(fastify: FastifyInstance) {
+  async function getCardProductName(cardId: number | null | undefined) {
+    if (cardId === null || cardId === undefined) {
+      return null;
+    }
+
+    const [card] = await db
+      .select()
+      .from(cards)
+      .where(eq(cards.id, cardId))
+      .limit(1);
+
+    return card?.productName ?? null;
+  }
+
+  function buildOrderLinkText(tcgplayerOrderId: string | null) {
+    if (!tcgplayerOrderId) {
+      return undefined;
+    }
+
+    return 'Lookup in TCGplayer seller portal';
+  }
+
   async function sendSaleConfirmedAlertBestEffort(
     sale: {
       id: number;
@@ -88,6 +110,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
         salePriceCents: sale.salePriceCents,
         buyerName: sale.buyerName,
         tcgplayerOrderId: sale.tcgplayerOrderId,
+        orderLinkText: buildOrderLinkText(sale.tcgplayerOrderId),
       });
     } catch (error) {
       fastify.log.error(
@@ -452,14 +475,18 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
           if (newStatus === 'confirmed') {
             await createShipmentOnConfirm(db, existingSale.id);
-            await sendSaleConfirmedAlertBestEffort({
-              id: existingSale.id,
-              cardId: existingSale.cardId,
-              quantitySold: existingSale.quantitySold,
-              salePriceCents: existingSale.salePriceCents,
-              buyerName: existingSale.buyerName,
-              tcgplayerOrderId: existingSale.tcgplayerOrderId,
-            });
+            const productName = await getCardProductName(existingSale.cardId);
+            await sendSaleConfirmedAlertBestEffort(
+              {
+                id: existingSale.id,
+                cardId: existingSale.cardId,
+                quantitySold: existingSale.quantitySold,
+                salePriceCents: existingSale.salePriceCents,
+                buyerName: existingSale.buyerName,
+                tcgplayerOrderId: existingSale.tcgplayerOrderId,
+              },
+              productName,
+            );
           }
 
           if (newStatus === 'cancelled' && existingSale.cardId !== null) {
@@ -654,15 +681,19 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
           if (nextStatus === 'confirmed') {
             await createShipmentOnConfirm(db, existingSale.id);
-            await sendSaleConfirmedAlertBestEffort({
-              id: existingSale.id,
-              cardId: existingSale.cardId,
-              quantitySold: existingSale.quantitySold,
-              salePriceCents: existingSale.salePriceCents,
-              buyerName: updatedSale.buyerName ?? existingSale.buyerName,
-              tcgplayerOrderId:
-                updatedSale.tcgplayerOrderId ?? existingSale.tcgplayerOrderId,
-            });
+            const productName = await getCardProductName(existingSale.cardId);
+            await sendSaleConfirmedAlertBestEffort(
+              {
+                id: existingSale.id,
+                cardId: existingSale.cardId,
+                quantitySold: existingSale.quantitySold,
+                salePriceCents: existingSale.salePriceCents,
+                buyerName: updatedSale.buyerName ?? existingSale.buyerName,
+                tcgplayerOrderId:
+                  updatedSale.tcgplayerOrderId ?? existingSale.tcgplayerOrderId,
+              },
+              productName,
+            );
           }
 
           if (nextStatus === 'cancelled' && existingSale.cardId !== null) {

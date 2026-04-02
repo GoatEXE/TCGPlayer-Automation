@@ -49,10 +49,21 @@ describe('shipment routes', () => {
       mockSelectResult([
         {
           id: 10,
+          cardId: 110,
+          quantitySold: 1,
+          salePriceCents: 275,
+          buyerName: 'Shipped Buyer',
+          tcgplayerOrderId: 'ORDER-10',
           orderStatus: 'shipped',
         },
       ]);
       mockSelectResult([]);
+      mockSelectResult([
+        {
+          id: 110,
+          productName: 'Already Shipped Card',
+        },
+      ]);
 
       vi.mocked(db.insert).mockReturnValue({
         values: vi.fn().mockReturnValue({
@@ -86,6 +97,20 @@ describe('shipment routes', () => {
         }),
       );
       expect(db.update).not.toHaveBeenCalled();
+      expect(mockSendOrderShippedAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          saleId: 10,
+          cardId: 110,
+          productName: 'Already Shipped Card',
+          quantitySold: 1,
+          salePriceCents: 275,
+          buyerName: 'Shipped Buyer',
+          tcgplayerOrderId: 'ORDER-10',
+          orderLinkText: 'Lookup in TCGplayer seller portal',
+          carrier: 'USPS',
+          trackingNumber: '9400',
+        }),
+      );
     });
 
     it('auto-advances confirmed sale to shipped and writes status history', async () => {
@@ -101,6 +126,12 @@ describe('shipment routes', () => {
         },
       ]);
       mockSelectResult([]);
+      mockSelectResult([
+        {
+          id: 200,
+          productName: 'Auto Shipped Card',
+        },
+      ]);
 
       const historyValues = vi.fn().mockResolvedValue(undefined);
       vi.mocked(db.insert)
@@ -162,10 +193,12 @@ describe('shipment routes', () => {
         expect.objectContaining({
           saleId: 20,
           cardId: 200,
+          productName: 'Auto Shipped Card',
           quantitySold: 1,
           salePriceCents: 475,
           buyerName: 'Ship Buyer',
           tcgplayerOrderId: 'ORDER-20',
+          orderLinkText: 'Lookup in TCGplayer seller portal',
           carrier: 'UPS',
           trackingNumber: '1Z999',
           shippedAt: expect.any(Date),
@@ -186,6 +219,12 @@ describe('shipment routes', () => {
         },
       ]);
       mockSelectResult([]);
+      mockSelectResult([
+        {
+          id: 201,
+          productName: 'Fail Open Ship Card',
+        },
+      ]);
 
       mockSendOrderShippedAlert.mockRejectedValueOnce(
         new Error('telegram down'),
