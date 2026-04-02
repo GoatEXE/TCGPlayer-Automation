@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PriceHistoryEntry } from '../api/types';
 import { api } from '../api/client';
+import { PriceHistoryChart } from './PriceHistoryChart';
 
 interface PriceHistoryModalProps {
   cardId: number;
@@ -162,6 +163,10 @@ export function PriceHistoryModal({
           >
             <p>No price history recorded yet for this card.</p>
           </div>
+        )}
+
+        {!loading && !error && history.length > 0 && (
+          <PriceHistoryChart history={history} />
         )}
 
         {!loading && !error && history.length > 0 && (

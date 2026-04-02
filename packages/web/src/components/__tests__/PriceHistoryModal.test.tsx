@@ -279,6 +279,53 @@ describe('PriceHistoryModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('renders price chart when history has data', async () => {
+    const entries = [
+      makeEntry({ id: 1, newMarketPrice: '0.30' }),
+      makeEntry({
+        id: 2,
+        checkedAt: '2026-03-29T10:00:00Z',
+        newMarketPrice: '0.25',
+      }),
+    ];
+    mockGetCardPriceHistory.mockResolvedValue({ history: entries });
+
+    render(
+      <PriceHistoryModal
+        cardId={42}
+        cardName="Targon's Peak"
+        onClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('img')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole('img', { name: /market price trend chart/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not render chart when history is empty', async () => {
+    mockGetCardPriceHistory.mockResolvedValue({ history: [] });
+
+    render(
+      <PriceHistoryModal
+        cardId={42}
+        cardName="Targon's Peak"
+        onClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('price-history-empty')).toBeInTheDocument();
+    });
+
+    // The chart empty state text should NOT appear because the modal shows its own empty state
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('has proper dialog aria attributes', () => {
     mockGetCardPriceHistory.mockReturnValue(new Promise(() => {}));
 

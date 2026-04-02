@@ -1403,3 +1403,57 @@ body {
   color: var(--color-error);
   margin-top: 0.2rem;
 }
+
+/* ───── Price History Chart ───── */
+.price-chart-container {
+  padding: 0.75rem 1.5rem 0;
+}
+
+.price-chart-svg {
+  width: 100%;
+  height: auto;
+  max-height: 160px;
+}
+
+.price-chart-empty {
+  padding: 0.75rem 1.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.price-chart-empty p {
+  margin: 0;
+}
+
+.chart-grid-line {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-dot {
+  fill: var(--color-primary);
+  stroke: var(--color-bg);
+  stroke-width: 2;
+}
+
+.chart-dot:hover {
+  fill: var(--color-primary-hover);
+  r: 6;
+}
+
+.chart-y-label,
+.chart-x-label {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
