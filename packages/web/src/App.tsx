@@ -3,6 +3,7 @@ import { api } from './api/client';
 import type {
   Card,
   CardStats,
+  NotificationEvent,
   OrderStatus,
   PriceCheckStatus,
   Sale,
@@ -18,6 +19,7 @@ import { SalesPipelineCard } from './components/SalesPipelineCard';
 import { ShipmentFormModal } from './components/ShipmentFormModal';
 import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
+import { NotificationHistoryPanel } from './components/NotificationHistoryPanel';
 import { CardTable } from './components/CardTable';
 import { Pagination } from './components/Pagination';
 import { ViewTabs } from './components/ViewTabs';
@@ -60,6 +62,11 @@ export function App() {
     new Map(),
   );
   const [shipModalSaleId, setShipModalSaleId] = useState<number | null>(null);
+  const [notificationEvents, setNotificationEvents] = useState<
+    NotificationEvent[]
+  >([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState(false);
   const itemsPerPage = 50;
 
   const fetchCards = async () => {
@@ -148,11 +155,26 @@ export function App() {
     setShipmentsMap(next);
   };
 
+  const fetchNotifications = async () => {
+    setNotificationsLoading(true);
+    setNotificationsError(false);
+    try {
+      const data = await api.getNotificationEvents(20);
+      setNotificationEvents(data.events);
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+      setNotificationsError(true);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeView === 'sales-history') {
       fetchSales();
       fetchSalesStats();
       fetchPipeline();
+      fetchNotifications();
     } else {
       fetchCards();
     }
@@ -444,6 +466,12 @@ export function App() {
               pipeline={pipeline}
               activeStatus={salesStatusFilter}
               onSelectStatus={handlePipelineSelect}
+            />
+
+            <NotificationHistoryPanel
+              events={notificationEvents}
+              loading={notificationsLoading}
+              error={notificationsError}
             />
 
             {selectedSaleIds.size > 0 && (

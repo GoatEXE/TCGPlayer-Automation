@@ -487,6 +487,48 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('getNotificationEvents', () => {
+    it('fetches notification events with default limit', async () => {
+      const mockResponse = {
+        events: [
+          {
+            id: 1,
+            channel: 'telegram',
+            eventType: 'sale_confirmed',
+            message: 'Sale confirmed for Card A',
+            success: true,
+            error: null,
+            saleId: 5,
+            cardId: null,
+            tcgplayerOrderId: 'ORD-123',
+            createdAt: '2026-04-01T12:00:00.000Z',
+          },
+        ],
+        limit: 50,
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.getNotificationEvents();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/notifications',
+        expect.objectContaining({ headers: {} }),
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('fetches notification events with custom limit', async () => {
+      mockFetch({ events: [], limit: 10 });
+
+      await api.getNotificationEvents(10);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/notifications?limit=10',
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('error handling', () => {
     it('throws error with message from API', async () => {
       mockFetch({ error: 'Card not found' }, false, 404);

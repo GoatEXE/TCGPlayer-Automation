@@ -230,6 +230,24 @@ export interface UpdateShipmentRequest {
   notes?: string | null;
 }
 
+export interface NotificationEvent {
+  id: number;
+  channel: string;
+  eventType: string;
+  message: string;
+  success: boolean;
+  error: string | null;
+  saleId: number | null;
+  cardId: number | null;
+  tcgplayerOrderId: string | null;
+  createdAt: string;
+}
+
+export interface GetNotificationEventsResponse {
+  events: NotificationEvent[];
+  limit: number;
+}
+
 export interface ApiError {
   error: string;
   message: string;

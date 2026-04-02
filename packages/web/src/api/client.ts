@@ -22,6 +22,7 @@ import type {
   Shipment,
   CreateShipmentRequest,
   UpdateShipmentRequest,
+  GetNotificationEventsResponse,
 } from './types';
 
 const API_BASE = '/api';
@@ -232,6 +233,17 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+  }
+
+  async getNotificationEvents(
+    limit?: number,
+  ): Promise<GetNotificationEventsResponse> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    const query = params.toString();
+    return this.request<GetNotificationEventsResponse>(
+      `/notifications${query ? `?${query}` : ''}`,
+    );
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {

@@ -17,6 +17,7 @@ const apiMocks = vi.hoisted(() => ({
   getShipment: vi.fn(),
   createShipment: vi.fn(),
   updateShipment: vi.fn(),
+  getNotificationEvents: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
@@ -89,6 +90,10 @@ describe('App view tabs', () => {
       updatedAt: '2026-04-01T00:00:00Z',
     });
     apiMocks.updateShipment.mockResolvedValue({});
+    apiMocks.getNotificationEvents.mockResolvedValue({
+      events: [],
+      limit: 20,
+    });
   });
 
   it('switches to Active Listings mode and requests listed cards', async () => {

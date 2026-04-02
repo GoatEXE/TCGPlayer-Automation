@@ -527,7 +527,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Finish richer message format/details (card name/order link in every path where available)
 - [x] Extend coverage for primary confirmed/shipped notification paths and graceful optional-field fallbacks
 - [x] Add persistent notification event logging + backend read API foundation for dashboard-visible history
-- [ ] Add dashboard-visible notification history / controls in the web UI if desired
+- [x] Add dashboard-visible notification history panel in the web UI (Sales History view — shows recent events with type, success/failure, message, timestamp)
 
 ### 6.5 Additional API Endpoints (Phase 3)
 
