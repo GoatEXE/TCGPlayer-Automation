@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
 import { shipments } from '../db/schema/shipments.js';
+import { sendOrderShippedAlert } from '../lib/notifications/telegram.js';
 import { isValidTransition } from '../lib/sales/status-machine.js';
 
 type OrderStatus =
@@ -116,6 +117,40 @@ async function autoTransitionSaleStatus(
 }
 
 export async function shipmentsRoutes(fastify: FastifyInstance) {
+  async function sendOrderShippedAlertBestEffort(
+    sale: {
+      id: number;
+      cardId: number | null;
+      quantitySold: number;
+      salePriceCents: number;
+      buyerName: string | null;
+      tcgplayerOrderId: string | null;
+    },
+    shipment: {
+      carrier: string | null;
+      trackingNumber: string | null;
+      shippedAt: Date | null;
+    },
+  ) {
+    try {
+      await sendOrderShippedAlert({
+        saleId: sale.id,
+        cardId: sale.cardId,
+        quantitySold: sale.quantitySold,
+        salePriceCents: sale.salePriceCents,
+        buyerName: sale.buyerName,
+        tcgplayerOrderId: sale.tcgplayerOrderId,
+        carrier: shipment.carrier,
+        trackingNumber: shipment.trackingNumber,
+        shippedAt: shipment.shippedAt,
+      });
+    } catch (error) {
+      fastify.log.error(
+        `[shipments] order shipped telegram notification failed for saleId=${sale.id}: ${error}`,
+      );
+    }
+  }
+
   fastify.post<{ Params: { id: string }; Body: CreateShipmentBody }>(
     '/sales/:id/ship',
     async (request, reply) => {
@@ -179,8 +214,32 @@ export async function shipmentsRoutes(fastify: FastifyInstance) {
             .returning();
         }
 
+        let shouldSendShippedAlert = sale.orderStatus === 'shipped';
+
         if (sale.orderStatus === 'confirmed') {
-          await autoTransitionSaleStatus(sale.id, sale.orderStatus, 'shipped');
+          shouldSendShippedAlert = await autoTransitionSaleStatus(
+            sale.id,
+            sale.orderStatus,
+            'shipped',
+          );
+        }
+
+        if (shouldSendShippedAlert) {
+          await sendOrderShippedAlertBestEffort(
+            {
+              id: sale.id,
+              cardId: sale.cardId,
+              quantitySold: sale.quantitySold,
+              salePriceCents: sale.salePriceCents,
+              buyerName: sale.buyerName,
+              tcgplayerOrderId: sale.tcgplayerOrderId,
+            },
+            {
+              carrier: shipment.carrier,
+              trackingNumber: shipment.trackingNumber,
+              shippedAt: shipment.shippedAt,
+            },
+          );
         }
 
         return reply.code(201).send(shipment);

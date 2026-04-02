@@ -515,12 +515,17 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 ### 6.4 Telegram Notifications
 
+**Status:** 🚧 STARTED — minimal backend slice complete (env-gated sale-confirmed + order-shipped alerts wired and tested)
+
 **Tasks:**
-- [ ] Create Telegram bot via BotFather, store token in env
-- [ ] Implement notification service: `sendTelegramMessage(chatId, message)`
-- [ ] Trigger on: new sale confirmed, order shipped, price adjustment (optional), card skipped due to missing market price (needs_attention)
-- [ ] Message format: card name, sale price, buyer, order link
-- [ ] Make notification triggers configurable (env vars or DB settings)
+- [ ] Create Telegram bot via BotFather (operational setup)
+- [x] Store Telegram token/chat config in env and add per-trigger backend flags
+- [x] Implement notification service: `sendTelegramMessage(chatId, message)`
+- [x] Trigger on: new sale confirmed, order shipped, price adjustment (optional), card skipped due to missing market price (needs_attention)
+- [x] Make notification triggers configurable (env vars or DB settings)
+- [x] Minimal backend slice: add env flags for sale-confirmed / shipped alerts, explicit helper functions, best-effort route wiring, and representative backend tests
+- [ ] Finish richer message format/details (card name/order link in every path where available)
+- [ ] Add dashboard-visible notification history / controls if desired
 
 ### 6.5 Additional API Endpoints (Phase 3)
 
@@ -726,7 +731,7 @@ docker compose up --build -d
 | 3.1 | Sales Dashboard | Active listings + sales history + order status tracking | ✅ COMPLETE |
 | 3.2 | Shipment Tracking | Tracking entry + timeline display (API push-back blocked) | ✅ LOCAL COMPLETE |
 | 3.3 | Invoicing | Printable invoice + packing slip | Small |
-| 3.4 | Telegram | Sale notifications | Small |
+| 3.4 | Telegram | Sale notifications | 🚧 STARTED (minimal backend slice complete) |
 | **3** | **Full Dashboard Complete** | **End-to-end selling workflow** | **—** |
 
 ---

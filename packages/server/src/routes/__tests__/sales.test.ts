@@ -26,6 +26,12 @@ vi.mock('../../lib/shipments/index.js', () => ({
     mockCreateShipmentOnConfirm(...args),
 }));
 
+const mockSendSaleConfirmedAlert = vi.fn().mockResolvedValue(true);
+vi.mock('../../lib/notifications/telegram.js', () => ({
+  sendSaleConfirmedAlert: (...args: any[]) =>
+    mockSendSaleConfirmedAlert(...args),
+}));
+
 import { db } from '../../db/index.js';
 
 function mockCardSelectResult(cardRows: any[]) {
@@ -54,6 +60,7 @@ describe('sales routes', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockCreateShipmentOnConfirm.mockResolvedValue(undefined);
+    mockSendSaleConfirmedAlert.mockResolvedValue(true);
     app = Fastify();
     await app.register(salesRoutes, { prefix: '/api/sales' });
   });
@@ -234,6 +241,7 @@ describe('sales routes', () => {
           id: 14,
           status: 'listed',
           quantity: 2,
+          productName: 'Jinx',
         },
       ]);
 
@@ -253,6 +261,8 @@ describe('sales routes', () => {
                 quantitySold: 1,
                 salePriceCents: 200,
                 orderStatus: 'confirmed',
+                buyerName: 'Test Buyer',
+                tcgplayerOrderId: 'ORDER-60',
               },
             ]),
           }),
@@ -269,6 +279,8 @@ describe('sales routes', () => {
           quantitySold: 1,
           salePriceCents: 200,
           orderStatus: 'confirmed',
+          buyerName: 'Test Buyer',
+          tcgplayerOrderId: 'ORDER-60',
         },
       });
 
@@ -277,6 +289,78 @@ describe('sales routes', () => {
         expect.anything(),
         60,
       );
+      expect(mockSendSaleConfirmedAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          saleId: 60,
+          cardId: 14,
+          productName: 'Jinx',
+          quantitySold: 1,
+          salePriceCents: 200,
+          buyerName: 'Test Buyer',
+          tcgplayerOrderId: 'ORDER-60',
+        }),
+      );
+    });
+
+    it('continues when sale confirmed notification sending fails', async () => {
+      mockCardSelectResult([
+        {
+          id: 16,
+          status: 'listed',
+          quantity: 2,
+          productName: 'Ahri',
+        },
+      ]);
+
+      mockSendSaleConfirmedAlert.mockRejectedValueOnce(
+        new Error('telegram down'),
+      );
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 62,
+                cardId: 16,
+                quantitySold: 1,
+                salePriceCents: 300,
+                orderStatus: 'confirmed',
+                buyerName: 'Buyer Fail Open',
+                tcgplayerOrderId: 'ORDER-62',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 16,
+          quantitySold: 1,
+          salePriceCents: 300,
+          orderStatus: 'confirmed',
+          buyerName: 'Buyer Fail Open',
+          tcgplayerOrderId: 'ORDER-62',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
+        expect.anything(),
+        62,
+      );
+      expect(mockSendSaleConfirmedAlert).toHaveBeenCalledTimes(1);
     });
 
     it('does not create a shipment when initial status is pending', async () => {
@@ -856,6 +940,9 @@ describe('sales routes', () => {
           id: 50,
           cardId: 50,
           quantitySold: 1,
+          salePriceCents: 250,
+          buyerName: 'Batch Buyer One',
+          tcgplayerOrderId: 'ORDER-50',
           orderStatus: 'pending',
         },
       ]);
@@ -864,6 +951,9 @@ describe('sales routes', () => {
           id: 51,
           cardId: 51,
           quantitySold: 1,
+          salePriceCents: 350,
+          buyerName: 'Batch Buyer Two',
+          tcgplayerOrderId: 'ORDER-51',
           orderStatus: 'pending',
         },
       ]);
@@ -916,6 +1006,29 @@ describe('sales routes', () => {
       expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
         expect.anything(),
         51,
+      );
+      expect(mockSendSaleConfirmedAlert).toHaveBeenCalledTimes(2);
+      expect(mockSendSaleConfirmedAlert).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          saleId: 50,
+          cardId: 50,
+          quantitySold: 1,
+          salePriceCents: 250,
+          buyerName: 'Batch Buyer One',
+          tcgplayerOrderId: 'ORDER-50',
+        }),
+      );
+      expect(mockSendSaleConfirmedAlert).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          saleId: 51,
+          cardId: 51,
+          quantitySold: 1,
+          salePriceCents: 350,
+          buyerName: 'Batch Buyer Two',
+          tcgplayerOrderId: 'ORDER-51',
+        }),
       );
     });
 
@@ -1134,6 +1247,9 @@ describe('sales routes', () => {
           id: 40,
           cardId: 40,
           quantitySold: 1,
+          salePriceCents: 425,
+          buyerName: 'Patch Buyer',
+          tcgplayerOrderId: 'ORDER-40',
           orderStatus: 'pending',
         },
       ]);
@@ -1164,6 +1280,16 @@ describe('sales routes', () => {
       expect(mockCreateShipmentOnConfirm).toHaveBeenCalledWith(
         expect.anything(),
         40,
+      );
+      expect(mockSendSaleConfirmedAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          saleId: 40,
+          cardId: 40,
+          quantitySold: 1,
+          salePriceCents: 425,
+          buyerName: 'Patch Buyer',
+          tcgplayerOrderId: 'ORDER-40',
+        }),
       );
     });
 

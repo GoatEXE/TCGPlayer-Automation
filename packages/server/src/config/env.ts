@@ -1,5 +1,27 @@
 import { z } from 'zod';
 
+function booleanEnv(defaultValue: boolean) {
+  return z.preprocess((value) => {
+    if (value === undefined || value === '') {
+      return defaultValue;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+
+      if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+        return true;
+      }
+
+      if (['0', 'false', 'no', 'off'].includes(normalized)) {
+        return false;
+      }
+    }
+
+    return value;
+  }, z.boolean());
+}
+
 const envSchema = z.object({
   DATABASE_URL: z
     .string()
@@ -18,6 +40,8 @@ const envSchema = z.object({
   PRICE_DRIFT_THRESHOLD_PERCENT: z.coerce.number().default(2),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
+  TELEGRAM_NOTIFY_SALE_CONFIRMED: booleanEnv(true),
+  TELEGRAM_NOTIFY_ORDER_SHIPPED: booleanEnv(true),
   SELLER_NAME: z.string().default(''),
   SELLER_ID: z.string().default(''),
   PORT: z.coerce.number().default(3000),

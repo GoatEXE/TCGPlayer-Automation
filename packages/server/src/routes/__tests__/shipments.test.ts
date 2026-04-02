@@ -17,6 +17,11 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+const mockSendOrderShippedAlert = vi.fn().mockResolvedValue(true);
+vi.mock('../../lib/notifications/telegram.js', () => ({
+  sendOrderShippedAlert: (...args: any[]) => mockSendOrderShippedAlert(...args),
+}));
+
 import { db } from '../../db/index.js';
 
 function mockSelectResult(rows: any[]) {
@@ -34,6 +39,7 @@ describe('shipment routes', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockSendOrderShippedAlert.mockResolvedValue(true);
     app = Fastify();
     await app.register(shipmentsRoutes, { prefix: '/api' });
   });
@@ -86,6 +92,11 @@ describe('shipment routes', () => {
       mockSelectResult([
         {
           id: 20,
+          cardId: 200,
+          quantitySold: 1,
+          salePriceCents: 475,
+          buyerName: 'Ship Buyer',
+          tcgplayerOrderId: 'ORDER-20',
           orderStatus: 'confirmed',
         },
       ]);
@@ -99,6 +110,9 @@ describe('shipment routes', () => {
               {
                 id: 2,
                 saleId: 20,
+                carrier: 'UPS',
+                trackingNumber: '1Z999',
+                shippedAt: new Date('2026-04-02T12:00:00.000Z'),
               },
             ]),
           }),
@@ -124,6 +138,8 @@ describe('shipment routes', () => {
         url: '/api/sales/20/ship',
         payload: {
           carrier: 'UPS',
+          trackingNumber: '1Z999',
+          shippedAt: '2026-04-02T12:00:00.000Z',
         },
       });
 
@@ -142,6 +158,78 @@ describe('shipment routes', () => {
           source: 'manual',
         }),
       );
+      expect(mockSendOrderShippedAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          saleId: 20,
+          cardId: 200,
+          quantitySold: 1,
+          salePriceCents: 475,
+          buyerName: 'Ship Buyer',
+          tcgplayerOrderId: 'ORDER-20',
+          carrier: 'UPS',
+          trackingNumber: '1Z999',
+          shippedAt: expect.any(Date),
+        }),
+      );
+    });
+
+    it('continues when order shipped notification sending fails', async () => {
+      mockSelectResult([
+        {
+          id: 21,
+          cardId: 201,
+          quantitySold: 2,
+          salePriceCents: 550,
+          buyerName: 'Ship Fail Open',
+          tcgplayerOrderId: 'ORDER-21',
+          orderStatus: 'confirmed',
+        },
+      ]);
+      mockSelectResult([]);
+
+      mockSendOrderShippedAlert.mockRejectedValueOnce(
+        new Error('telegram down'),
+      );
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 3,
+                saleId: 21,
+                carrier: 'USPS',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 21,
+                orderStatus: 'shipped',
+              },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales/21/ship',
+        payload: {
+          carrier: 'USPS',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockSendOrderShippedAlert).toHaveBeenCalledTimes(1);
     });
 
     it('rejects invalid sale status', async () => {

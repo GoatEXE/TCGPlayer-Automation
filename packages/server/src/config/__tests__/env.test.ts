@@ -37,4 +37,29 @@ describe('env config', () => {
     expect(env.SELLER_NAME).toBe("Dustin's Card Shop");
     expect(env.SELLER_ID).toBe('dustin-cards');
   });
+
+  it('defaults telegram notification trigger flags to enabled', async () => {
+    const nextEnv = { ...ORIGINAL_ENV };
+    delete nextEnv.TELEGRAM_NOTIFY_SALE_CONFIRMED;
+    delete nextEnv.TELEGRAM_NOTIFY_ORDER_SHIPPED;
+    process.env = nextEnv;
+
+    const { env } = await loadEnvModule();
+
+    expect(env.TELEGRAM_NOTIFY_SALE_CONFIRMED).toBe(true);
+    expect(env.TELEGRAM_NOTIFY_ORDER_SHIPPED).toBe(true);
+  });
+
+  it('reads configured telegram notification trigger flags', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      TELEGRAM_NOTIFY_SALE_CONFIRMED: 'false',
+      TELEGRAM_NOTIFY_ORDER_SHIPPED: '0',
+    };
+
+    const { env } = await loadEnvModule();
+
+    expect(env.TELEGRAM_NOTIFY_SALE_CONFIRMED).toBe(false);
+    expect(env.TELEGRAM_NOTIFY_ORDER_SHIPPED).toBe(false);
+  });
 });

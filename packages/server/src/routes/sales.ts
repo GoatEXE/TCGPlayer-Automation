@@ -14,6 +14,7 @@ import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
+import { sendSaleConfirmedAlert } from '../lib/notifications/telegram.js';
 import { isValidTransition } from '../lib/sales/status-machine.js';
 import { createShipmentOnConfirm } from '../lib/shipments/index.js';
 
@@ -67,6 +68,34 @@ function parseDate(value: string): Date | null {
 }
 
 export async function salesRoutes(fastify: FastifyInstance) {
+  async function sendSaleConfirmedAlertBestEffort(
+    sale: {
+      id: number;
+      cardId: number | null;
+      quantitySold: number;
+      salePriceCents: number;
+      buyerName: string | null;
+      tcgplayerOrderId: string | null;
+    },
+    productName?: string | null,
+  ) {
+    try {
+      await sendSaleConfirmedAlert({
+        saleId: sale.id,
+        cardId: sale.cardId,
+        productName,
+        quantitySold: sale.quantitySold,
+        salePriceCents: sale.salePriceCents,
+        buyerName: sale.buyerName,
+        tcgplayerOrderId: sale.tcgplayerOrderId,
+      });
+    } catch (error) {
+      fastify.log.error(
+        `[sales] sale confirmed telegram notification failed for saleId=${sale.id}: ${error}`,
+      );
+    }
+  }
+
   // POST / - Record a sale
   fastify.post<{ Body: RecordSaleBody }>('/', async (request, reply) => {
     const {
@@ -164,6 +193,17 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
       if (orderStatus === 'confirmed') {
         await createShipmentOnConfirm(db, sale.id);
+        await sendSaleConfirmedAlertBestEffort(
+          {
+            id: sale.id,
+            cardId: sale.cardId,
+            quantitySold: sale.quantitySold,
+            salePriceCents: sale.salePriceCents,
+            buyerName: sale.buyerName,
+            tcgplayerOrderId: sale.tcgplayerOrderId,
+          },
+          card.productName,
+        );
       }
 
       return reply.code(201).send(sale);
@@ -412,6 +452,14 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
           if (newStatus === 'confirmed') {
             await createShipmentOnConfirm(db, existingSale.id);
+            await sendSaleConfirmedAlertBestEffort({
+              id: existingSale.id,
+              cardId: existingSale.cardId,
+              quantitySold: existingSale.quantitySold,
+              salePriceCents: existingSale.salePriceCents,
+              buyerName: existingSale.buyerName,
+              tcgplayerOrderId: existingSale.tcgplayerOrderId,
+            });
           }
 
           if (newStatus === 'cancelled' && existingSale.cardId !== null) {
@@ -606,6 +654,15 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
           if (nextStatus === 'confirmed') {
             await createShipmentOnConfirm(db, existingSale.id);
+            await sendSaleConfirmedAlertBestEffort({
+              id: existingSale.id,
+              cardId: existingSale.cardId,
+              quantitySold: existingSale.quantitySold,
+              salePriceCents: existingSale.salePriceCents,
+              buyerName: updatedSale.buyerName ?? existingSale.buyerName,
+              tcgplayerOrderId:
+                updatedSale.tcgplayerOrderId ?? existingSale.tcgplayerOrderId,
+            });
           }
 
           if (nextStatus === 'cancelled' && existingSale.cardId !== null) {
