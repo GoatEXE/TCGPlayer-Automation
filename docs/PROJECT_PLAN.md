@@ -507,18 +507,20 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 ### 6.3 Invoice / Packing Slip Generation
 
+**Status:** ✅ COMPLETE
+
 **Tasks:**
-- [ ] Build printable invoice template (HTML → PDF or browser print)
-- [ ] Include: buyer info, card details, sale price, order ID, your seller info
-- [ ] "Print" button on each sale that opens print-friendly view
-- [ ] Packing slip variant — simpler format for including in shipment
+- [x] Build printable invoice template (HTML → PDF or browser print)
+- [x] Include: buyer info, card details, sale price, order ID, your seller info
+- [x] "Print" button on each sale that opens print-friendly view
+- [x] Packing slip variant — simpler format for including in shipment
 
 ### 6.4 Telegram Notifications
 
-**Status:** 🚧 IN PROGRESS — backend Telegram notifications now have env-gated triggers, richer sale/shipment context, and persistent event logging with a read API foundation for future dashboard visibility
+**Status:** ✅ COMPLETE — bot operational, notifications working, UI history panel live
 
 **Tasks:**
-- [ ] Create Telegram bot via BotFather (operational setup)
+- [x] Create Telegram bot via BotFather (operational setup)
 - [x] Store Telegram token/chat config in env and add per-trigger backend flags
 - [x] Implement notification service: `sendTelegramMessage(chatId, message)`
 - [x] Trigger on: new sale confirmed, order shipped, price adjustment (optional), card skipped due to missing market price (needs_attention)
@@ -728,12 +730,12 @@ docker compose up --build -d
 | 2.3 | Price History UI | Per-card price history viewer | ✅ COMPLETE |
 | 2.4 | Floor Price Backend | Optional per-card minimum listing price | ✅ COMPLETE |
 | 2.5 | Auto-Adjust Logic | Price drift detection + bidirectional threshold management | 📋 TODO |
-| 2.6 | Frontend Floor UI | UI controls for setting floor prices | 📋 TODO |
-| **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **🚧 IN PROGRESS** |
+| 2.6 | Frontend Floor UI | UI controls for setting floor prices | ✅ COMPLETE |
+| **2** | **Price Monitoring Complete** | **Listings stay competitively priced** | **⚠️ LOCAL COMPLETE** (API price-push blocked) |
 | 3.1 | Sales Dashboard | Active listings + sales history + order status tracking | ✅ COMPLETE |
 | 3.2 | Shipment Tracking | Tracking entry + timeline display (API push-back blocked) | ✅ LOCAL COMPLETE |
-| 3.3 | Invoicing | Printable invoice + packing slip | Small |
-| 3.4 | Telegram | Sale notifications | 🚧 STARTED (minimal backend slice complete) |
+| 3.3 | Invoicing | Printable invoice + packing slip | ✅ COMPLETE |
+| 3.4 | Telegram | Sale notifications | ✅ COMPLETE |
 | **3** | **Full Dashboard Complete** | **End-to-end selling workflow** | **—** |
 
 ---
