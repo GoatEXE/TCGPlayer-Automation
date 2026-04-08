@@ -111,14 +111,26 @@ Implementation details:
 - **Active Listings view preset** ✅ Implemented — dedicated `🏷️ Active Listings` tab that defaults to listed cards while preserving sortable/filterable table behavior
 - **Sales History view** ✅ Implemented — dedicated `💰 Sales History` tab with date/card/price/buyer/order-status table, search, and pagination
 - **Summary stats cards** ✅ Implemented — Sales History shows total listed, total revenue, average sale price, and active listing count
-- Shipment tracking with carrier/tracking number entry
-- Invoice and packing slip generation (printable from dashboard)
-- Full Telegram notification suite (sales, shipments, price adjustments)
+- **Sell workflow** ✅ Implemented (2026-04-08) — Complete sale recording from dashboard:
+  - Single-card sale recording via RecordSaleModal ("Record Sale" button on listed cards)
+  - Bulk sale recording via BulkSellModal ("Attach to Order" for selected cards)
+  - Inline listing price editing on active listings (click-to-edit)
+  - "Rec'd" column showing recommended price (98% of market)
+  - Full checkbox selection and bulk actions in Active Listings view
+  - Promise.allSettled partial-failure handling for bulk operations
+  - 270 tests passing, 0 failures
+- **Shipment tracking** ✅ Implemented — carrier/tracking number entry, auto-create on sale confirmation, timeline display
+- **Invoice and packing slip generation** ✅ Implemented — printable HTML templates from dashboard with buyer/card/shipment details
+- **Telegram notifications** ✅ Implemented — sale confirmed, order shipped, price drift, needs_attention alerts; dashboard notification history panel
 
 Implementation details:
 - [Phase 3.1 Active Listings View](docs/phase3/PHASE3_ACTIVE_LISTINGS_VIEW.md)
 - [Phase 3.1 Sales History View](docs/phase3/PHASE3_SALES_HISTORY_VIEW.md)
 - [Phase 3.1 Summary Stats Cards](docs/phase3/PHASE3_SUMMARY_STATS_CARDS.md)
+- [Sell Workflow Implementation Plan](docs/plans/sell-workflow.md)
+- [Phase 3.2 Shipment Tracking](docs/phase3/PHASE3_SHIPMENT_TRACKING.md)
+- [Phase 3.3 Invoicing](docs/phase3/PHASE3_INVOICING.md)
+- [Phase 3.4 Order Status Tracking](docs/phase3/PHASE3_ORDER_STATUS_TRACKING.md)
 
 ### Future — When Level 4 is Reached
 

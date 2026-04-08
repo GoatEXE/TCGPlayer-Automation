@@ -488,7 +488,9 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 ### 6.1 Sales Dashboard
 
-**Tasks:**
+**Status:** ✅ COMPLETE (including sell workflow)
+
+**Completed:**
 - [x] Active listings view — sortable/filterable table with current price, market price, quantity, status
 - [x] Sales history view — completed sales with date, card, price, buyer, order status
 - [x] Summary stats cards: total listed, total sales revenue, active listing count, average sale price
@@ -496,6 +498,13 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
   - `sale_status_history` audit table + transition state machine + cancellation quantity-restore
   - Pipeline widget, inline OrderStatusSelect, batch actions, per-row history expansion
   - API sync scheduler blocked on TCGPlayer credentials
+- [x] **Sell workflow (2026-04-08)** — Single-card and bulk sale recording directly from Active Listings and Inventory views
+  - RecordSaleModal for individual card sales
+  - BulkSellModal for attaching multiple cards to an order
+  - Inline listing price editing on active listings
+  - "Rec'd" column showing recommended price (98% of market)
+  - Full integration with checkbox selection and bulk actions
+  - See [docs/plans/sell-workflow.md](./plans/sell-workflow.md) for implementation details
 
 ### 6.2 Shipment Tracking
 
@@ -736,7 +745,8 @@ docker compose up --build -d
 | 3.2 | Shipment Tracking | Tracking entry + timeline display (API push-back blocked) | ✅ LOCAL COMPLETE |
 | 3.3 | Invoicing | Printable invoice + packing slip | ✅ COMPLETE |
 | 3.4 | Telegram | Sale notifications | ✅ COMPLETE |
-| **3** | **Full Dashboard Complete** | **End-to-end selling workflow** | **—** |
+| 3.5 | Sell Workflow | Single-card and bulk sale recording from dashboard | ✅ COMPLETE |
+| **3** | **Full Dashboard Complete** | **End-to-end selling workflow** | **✅ COMPLETE** |
 
 ---
 

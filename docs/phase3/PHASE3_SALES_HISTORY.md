@@ -1,7 +1,13 @@
 # Phase 3.1 — Sales History View
 
 Date: 2026-04-01
-Status: PLAN (not yet implemented)
+Status: ✅ COMPLETE (implemented 2026-04-01)
+
+**Sell Workflow Extension:** ✅ COMPLETE (2026-04-08)
+- Single-card sale recording via RecordSaleModal
+- Bulk sale recording via BulkSellModal
+- Inline listing price editing
+- See [docs/plans/sell-workflow.md](../plans/sell-workflow.md) for full implementation details
 
 ---
 
@@ -38,12 +44,12 @@ Let Dustin record a sale against one or more listed cards, then view a paginated
 5. **Manual entry only** — no API sync. Fields are designed so future API sync can write the same table.
 
 ### What's explicitly out of scope for this slice
-- Shipment tracking (Phase 3.2)
-- Invoice/packing slip generation (Phase 3.3)
-- Telegram sale notifications (Phase 3.4)
-- Automated order import from TCGPlayer API
+- Shipment tracking (Phase 3.2) — **✅ COMPLETE (2026-04-02)**
+- Invoice/packing slip generation (Phase 3.3) — **✅ COMPLETE (2026-04-02)**
+- Telegram sale notifications (Phase 3.4) — **✅ COMPLETE (2026-04-03)**
+- Automated order import from TCGPlayer API — blocked on API credentials
 - Revenue/profit analytics beyond basic count/sum stats
-- Bulk sale recording (one sale at a time for now)
+- ~~Bulk sale recording (one sale at a time for now)~~ — **✅ COMPLETE (2026-04-08)** via BulkSellModal
 
 ---
 
