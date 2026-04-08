@@ -10,6 +10,7 @@ const STATUS_CONFIG = {
   listed: { label: 'Listed', color: '#10b981' },
   gift: { label: 'Gift', color: '#3b82f6' },
   needs_attention: { label: 'Needs Attention', color: '#f59e0b' },
+  sold: { label: 'Sold', color: '#6366f1' },
   error: { label: 'Error', color: '#ef4444' },
 } as const;
 

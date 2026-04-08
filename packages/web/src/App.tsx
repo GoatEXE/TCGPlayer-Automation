@@ -3,6 +3,7 @@ import { api } from './api/client';
 import type {
   Card,
   CardStats,
+  CreateSaleRequest,
   NotificationEvent,
   OrderStatus,
   PriceCheckStatus,
@@ -329,6 +330,26 @@ export function App() {
     }
   };
 
+  const handleRecordSale = async (data: CreateSaleRequest) => {
+    await api.createSale(data);
+    fetchCards();
+    fetchStats();
+  };
+
+  const handleBulkSell = async (salesData: CreateSaleRequest[]) => {
+    const results = await Promise.allSettled(
+      salesData.map((data) => api.createSale(data)),
+    );
+    const failures = results.filter((r) => r.status === 'rejected');
+    if (failures.length > 0) {
+      throw new Error(
+        `${results.length - failures.length} of ${results.length} sales recorded. ${failures.length} failed.`,
+      );
+    }
+    fetchCards();
+    fetchStats();
+  };
+
   const handleSaleStatusChange = async (
     saleId: number,
     newStatus: OrderStatus,
@@ -431,6 +452,7 @@ export function App() {
     { value: 'needs_attention', label: 'Needs Attention' },
     { value: 'pending', label: 'Pending' },
     { value: 'matched', label: 'Ready to List' },
+    { value: 'sold', label: 'Sold' },
     { value: 'error', label: 'Error' },
   ];
 
@@ -618,6 +640,9 @@ export function App() {
               onMarkListed={handleMarkListed}
               onUnlist={handleUnlist}
               onUpdateCard={handleUpdateCard}
+              onRecordSale={handleRecordSale}
+              onBulkSell={handleBulkSell}
+              enableSellFlow={activeView === 'active-listings'}
             />
 
             <Pagination

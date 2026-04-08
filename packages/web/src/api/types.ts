@@ -15,6 +15,7 @@ export interface Card {
     | 'listed'
     | 'needs_attention'
     | 'gift'
+    | 'sold'
     | 'error';
   marketPrice: string | null;
   listingPrice: string | null;
@@ -34,6 +35,7 @@ export interface CardStats {
   listed: number;
   gift: number;
   needs_attention: number;
+  sold: number;
   error: number;
 }
 
@@ -152,6 +154,19 @@ export interface GetSalesResponse {
   page: number;
   limit: number;
 }
+
+export interface CreateSaleRequest {
+  cardId: number;
+  quantitySold: number;
+  salePriceCents: number;
+  buyerName?: string | null;
+  tcgplayerOrderId?: string | null;
+  orderStatus?: OrderStatus;
+  soldAt?: string;
+  notes?: string | null;
+}
+
+export type CreateSaleResponse = Sale;
 
 export interface UpdateSaleRequest {
   buyerName?: string | null;

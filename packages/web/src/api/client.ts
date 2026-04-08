@@ -14,6 +14,7 @@ import type {
   GetSalesParams,
   GetSalesResponse,
   SalesStats,
+  CreateSaleRequest,
   UpdateSaleRequest,
   GetSaleHistoryResponse,
   BatchStatusUpdateRequest,
@@ -159,6 +160,13 @@ class ApiClient {
     return this.request<GetPriceHistoryResponse>(
       `/cards/${cardId}/price-history${query ? `?${query}` : ''}`,
     );
+  }
+
+  async createSale(data: CreateSaleRequest): Promise<Sale> {
+    return this.request<Sale>('/sales', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   async getSales(params?: GetSalesParams): Promise<GetSalesResponse> {

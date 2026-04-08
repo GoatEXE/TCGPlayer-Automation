@@ -14,6 +14,7 @@ describe('StatusBadge', () => {
     { status: 'gift', label: 'Gift', color: '#3b82f6' },
     { status: 'needs_attention', label: 'Needs Attention', color: '#f59e0b' },
     { status: 'error', label: 'Error', color: '#ef4444' },
+    { status: 'sold', label: 'Sold', color: '#6366f1' },
   ];
 
   testCases.forEach(({ status, label, color }) => {

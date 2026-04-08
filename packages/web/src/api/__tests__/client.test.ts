@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { api } from '../client';
-import type { Card, CardStats, ImportResult } from '../types';
+import type { Card, CardStats, ImportResult, Sale, CreateSaleRequest } from '../types';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -526,6 +526,85 @@ describe('ApiClient', () => {
         '/api/notifications?limit=10',
         expect.any(Object),
       );
+    });
+  });
+
+  describe('createSale', () => {
+    it('sends POST to /api/sales with correct JSON body', async () => {
+      const mockSale: Sale = {
+        id: 1,
+        cardId: 42,
+        tcgplayerOrderId: 'ORD-100',
+        quantitySold: 2,
+        salePriceCents: 499,
+        buyerName: 'Jane Doe',
+        orderStatus: 'pending',
+        soldAt: '2026-04-08T12:00:00.000Z',
+        notes: null,
+        createdAt: '2026-04-08T12:00:00.000Z',
+        updatedAt: '2026-04-08T12:00:00.000Z',
+        cardProductName: 'Riftbound Dragon',
+        cardSetName: 'Origins',
+      };
+      mockFetch(mockSale);
+
+      const request: CreateSaleRequest = {
+        cardId: 42,
+        quantitySold: 2,
+        salePriceCents: 499,
+        buyerName: 'Jane Doe',
+        tcgplayerOrderId: 'ORD-100',
+      };
+      const result = await api.createSale(request);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockSale);
+    });
+
+    it('returns typed Sale object on success', async () => {
+      const mockSale: Sale = {
+        id: 2,
+        cardId: 10,
+        tcgplayerOrderId: null,
+        quantitySold: 1,
+        salePriceCents: 150,
+        buyerName: null,
+        orderStatus: 'pending',
+        soldAt: '2026-04-08T14:00:00.000Z',
+        notes: 'Test note',
+        createdAt: '2026-04-08T14:00:00.000Z',
+        updatedAt: '2026-04-08T14:00:00.000Z',
+        cardProductName: 'Storm Elemental',
+        cardSetName: 'Origins',
+      };
+      mockFetch(mockSale);
+
+      const result = await api.createSale({
+        cardId: 10,
+        quantitySold: 1,
+        salePriceCents: 150,
+        notes: 'Test note',
+      });
+
+      expect(result.id).toBe(2);
+      expect(result.cardId).toBe(10);
+      expect(result.orderStatus).toBe('pending');
+      expect(result.notes).toBe('Test note');
+    });
+
+    it('throws on error response', async () => {
+      mockFetch({ error: 'Card not found' }, false, 404);
+
+      await expect(
+        api.createSale({ cardId: 999, quantitySold: 1, salePriceCents: 100 }),
+      ).rejects.toThrow('Card not found');
     });
   });
 

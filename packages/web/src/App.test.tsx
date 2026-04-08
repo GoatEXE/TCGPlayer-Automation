@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom/vitest';
 import { App } from './App';
 
 const apiMocks = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const apiMocks = vi.hoisted(() => ({
   createShipment: vi.fn(),
   updateShipment: vi.fn(),
   getNotificationEvents: vi.fn(),
+  createSale: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
@@ -41,6 +43,7 @@ describe('App view tabs', () => {
       listed: 0,
       gift: 0,
       needs_attention: 0,
+      sold: 0,
       error: 0,
     });
     apiMocks.getPriceCheckStatus.mockResolvedValue({
@@ -228,6 +231,27 @@ describe('App view tabs', () => {
     });
   });
 
+  it('renders Sold filter pill and clicking it fetches cards with status=sold', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenCalled();
+    });
+
+    const soldButton = screen.getByRole('button', { name: 'Sold' });
+    expect(soldButton).toBeTruthy();
+
+    await user.click(soldButton);
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'sold' }),
+      );
+    });
+  });
+
   it('refreshes sales and pipeline after shipment save', async () => {
     const user = userEvent.setup();
     apiMocks.getSales.mockResolvedValue({
@@ -284,5 +308,332 @@ describe('App view tabs', () => {
       expect(apiMocks.getSalesPipeline).toHaveBeenCalled();
       expect(apiMocks.getSalesStats).toHaveBeenCalled();
     });
+  });
+});
+
+describe('App record sale + bulk sell integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    apiMocks.getCards.mockResolvedValue({
+      cards: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+    });
+    apiMocks.getStats.mockResolvedValue({
+      total: 0,
+      pending: 0,
+      matched: 0,
+      listed: 0,
+      gift: 0,
+      needs_attention: 0,
+      sold: 0,
+      error: 0,
+    });
+    apiMocks.getPriceCheckStatus.mockResolvedValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      running: false,
+      lastRun: null,
+    });
+    apiMocks.createSale.mockResolvedValue({
+      id: 1,
+      cardId: 1,
+      tcgplayerOrderId: null,
+      quantitySold: 1,
+      salePriceCents: 200,
+      buyerName: null,
+      orderStatus: 'pending',
+      soldAt: '2026-04-01T00:00:00Z',
+      notes: null,
+      createdAt: '2026-04-01T00:00:00Z',
+      updatedAt: '2026-04-01T00:00:00Z',
+      cardProductName: 'Card A',
+      cardSetName: 'Origins',
+    });
+  });
+
+  it('record sale handler calls createSale and refreshes data', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Test Card',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '2.00',
+          listingPrice: '1.96',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Card')).toBeTruthy();
+    });
+
+    // Click Record Sale button
+    await user.click(screen.getByTitle('Record sale'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /record sale/i })).toBeTruthy();
+    });
+
+    const dialog = screen.getByRole('dialog', { name: /record sale/i });
+    await user.click(within(dialog).getByRole('button', { name: /record sale/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createSale).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cardId: 1,
+          quantitySold: 1,
+          salePriceCents: 196,
+        }),
+      );
+    });
+
+    // Should refresh cards and stats
+    await waitFor(() => {
+      // getCards called at least twice: initial load + refresh
+      expect(apiMocks.getCards.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(apiMocks.getStats.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('bulk sell handler calls createSale for each card', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Card A',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '1.00',
+          listingPrice: '0.98',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          tcgplayerId: 101,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Card B',
+          title: null,
+          number: '002',
+          rarity: 'Rare',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '2.00',
+          listingPrice: '1.96',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    // Switch to Active Listings to enable sell flow
+    await user.click(screen.getByRole('tab', { name: /active listings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Card A')).toBeTruthy();
+    });
+
+    // Select all using header checkbox
+    const headerCheckbox = screen.getAllByRole('checkbox')[0];
+    await user.click(headerCheckbox);
+
+    await user.click(screen.getByText(/attach 2 to order/i));
+
+    const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
+    await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createSale).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('bulk sell with partial failure throws error with summary message', async () => {
+    const user = userEvent.setup();
+    // First call succeeds, second fails
+    apiMocks.createSale
+      .mockResolvedValueOnce({ id: 1 })
+      .mockRejectedValueOnce(new Error('Network error'));
+
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Card A',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '1.00',
+          listingPrice: '0.98',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          tcgplayerId: 101,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Card B',
+          title: null,
+          number: '002',
+          rarity: 'Rare',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '2.00',
+          listingPrice: '1.96',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    // Switch to Active Listings
+    await user.click(screen.getByRole('tab', { name: /active listings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Card A')).toBeTruthy();
+    });
+
+    // Select all
+    const headerCheckbox = screen.getAllByRole('checkbox')[0];
+    await user.click(headerCheckbox);
+
+    await user.click(screen.getByText(/attach 2 to order/i));
+
+    const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
+    await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
+
+    // The error message should appear in the modal since BulkSellModal catches errors
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/1 of 2 sales recorded.*1 failed/i);
+    });
+  });
+
+  it('enableSellFlow is true when active-listings view is active', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Listed Card',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '1.00',
+          listingPrice: '0.98',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    // In inventory view (default), listed card checkbox should be disabled
+    await waitFor(() => {
+      expect(screen.getByText('Listed Card')).toBeTruthy();
+    });
+
+    const rows1 = screen.getAllByRole('row');
+    const listedRow1 = rows1[1];
+    expect(within(listedRow1).getByRole('checkbox')).toBeDisabled();
+
+    // Switch to Active Listings
+    await user.click(screen.getByRole('tab', { name: /active listings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Listed Card')).toBeTruthy();
+    });
+
+    // Now listed card checkbox should be enabled
+    const rows2 = screen.getAllByRole('row');
+    const listedRow2 = rows2[1];
+    expect(within(listedRow2).getByRole('checkbox')).not.toBeDisabled();
   });
 });

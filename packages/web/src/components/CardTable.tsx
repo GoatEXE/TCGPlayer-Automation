@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import type { Card } from '../api/types';
+import type { Card, CreateSaleRequest } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 import { ReviewListModal } from './ReviewListModal';
 import { PriceHistoryModal } from './PriceHistoryModal';
+import { RecordSaleModal } from './RecordSaleModal';
+import { BulkSellModal } from './BulkSellModal';
 
 interface CardTableProps {
   cards: Card[];
@@ -12,6 +14,9 @@ interface CardTableProps {
   onMarkListed: (cardIds: number[]) => void;
   onUnlist: (id: number) => void;
   onUpdateCard: (id: number, data: Partial<Card>) => Promise<Card>;
+  onRecordSale?: (data: CreateSaleRequest) => Promise<void>;
+  onBulkSell?: (sales: CreateSaleRequest[]) => Promise<void>;
+  enableSellFlow?: boolean;
 }
 
 type SortField = keyof Card | null;
@@ -25,6 +30,9 @@ export function CardTable({
   onMarkListed,
   onUnlist,
   onUpdateCard,
+  onRecordSale,
+  onBulkSell,
+  enableSellFlow,
 }: CardTableProps) {
   const [sortField, setSortField] = useState<SortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -38,6 +46,10 @@ export function CardTable({
   const [historyCardName, setHistoryCardName] = useState<string>('');
   const [editingFloorId, setEditingFloorId] = useState<number | null>(null);
   const [floorEditValue, setFloorEditValue] = useState<string>('');
+  const [editingListingId, setEditingListingId] = useState<number | null>(null);
+  const [listingEditValue, setListingEditValue] = useState<string>('');
+  const [recordSaleCardId, setRecordSaleCardId] = useState<number | null>(null);
+  const [showBulkSellModal, setShowBulkSellModal] = useState(false);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -90,13 +102,13 @@ export function CardTable({
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.size === matchedCards.length) {
+    if (selectedIds.size === selectableCards.length) {
       // Deselect all
       setSelectedIds(new Set());
     } else {
-      // Select all matched cards
-      const matchedIds = matchedCards.map((card) => card.id);
-      setSelectedIds(new Set(matchedIds));
+      // Select all selectable cards
+      const selectableIds = selectableCards.map((card) => card.id);
+      setSelectedIds(new Set(selectableIds));
     }
   };
 
@@ -132,8 +144,11 @@ export function CardTable({
     }
   };
 
-  // Filter cards that can be selected (only matched status)
+  // Filter cards that can be selected
   const matchedCards = sortedCards.filter((card) => card.status === 'matched');
+  const selectableCards = enableSellFlow
+    ? sortedCards.filter((card) => card.status === 'listed')
+    : matchedCards;
 
   const handleFloorEdit = (card: Card) => {
     setEditingFloorId(card.id);
@@ -150,6 +165,41 @@ export function CardTable({
     if (cents !== null && (isNaN(cents) || cents < 0)) return;
     setEditingFloorId(null);
     await onUpdateCard(id, { floorPriceCents: cents } as Partial<Card>);
+  };
+
+  const handleListingEdit = (card: Card) => {
+    setEditingListingId(card.id);
+    setListingEditValue(
+      card.listingPrice != null
+        ? parseFloat(card.listingPrice).toFixed(2)
+        : '',
+    );
+  };
+
+  const handleListingSave = async (id: number) => {
+    const trimmed = listingEditValue.trim();
+    if (trimmed === '') return setEditingListingId(null);
+    const num = parseFloat(trimmed);
+    if (isNaN(num) || num < 0) return;
+    setEditingListingId(null);
+    await onUpdateCard(id, { listingPrice: num } as unknown as Partial<Card>);
+  };
+
+  const handleListingKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    id: number,
+  ) => {
+    if (e.key === 'Enter') {
+      handleListingSave(id);
+    } else if (e.key === 'Escape') {
+      setEditingListingId(null);
+    }
+  };
+
+  const formatRecommendedPrice = (marketPrice: string | null) => {
+    if (!marketPrice) return '\u2014';
+    const recommended = Math.round(parseFloat(marketPrice) * 98) / 100;
+    return `$${recommended.toFixed(2)}`;
   };
 
   const handleFloorKeyDown = (
@@ -232,15 +282,24 @@ export function CardTable({
     <div className="table-container">
       {selectedIds.size > 0 && (
         <div className="selection-actions">
-          <button
-            onClick={handleOpenReview}
-            disabled={markingListed}
-            className="button-primary mark-listed"
-          >
-            {markingListed
-              ? '⏳ Marking...'
-              : `📋 Mark ${selectedIds.size} as Listed`}
-          </button>
+          {enableSellFlow ? (
+            <button
+              onClick={() => setShowBulkSellModal(true)}
+              className="button-primary"
+            >
+              💰 Attach {selectedIds.size} to Order
+            </button>
+          ) : (
+            <button
+              onClick={handleOpenReview}
+              disabled={markingListed}
+              className="button-primary mark-listed"
+            >
+              {markingListed
+                ? '⏳ Marking...'
+                : `📋 Mark ${selectedIds.size} as Listed`}
+            </button>
+          )}
           <button
             onClick={() => setSelectedIds(new Set())}
             className="button-secondary"
@@ -256,12 +315,12 @@ export function CardTable({
               <input
                 type="checkbox"
                 checked={
-                  selectedIds.size === matchedCards.length &&
-                  matchedCards.length > 0
+                  selectedIds.size === selectableCards.length &&
+                  selectableCards.length > 0
                 }
                 onChange={handleSelectAll}
-                disabled={matchedCards.length === 0}
-                title="Select all matched cards"
+                disabled={selectableCards.length === 0}
+                title={enableSellFlow ? 'Select all listed cards' : 'Select all matched cards'}
               />
             </th>
             <SortableHeader field="status">Status</SortableHeader>
@@ -272,6 +331,7 @@ export function CardTable({
             <SortableHeader field="condition">Condition</SortableHeader>
             <SortableHeader field="quantity">Qty</SortableHeader>
             <SortableHeader field="marketPrice">Market</SortableHeader>
+            <th>Rec'd</th>
             <SortableHeader field="listingPrice">Listing</SortableHeader>
             <SortableHeader field="floorPriceCents">Floor</SortableHeader>
             <SortableHeader field="lastCheckedAt">Last Checked</SortableHeader>
@@ -294,11 +354,15 @@ export function CardTable({
                     onChange={(e) =>
                       handleSelectCard(card.id, e.target.checked)
                     }
-                    disabled={!isMatched}
+                    disabled={enableSellFlow ? !isListed : !isMatched}
                     title={
-                      isMatched
-                        ? 'Select for bulk listing'
-                        : 'Only matched cards can be selected'
+                      enableSellFlow
+                        ? isListed
+                          ? 'Select for bulk sell'
+                          : 'Only listed cards can be selected'
+                        : isMatched
+                          ? 'Select for bulk listing'
+                          : 'Only matched cards can be selected'
                     }
                   />
                 </td>
@@ -327,7 +391,37 @@ export function CardTable({
                 <td className="price">
                   {formatPrice(card.marketPrice, card.isFoilPrice)}
                 </td>
-                <td className="price">{formatPrice(card.listingPrice)}</td>
+                <td className="price">
+                  {formatRecommendedPrice(card.marketPrice)}
+                </td>
+                <td className="price listing-price-cell">
+                  {isListed ? (
+                    editingListingId === card.id ? (
+                      <input
+                        type="number"
+                        className="listing-price-input"
+                        value={listingEditValue}
+                        onChange={(e) => setListingEditValue(e.target.value)}
+                        onKeyDown={(e) => handleListingKeyDown(e, card.id)}
+                        onBlur={() => handleListingSave(card.id)}
+                        min="0"
+                        step="0.01"
+                        placeholder="\u2014"
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        className="listing-price-display"
+                        onClick={() => handleListingEdit(card)}
+                        title="Click to edit listing price"
+                      >
+                        {formatPrice(card.listingPrice)}
+                      </button>
+                    )
+                  ) : (
+                    formatPrice(card.listingPrice)
+                  )}
+                </td>
                 <td className="price floor-price-cell">
                   {editingFloorId === card.id ? (
                     <input
@@ -358,14 +452,23 @@ export function CardTable({
                 <td className="date">{formatDate(card.updatedAt)}</td>
                 <td className="actions">
                   {isListed ? (
-                    <button
-                      onClick={() => handleUnlist(card.id)}
-                      disabled={unlistingId === card.id}
-                      className="action-button unlist"
-                      title="Remove from listing"
-                    >
-                      {unlistingId === card.id ? '⏳' : '↩️'}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setRecordSaleCardId(card.id)}
+                        className="action-button"
+                        title="Record sale"
+                      >
+                        💵
+                      </button>
+                      <button
+                        onClick={() => handleUnlist(card.id)}
+                        disabled={unlistingId === card.id}
+                        className="action-button unlist"
+                        title="Remove from listing"
+                      >
+                        {unlistingId === card.id ? '⏳' : '↩️'}
+                      </button>
+                    </>
                   ) : (
                     <button
                       onClick={() => handleReprice(card.id)}
@@ -413,6 +516,33 @@ export function CardTable({
           cardId={historyCardId}
           cardName={historyCardName}
           onClose={() => setHistoryCardId(null)}
+        />
+      )}
+      {recordSaleCardId !== null && onRecordSale && (() => {
+        const card = cards.find((c) => c.id === recordSaleCardId);
+        if (!card) return null;
+        return (
+          <RecordSaleModal
+            card={card}
+            onSubmit={async (data) => {
+              await onRecordSale(data);
+              setRecordSaleCardId(null);
+            }}
+            onClose={() => setRecordSaleCardId(null)}
+          />
+        );
+      })()}
+      {showBulkSellModal && onBulkSell && (
+        <BulkSellModal
+          cards={cards.filter((c) => selectedIds.has(c.id))}
+          onSubmit={async (sales) => {
+            await onBulkSell(sales);
+            setShowBulkSellModal(false);
+            setSelectedIds(new Set());
+          }}
+          onClose={() => {
+            setShowBulkSellModal(false);
+          }}
         />
       )}
     </div>
