@@ -10,6 +10,14 @@ import type {
   PriceCheckStatus,
   UpdatePriceCheckSettingsRequest,
   GetPriceHistoryResponse,
+  Expense,
+  GetExpensesParams,
+  GetExpensesResponse,
+  CreateExpenseRequest,
+  UpdateExpenseRequest,
+  PerformanceSummaryResponse,
+  ExpenseSettings,
+  UpdateExpenseSettingsRequest,
   Sale,
   GetSalesParams,
   GetSalesResponse,
@@ -160,6 +168,69 @@ class ApiClient {
     return this.request<GetPriceHistoryResponse>(
       `/cards/${cardId}/price-history${query ? `?${query}` : ''}`,
     );
+  }
+
+  async getExpenses(params?: GetExpensesParams): Promise<GetExpensesResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.category) searchParams.set('category', params.category);
+    if (params?.source) searchParams.set('source', params.source);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+
+    const query = searchParams.toString();
+    return this.request<GetExpensesResponse>(
+      `/expenses${query ? `?${query}` : ''}`,
+    );
+  }
+
+  async createExpense(data: CreateExpenseRequest): Promise<Expense> {
+    return this.request<Expense>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateExpense(id: number, data: UpdateExpenseRequest): Promise<Expense> {
+    return this.request<Expense>(`/expenses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteExpense(id: number): Promise<void> {
+    await this.request<{ success: boolean }>(`/expenses/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getPerformanceSummary(params?: {
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<PerformanceSummaryResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+
+    const query = searchParams.toString();
+    return this.request<PerformanceSummaryResponse>(
+      `/expenses/performance${query ? `?${query}` : ''}`,
+    );
+  }
+
+  async getExpenseSettings(): Promise<ExpenseSettings> {
+    return this.request<ExpenseSettings>('/expenses/settings');
+  }
+
+  async updateExpenseSettings(
+    data: UpdateExpenseSettingsRequest,
+  ): Promise<ExpenseSettings> {
+    return this.request<ExpenseSettings>('/expenses/settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   async createSale(data: CreateSaleRequest): Promise<Sale> {

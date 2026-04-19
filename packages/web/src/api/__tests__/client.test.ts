@@ -1,6 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { api } from '../client';
-import type { Card, CardStats, ImportResult, Sale, CreateSaleRequest } from '../types';
+import type {
+  Card,
+  CardStats,
+  ImportResult,
+  Sale,
+  CreateSaleRequest,
+  Expense,
+  CreateExpenseRequest,
+  UpdateExpenseRequest,
+  GetExpensesResponse,
+  PerformanceSummaryResponse,
+  ExpenseSettings,
+  UpdateExpenseSettingsRequest,
+} from '../types';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -529,6 +542,328 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('getExpenses', () => {
+    it('fetches expenses with no params', async () => {
+      const mockResponse: GetExpensesResponse = {
+        expenses: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.getExpenses();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/expenses', {
+        headers: {},
+      });
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('fetches expenses with query params', async () => {
+      mockFetch({ expenses: [], total: 0, page: 2, limit: 25 });
+
+      await api.getExpenses({
+        page: 2,
+        limit: 25,
+        category: 'shipping',
+        source: 'manual',
+        search: 'mailer',
+        dateFrom: '2026-04-01T00:00:00.000Z',
+        dateTo: '2026-04-30T23:59:59.999Z',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/expenses?page=2&limit=25&category=shipping&source=manual&search=mailer&dateFrom=2026-04-01T00%3A00%3A00.000Z&dateTo=2026-04-30T23%3A59%3A59.999Z',
+        expect.any(Object),
+      );
+    });
+
+    it('throws on API error', async () => {
+      mockFetch({ error: 'Invalid category' }, false, 400);
+
+      await expect(api.getExpenses({ category: 'shipping' })).rejects.toThrow(
+        'Invalid category',
+      );
+    });
+  });
+
+  describe('createExpense', () => {
+    it('sends POST to /api/expenses with the expense payload', async () => {
+      const mockExpense: Expense = {
+        id: 10,
+        occurredAt: '2026-04-18T12:00:00.000Z',
+        amountCents: 499,
+        category: 'shipping',
+        subcategory: null,
+        description: 'Postage',
+        quantity: 1,
+        unit: 'order',
+        unitCostCents: 499,
+        source: 'manual',
+        isEstimate: false,
+        autoKind: null,
+        saleId: null,
+        tcgplayerOrderId: 'ORDER-10',
+        createdAt: '2026-04-18T12:00:00.000Z',
+        updatedAt: '2026-04-18T12:00:00.000Z',
+      };
+      mockFetch(mockExpense);
+
+      const request: CreateExpenseRequest = {
+        amountCents: 499,
+        category: 'shipping',
+        description: 'Postage',
+        quantity: 1,
+        unit: 'order',
+      };
+
+      const result = await api.createExpense(request);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/expenses',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockExpense);
+    });
+
+    it('throws on API error', async () => {
+      mockFetch(
+        { error: 'amountCents must be a positive integer' },
+        false,
+        400,
+      );
+
+      await expect(
+        api.createExpense({ amountCents: 0, category: 'shipping' }),
+      ).rejects.toThrow('amountCents must be a positive integer');
+    });
+  });
+
+  describe('updateExpense', () => {
+    it('sends PATCH to /api/expenses/:id with update payload', async () => {
+      const mockExpense: Expense = {
+        id: 8,
+        occurredAt: '2026-04-10T10:00:00.000Z',
+        amountCents: 625,
+        category: 'supplies',
+        subcategory: 'mailers',
+        description: 'Updated mailers',
+        quantity: 5,
+        unit: 'mailer',
+        unitCostCents: 125,
+        source: 'manual',
+        isEstimate: false,
+        autoKind: null,
+        saleId: null,
+        tcgplayerOrderId: null,
+        createdAt: '2026-04-10T10:00:00.000Z',
+        updatedAt: '2026-04-11T10:00:00.000Z',
+      };
+      mockFetch(mockExpense);
+
+      const request: UpdateExpenseRequest = {
+        amountCents: 625,
+        quantity: 5,
+        description: 'Updated mailers',
+      };
+
+      const result = await api.updateExpense(8, request);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/expenses/8',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockExpense);
+    });
+
+    it('throws on API error', async () => {
+      mockFetch({ error: 'Expense not found' }, false, 404);
+
+      await expect(api.updateExpense(999, { description: 'Nope' })).rejects.toThrow(
+        'Expense not found',
+      );
+    });
+  });
+
+  describe('deleteExpense', () => {
+    it('sends DELETE to /api/expenses/:id and resolves void', async () => {
+      mockFetch({ success: true });
+
+      const result = await api.deleteExpense(9);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/expenses/9',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: {},
+        }),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('throws on API error', async () => {
+      mockFetch({ error: 'Expense not found' }, false, 404);
+
+      await expect(api.deleteExpense(999)).rejects.toThrow('Expense not found');
+    });
+  });
+
+  describe('getPerformanceSummary', () => {
+    it('fetches performance summary with no params', async () => {
+      const mockResponse: PerformanceSummaryResponse = {
+        revenueCents: 1500,
+        expensesCents: 430,
+        netProfitCents: 1070,
+        marginPercent: 71.33,
+        salesCount: 3,
+        expenseCount: 4,
+        estimatedExpensesCents: 130,
+        actualExpensesCents: 300,
+        byCategory: [
+          { category: 'shipping', totalCents: 130, count: 2 },
+          { category: 'supplies', totalCents: 300, count: 2 },
+        ],
+      };
+      mockFetch(mockResponse);
+
+      const result = await api.getPerformanceSummary();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/expenses/performance', {
+        headers: {},
+      });
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('fetches performance summary with date range params', async () => {
+      mockFetch({
+        revenueCents: 0,
+        expensesCents: 0,
+        netProfitCents: 0,
+        marginPercent: null,
+        salesCount: 0,
+        expenseCount: 0,
+        estimatedExpensesCents: 0,
+        actualExpensesCents: 0,
+        byCategory: [],
+      });
+
+      await api.getPerformanceSummary({
+        dateFrom: '2026-04-01T00:00:00.000Z',
+        dateTo: '2026-04-30T23:59:59.999Z',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/expenses/performance?dateFrom=2026-04-01T00%3A00%3A00.000Z&dateTo=2026-04-30T23%3A59%3A59.999Z',
+        expect.any(Object),
+      );
+    });
+
+    it('throws on API error', async () => {
+      mockFetch({ error: 'Invalid dateFrom' }, false, 400);
+
+      await expect(
+        api.getPerformanceSummary({ dateFrom: 'not-a-date' }),
+      ).rejects.toThrow('Invalid dateFrom');
+    });
+  });
+
+  describe('getExpenseSettings', () => {
+    it('fetches expense settings', async () => {
+      const mockSettings: ExpenseSettings = {
+        id: 1,
+        autoRecordSaleExpenses: false,
+        autoRecordShipping: true,
+        shippingCostCents: 99,
+        autoRecordSupplies: true,
+        suppliesCostCents: 25,
+        autoRecordTcgplayerFees: true,
+        marketplaceFeeBps: 1075,
+        transactionFeeBps: 250,
+        transactionFlatFeeCents: 30,
+        createdAt: '2026-04-18T12:00:00.000Z',
+        updatedAt: '2026-04-18T12:00:00.000Z',
+      };
+      mockFetch(mockSettings);
+
+      const result = await api.getExpenseSettings();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/expenses/settings', {
+        headers: {},
+      });
+      expect(result).toEqual(mockSettings);
+    });
+
+    it('throws on API error', async () => {
+      mockFetch({ error: 'Failed to fetch expense settings' }, false, 500);
+
+      await expect(api.getExpenseSettings()).rejects.toThrow(
+        'Failed to fetch expense settings',
+      );
+    });
+  });
+
+  describe('updateExpenseSettings', () => {
+    it('sends POST to /api/expenses/settings with settings payload', async () => {
+      const mockSettings: ExpenseSettings = {
+        id: 1,
+        autoRecordSaleExpenses: true,
+        autoRecordShipping: true,
+        shippingCostCents: 149,
+        autoRecordSupplies: true,
+        suppliesCostCents: 35,
+        autoRecordTcgplayerFees: true,
+        marketplaceFeeBps: 900,
+        transactionFeeBps: 275,
+        transactionFlatFeeCents: 35,
+        createdAt: '2026-04-18T12:00:00.000Z',
+        updatedAt: '2026-04-18T13:00:00.000Z',
+      };
+      mockFetch(mockSettings);
+
+      const request: UpdateExpenseSettingsRequest = {
+        autoRecordSaleExpenses: true,
+        shippingCostCents: 149,
+        suppliesCostCents: 35,
+        marketplaceFeeBps: 900,
+        transactionFeeBps: 275,
+        transactionFlatFeeCents: 35,
+      };
+
+      const result = await api.updateExpenseSettings(request);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/expenses/settings',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockSettings);
+    });
+
+    it('throws on API error', async () => {
+      mockFetch(
+        { error: 'shippingCostCents must be a non-negative integer' },
+        false,
+        400,
+      );
+
+      await expect(
+        api.updateExpenseSettings({ shippingCostCents: -1 }),
+      ).rejects.toThrow('shippingCostCents must be a non-negative integer');
+    });
+  });
+
   describe('createSale', () => {
     it('sends POST to /api/sales with correct JSON body', async () => {
       const mockSale: Sale = {
@@ -554,6 +889,7 @@ describe('ApiClient', () => {
         salePriceCents: 499,
         buyerName: 'Jane Doe',
         tcgplayerOrderId: 'ORD-100',
+        applyEstimatedExpenses: true,
       };
       const result = await api.createSale(request);
 

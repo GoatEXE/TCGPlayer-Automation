@@ -17,6 +17,7 @@ interface CardTableProps {
   onRecordSale?: (data: CreateSaleRequest) => Promise<void>;
   onBulkSell?: (sales: CreateSaleRequest[]) => Promise<void>;
   enableSellFlow?: boolean;
+  defaultApplyExpenses?: boolean;
 }
 
 type SortField = keyof Card | null;
@@ -33,6 +34,7 @@ export function CardTable({
   onRecordSale,
   onBulkSell,
   enableSellFlow,
+  defaultApplyExpenses = false,
 }: CardTableProps) {
   const [sortField, setSortField] = useState<SortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -529,6 +531,7 @@ export function CardTable({
               setRecordSaleCardId(null);
             }}
             onClose={() => setRecordSaleCardId(null)}
+            defaultApplyExpenses={defaultApplyExpenses}
           />
         );
       })()}
@@ -543,6 +546,7 @@ export function CardTable({
           onClose={() => {
             setShowBulkSellModal(false);
           }}
+          defaultApplyExpenses={defaultApplyExpenses}
         />
       )}
     </div>

@@ -5,12 +5,14 @@ interface RecordSaleModalProps {
   card: Card;
   onSubmit: (data: CreateSaleRequest) => Promise<void>;
   onClose: () => void;
+  defaultApplyExpenses?: boolean;
 }
 
 export function RecordSaleModal({
   card,
   onSubmit,
   onClose,
+  defaultApplyExpenses = false,
 }: RecordSaleModalProps) {
   const defaultPrice = card.listingPrice ? parseFloat(card.listingPrice) : 0;
 
@@ -20,6 +22,9 @@ export function RecordSaleModal({
   const [tcgplayerOrderId, setTcgplayerOrderId] = useState('');
   const [soldAt, setSoldAt] = useState(() => toDatetimeLocal(new Date()));
   const [notes, setNotes] = useState('');
+  const [applyEstimatedExpenses, setApplyEstimatedExpenses] = useState(
+    defaultApplyExpenses,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +73,7 @@ export function RecordSaleModal({
       tcgplayerOrderId: tcgplayerOrderId || null,
       soldAt: soldAt ? new Date(soldAt).toISOString() : undefined,
       notes: notes || null,
+      applyEstimatedExpenses,
     };
 
     try {
@@ -213,6 +219,19 @@ export function RecordSaleModal({
               rows={2}
               placeholder="Optional"
             />
+          </div>
+
+          <div className="sale-field">
+            <label htmlFor="sale-apply-estimated-expenses">
+              <input
+                id="sale-apply-estimated-expenses"
+                type="checkbox"
+                checked={applyEstimatedExpenses}
+                onChange={(e) => setApplyEstimatedExpenses(e.target.checked)}
+                disabled={saving}
+              />{' '}
+              Apply estimated expenses
+            </label>
           </div>
 
           {error && (

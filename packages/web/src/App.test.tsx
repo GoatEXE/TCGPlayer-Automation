@@ -20,11 +20,67 @@ const apiMocks = vi.hoisted(() => ({
   updateShipment: vi.fn(),
   getNotificationEvents: vi.fn(),
   createSale: vi.fn(),
+  getExpenses: vi.fn(),
+  getPerformanceSummary: vi.fn(),
+  getExpenseSettings: vi.fn(),
+  createExpense: vi.fn(),
+  updateExpense: vi.fn(),
+  deleteExpense: vi.fn(),
+  updateExpenseSettings: vi.fn(),
 }));
 
 vi.mock('./api/client', () => ({
   api: apiMocks,
 }));
+
+const performanceSummaryFixture = {
+  revenueCents: 25000,
+  expensesCents: 9843,
+  netProfitCents: 15157,
+  marginPercent: 60.63,
+  salesCount: 12,
+  expenseCount: 9,
+  estimatedExpensesCents: 3343,
+  actualExpensesCents: 6500,
+  byCategory: [
+    { category: 'shipping', totalCents: 2300, count: 2 },
+    { category: 'supplies', totalCents: 1200, count: 3 },
+  ],
+};
+
+const expenseSettingsFixture = {
+  id: 1,
+  autoRecordSaleExpenses: false,
+  autoRecordShipping: true,
+  shippingCostCents: 99,
+  autoRecordSupplies: true,
+  suppliesCostCents: 25,
+  autoRecordTcgplayerFees: true,
+  marketplaceFeeBps: 1075,
+  transactionFeeBps: 250,
+  transactionFlatFeeCents: 30,
+  createdAt: '2026-04-18T10:00:00.000Z',
+  updatedAt: '2026-04-18T10:00:00.000Z',
+};
+
+const expenseFixture = {
+  id: 42,
+  occurredAt: '2026-04-18T12:00:00.000Z',
+  amountCents: 499,
+  category: 'shipping',
+  subcategory: 'postage',
+  description: 'USPS postage',
+  quantity: 1,
+  unit: 'order',
+  unitCostCents: 499,
+  source: 'manual',
+  isEstimate: false,
+  autoKind: null,
+  saleId: null,
+  tcgplayerOrderId: 'ORD-42',
+  createdAt: '2026-04-18T12:00:00.000Z',
+  updatedAt: '2026-04-18T12:00:00.000Z',
+};
 
 describe('App view tabs', () => {
   beforeEach(() => {
@@ -97,6 +153,18 @@ describe('App view tabs', () => {
       events: [],
       limit: 20,
     });
+    apiMocks.getExpenses.mockResolvedValue({
+      expenses: [expenseFixture],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+    apiMocks.getPerformanceSummary.mockResolvedValue(performanceSummaryFixture);
+    apiMocks.getExpenseSettings.mockResolvedValue(expenseSettingsFixture);
+    apiMocks.createExpense.mockResolvedValue(expenseFixture);
+    apiMocks.updateExpense.mockResolvedValue(expenseFixture);
+    apiMocks.deleteExpense.mockResolvedValue(undefined);
+    apiMocks.updateExpenseSettings.mockResolvedValue(expenseSettingsFixture);
   });
 
   it('switches to Active Listings mode and requests listed cards', async () => {
@@ -311,6 +379,195 @@ describe('App view tabs', () => {
   });
 });
 
+describe('App performance view integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    apiMocks.getCards.mockResolvedValue({
+      cards: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+    });
+    apiMocks.getStats.mockResolvedValue({
+      total: 0,
+      pending: 0,
+      matched: 0,
+      listed: 0,
+      gift: 0,
+      needs_attention: 0,
+      sold: 0,
+      error: 0,
+    });
+    apiMocks.getPriceCheckStatus.mockResolvedValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      running: false,
+      lastRun: null,
+    });
+
+    apiMocks.getExpenses.mockResolvedValue({
+      expenses: [expenseFixture],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+    apiMocks.getPerformanceSummary.mockResolvedValue(performanceSummaryFixture);
+    apiMocks.getExpenseSettings.mockResolvedValue(expenseSettingsFixture);
+
+    apiMocks.createExpense.mockResolvedValue(expenseFixture);
+    apiMocks.updateExpense.mockResolvedValue(expenseFixture);
+    apiMocks.deleteExpense.mockResolvedValue(undefined);
+    apiMocks.updateExpenseSettings.mockResolvedValue(expenseSettingsFixture);
+  });
+
+  it('shows a Performance tab in the tab bar', () => {
+    render(<App />);
+
+    expect(screen.getByRole('tab', { name: /performance/i })).toBeTruthy();
+  });
+
+  it('clicking Performance tab fetches performance summary, expenses, and settings', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /performance/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.getPerformanceSummary).toHaveBeenCalled();
+      expect(apiMocks.getExpenses).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, limit: 50 }),
+      );
+      expect(apiMocks.getExpenseSettings).toHaveBeenCalled();
+    });
+  });
+
+  it('renders summary, settings, and expenses table in Performance view', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /performance/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'Performance' })).toBeTruthy();
+    });
+
+    expect(screen.getByText(/Profit & Loss/i)).toBeTruthy();
+    expect(screen.getByText(/Expense Settings/i)).toBeTruthy();
+    expect(screen.getByText('USPS postage')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Add Expense/i })).toBeTruthy();
+  });
+
+  it('creating an expense calls createExpense and refreshes expenses + summary', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /performance/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('USPS postage')).toBeTruthy();
+    });
+
+    apiMocks.getExpenses.mockClear();
+    apiMocks.getPerformanceSummary.mockClear();
+
+    await user.click(screen.getByRole('button', { name: /Add Expense/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /create expense/i })).toBeTruthy();
+    });
+
+    const expenseDialog = screen.getByRole('dialog', { name: /create expense/i });
+    await user.type(within(expenseDialog).getByLabelText(/Amount \(\$\)/i), '1.25');
+    await user.selectOptions(
+      within(expenseDialog).getByLabelText('Category'),
+      'shipping',
+    );
+
+    await user.click(within(expenseDialog).getByRole('button', { name: /Save Expense/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createExpense).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amountCents: 125,
+          category: 'shipping',
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.getExpenses).toHaveBeenCalled();
+      expect(apiMocks.getPerformanceSummary).toHaveBeenCalled();
+    });
+  });
+
+  it('deleting an expense calls deleteExpense and refreshes expenses + summary', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /performance/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('USPS postage')).toBeTruthy();
+    });
+
+    apiMocks.getExpenses.mockClear();
+    apiMocks.getPerformanceSummary.mockClear();
+
+    await user.click(screen.getByTitle('Delete expense'));
+
+    await waitFor(() => {
+      expect(apiMocks.deleteExpense).toHaveBeenCalledWith(42);
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.getExpenses).toHaveBeenCalled();
+      expect(apiMocks.getPerformanceSummary).toHaveBeenCalled();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('saving settings calls updateExpenseSettings and refreshes settings', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /performance/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save Settings/i })).toBeTruthy();
+    });
+
+    apiMocks.getExpenseSettings.mockClear();
+
+    await user.click(screen.getByRole('button', { name: /Save Settings/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.updateExpenseSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          autoRecordSaleExpenses: false,
+          shippingCostCents: 99,
+          suppliesCostCents: 25,
+          marketplaceFeeBps: 1075,
+          transactionFeeBps: 250,
+          transactionFlatFeeCents: 30,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.getExpenseSettings).toHaveBeenCalled();
+    });
+  });
+});
+
 describe('App record sale + bulk sell integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -353,6 +610,18 @@ describe('App record sale + bulk sell integration', () => {
       cardProductName: 'Card A',
       cardSetName: 'Origins',
     });
+    apiMocks.getExpenses.mockResolvedValue({
+      expenses: [expenseFixture],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+    apiMocks.getPerformanceSummary.mockResolvedValue(performanceSummaryFixture);
+    apiMocks.getExpenseSettings.mockResolvedValue(expenseSettingsFixture);
+    apiMocks.createExpense.mockResolvedValue(expenseFixture);
+    apiMocks.updateExpense.mockResolvedValue(expenseFixture);
+    apiMocks.deleteExpense.mockResolvedValue(undefined);
+    apiMocks.updateExpenseSettings.mockResolvedValue(expenseSettingsFixture);
   });
 
   it('record sale handler calls createSale and refreshes data', async () => {
@@ -418,6 +687,81 @@ describe('App record sale + bulk sell integration', () => {
       // getCards called at least twice: initial load + refresh
       expect(apiMocks.getCards.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(apiMocks.getStats.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('uses expense settings autoRecordSaleExpenses as default for sale modal', async () => {
+    const user = userEvent.setup();
+    apiMocks.getExpenseSettings.mockResolvedValue({
+      ...expenseSettingsFixture,
+      autoRecordSaleExpenses: true,
+    });
+
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Test Card',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '2.00',
+          listingPrice: '1.96',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Card')).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole('tab', { name: /performance/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.getExpenseSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('tab', { name: /active listings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Card')).toBeTruthy();
+    });
+
+    await user.click(screen.getByTitle('Record sale'));
+
+    const dialog = screen.getByRole('dialog', { name: /record sale/i });
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: /apply estimated expenses/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+
+    await user.click(within(dialog).getByRole('button', { name: /record sale/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createSale).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cardId: 1,
+          applyEstimatedExpenses: true,
+        }),
+      );
     });
   });
 

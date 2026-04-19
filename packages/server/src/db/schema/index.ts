@@ -1,4 +1,6 @@
 export * from './cards.js';
+export * from './expense-settings.js';
+export * from './expenses.js';
 export * from './notification-events.js';
 export * from './price-history.js';
 export * from './sale-status-history.js';

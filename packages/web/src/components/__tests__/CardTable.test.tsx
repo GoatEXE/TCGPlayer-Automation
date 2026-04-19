@@ -744,6 +744,27 @@ describe('CardTable Record Sale button', () => {
     expect(within(dialog).getByText('Test Card')).toBeInTheDocument();
   });
 
+  it('passes defaultApplyExpenses through to RecordSaleModal', async () => {
+    const user = userEvent.setup();
+    render(
+      <CardTable
+        {...defaultTableProps}
+        defaultApplyExpenses
+        cards={[
+          makeCard({ id: 5, status: 'listed', productName: 'Test Card', listingPrice: '1.50', setName: 'Origins' }),
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Record sale'));
+
+    const dialog = screen.getByRole('dialog', { name: /record sale/i });
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: /apply estimated expenses/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+  });
+
   it('RecordSaleModal onSubmit calls onRecordSale prop', async () => {
     const user = userEvent.setup();
     const onRecordSale = vi.fn().mockResolvedValue(undefined);
@@ -855,6 +876,31 @@ describe('CardTable sell flow (enableSellFlow)', () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText('Sell Card A')).toBeInTheDocument();
     expect(within(dialog).getByText('Sell Card B')).toBeInTheDocument();
+  });
+
+  it('passes defaultApplyExpenses through to BulkSellModal', async () => {
+    const user = userEvent.setup();
+    render(
+      <CardTable
+        {...defaultTableProps}
+        enableSellFlow
+        defaultApplyExpenses
+        cards={[
+          makeCard({ id: 1, status: 'listed', productName: 'Sell Card A', listingPrice: '1.00' }),
+          makeCard({ id: 2, status: 'listed', productName: 'Sell Card B', listingPrice: '2.00' }),
+        ]}
+      />,
+    );
+
+    const headerCheckbox = screen.getAllByRole('checkbox')[0];
+    await user.click(headerCheckbox);
+    await user.click(screen.getByText(/attach 2 to order/i));
+
+    const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: /apply estimated expenses/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
   });
 
   it('when enableSellFlow=false, matched cards are selectable and Mark as Listed is shown', async () => {

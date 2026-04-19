@@ -5,6 +5,7 @@ interface BulkSellModalProps {
   cards: Card[];
   onSubmit: (sales: CreateSaleRequest[]) => Promise<void>;
   onClose: () => void;
+  defaultApplyExpenses?: boolean;
 }
 
 interface PerCardState {
@@ -12,11 +13,19 @@ interface PerCardState {
   salePrice: number;
 }
 
-export function BulkSellModal({ cards, onSubmit, onClose }: BulkSellModalProps) {
+export function BulkSellModal({
+  cards,
+  onSubmit,
+  onClose,
+  defaultApplyExpenses = false,
+}: BulkSellModalProps) {
   const [buyerName, setBuyerName] = useState('');
   const [tcgplayerOrderId, setTcgplayerOrderId] = useState('');
   const [soldAt, setSoldAt] = useState(() => toDatetimeLocal(new Date()));
   const [notes, setNotes] = useState('');
+  const [applyEstimatedExpenses, setApplyEstimatedExpenses] = useState(
+    defaultApplyExpenses,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +76,7 @@ export function BulkSellModal({ cards, onSubmit, onClose }: BulkSellModalProps) 
       tcgplayerOrderId: tcgplayerOrderId || null,
       soldAt: soldAt ? new Date(soldAt).toISOString() : undefined,
       notes: notes || null,
+      applyEstimatedExpenses,
     }));
 
     try {
@@ -165,6 +175,19 @@ export function BulkSellModal({ cards, onSubmit, onClose }: BulkSellModalProps) 
                 rows={2}
                 placeholder="Optional"
               />
+            </div>
+
+            <div className="sale-field">
+              <label htmlFor="bulk-apply-estimated-expenses">
+                <input
+                  id="bulk-apply-estimated-expenses"
+                  type="checkbox"
+                  checked={applyEstimatedExpenses}
+                  onChange={(e) => setApplyEstimatedExpenses(e.target.checked)}
+                  disabled={saving}
+                />{' '}
+                Apply estimated expenses
+              </label>
             </div>
           </div>
 

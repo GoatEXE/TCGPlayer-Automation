@@ -71,6 +71,13 @@
       "when": 1775096636786,
       "tag": "0009_flowery_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776546877474,
+      "tag": "0010_serious_sue_storm",
+      "breakpoints": true
     }
   ]
 }

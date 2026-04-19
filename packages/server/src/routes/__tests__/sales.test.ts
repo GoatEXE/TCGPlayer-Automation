@@ -3,6 +3,24 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { salesRoutes } from '../sales.js';
 
+function buildExpenseSettings(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    autoRecordSaleExpenses: false,
+    autoRecordShipping: true,
+    shippingCostCents: 99,
+    autoRecordSupplies: true,
+    suppliesCostCents: 25,
+    autoRecordTcgplayerFees: true,
+    marketplaceFeeBps: 1075,
+    transactionFeeBps: 250,
+    transactionFlatFeeCents: 30,
+    createdAt: new Date('2026-04-18T00:00:00.000Z'),
+    updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
 vi.mock('../../db/index.js', () => ({
   db: {
     insert: vi.fn().mockReturnThis(),
@@ -30,6 +48,17 @@ const mockSendSaleConfirmedAlert = vi.fn().mockResolvedValue(true);
 vi.mock('../../lib/notifications/telegram.js', () => ({
   sendSaleConfirmedAlert: (...args: any[]) =>
     mockSendSaleConfirmedAlert(...args),
+}));
+
+const mockCreateSaleAutoEstimates = vi.fn().mockResolvedValue([]);
+const mockGetOrCreateExpenseSettings = vi
+  .fn()
+  .mockResolvedValue(buildExpenseSettings());
+vi.mock('../../lib/expenses/index.js', () => ({
+  createSaleAutoEstimates: (...args: any[]) =>
+    mockCreateSaleAutoEstimates(...args),
+  getOrCreateExpenseSettings: (...args: any[]) =>
+    mockGetOrCreateExpenseSettings(...args),
 }));
 
 import { db } from '../../db/index.js';
@@ -61,6 +90,8 @@ describe('sales routes', () => {
     vi.clearAllMocks();
     mockCreateShipmentOnConfirm.mockResolvedValue(undefined);
     mockSendSaleConfirmedAlert.mockResolvedValue(true);
+    mockCreateSaleAutoEstimates.mockResolvedValue([]);
+    mockGetOrCreateExpenseSettings.mockResolvedValue(buildExpenseSettings());
     app = Fastify();
     await app.register(salesRoutes, { prefix: '/api/sales' });
   });
@@ -176,6 +207,189 @@ describe('sales routes', () => {
           status: 'sold',
         }),
       );
+    });
+
+    it('creates estimated expenses when applyEstimatedExpenses is true', async () => {
+      mockCardSelectResult([
+        {
+          id: 12,
+          status: 'listed',
+          quantity: 2,
+        },
+      ]);
+
+      mockGetOrCreateExpenseSettings.mockResolvedValueOnce(
+        buildExpenseSettings({ autoRecordSaleExpenses: false }),
+      );
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 55,
+                cardId: 12,
+                quantitySold: 1,
+                salePriceCents: 200,
+                orderStatus: 'pending',
+                soldAt: new Date('2026-04-18T12:00:00.000Z'),
+                tcgplayerOrderId: 'ORDER-55',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 12,
+          quantitySold: 1,
+          salePriceCents: 200,
+          tcgplayerOrderId: 'ORDER-55',
+          applyEstimatedExpenses: true,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockGetOrCreateExpenseSettings).toHaveBeenCalledTimes(1);
+      expect(mockCreateSaleAutoEstimates).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          saleId: 55,
+          salePriceCents: 200,
+          tcgplayerOrderId: 'ORDER-55',
+          settings: expect.objectContaining({
+            autoRecordSaleExpenses: false,
+          }),
+        }),
+      );
+    });
+
+    it('uses the global expense setting when applyEstimatedExpenses is omitted', async () => {
+      mockCardSelectResult([
+        {
+          id: 13,
+          status: 'listed',
+          quantity: 2,
+        },
+      ]);
+
+      mockGetOrCreateExpenseSettings.mockResolvedValueOnce(
+        buildExpenseSettings({ autoRecordSaleExpenses: true }),
+      );
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 56,
+                cardId: 13,
+                quantitySold: 1,
+                salePriceCents: 225,
+                orderStatus: 'pending',
+                soldAt: new Date('2026-04-18T12:05:00.000Z'),
+                tcgplayerOrderId: 'ORDER-56',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 13,
+          quantitySold: 1,
+          salePriceCents: 225,
+          tcgplayerOrderId: 'ORDER-56',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockCreateSaleAutoEstimates).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          saleId: 56,
+          salePriceCents: 225,
+          tcgplayerOrderId: 'ORDER-56',
+          settings: expect.objectContaining({
+            autoRecordSaleExpenses: true,
+          }),
+        }),
+      );
+    });
+
+    it('leaves expenses untouched when auto-estimates are disabled by default', async () => {
+      mockCardSelectResult([
+        {
+          id: 14,
+          status: 'listed',
+          quantity: 2,
+        },
+      ]);
+
+      mockGetOrCreateExpenseSettings.mockResolvedValueOnce(
+        buildExpenseSettings({ autoRecordSaleExpenses: false }),
+      );
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 57,
+                cardId: 14,
+                quantitySold: 1,
+                salePriceCents: 250,
+                orderStatus: 'pending',
+                soldAt: new Date('2026-04-18T12:10:00.000Z'),
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales',
+        payload: {
+          cardId: 14,
+          quantitySold: 1,
+          salePriceCents: 250,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockGetOrCreateExpenseSettings).toHaveBeenCalledTimes(1);
+      expect(mockCreateSaleAutoEstimates).not.toHaveBeenCalled();
     });
 
     it('writes initial status history entry on sale creation', async () => {

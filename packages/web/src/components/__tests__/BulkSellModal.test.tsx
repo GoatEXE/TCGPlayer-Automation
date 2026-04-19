@@ -60,6 +60,60 @@ describe('BulkSellModal', () => {
     expect(screen.getByLabelText(/Notes/i)).toBeTruthy();
   });
 
+  it('renders apply estimated expenses checkbox defaulting to true', () => {
+    render(
+      <BulkSellModal
+        cards={mockCards}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        defaultApplyExpenses
+      />,
+    );
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /apply estimated expenses/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+  });
+
+  it('renders apply estimated expenses checkbox defaulting to false', () => {
+    render(
+      <BulkSellModal
+        cards={mockCards}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        defaultApplyExpenses={false}
+      />,
+    );
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /apply estimated expenses/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it('allows user to toggle apply estimated expenses checkbox', async () => {
+    const user = userEvent.setup();
+    render(
+      <BulkSellModal
+        cards={mockCards}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        defaultApplyExpenses
+      />,
+    );
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /apply estimated expenses/i,
+    }) as HTMLInputElement;
+
+    expect(checkbox.checked).toBe(true);
+    await user.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+    await user.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+  });
+
   it('defaults per-card quantity to card.quantity', () => {
     render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
 
@@ -177,7 +231,14 @@ describe('BulkSellModal', () => {
     const user = userEvent.setup();
     onSubmit.mockResolvedValueOnce(undefined);
 
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal
+        cards={mockCards}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        defaultApplyExpenses
+      />,
+    );
 
     // Fill shared fields
     await user.type(screen.getByLabelText(/Buyer Name/i), 'Alice');
@@ -196,12 +257,41 @@ describe('BulkSellModal', () => {
         expect(sale.buyerName).toBe('Alice');
         expect(sale.tcgplayerOrderId).toBe('ORD-99');
         expect(sale.notes).toBe('Bulk order');
+        expect(sale.applyEstimatedExpenses).toBe(true);
       }
 
       // Per-card fields
       expect(sales[0]).toMatchObject({ cardId: 1, quantitySold: 4, salePriceCents: 245 });
       expect(sales[1]).toMatchObject({ cardId: 2, quantitySold: 2, salePriceCents: 490 });
       expect(sales[2]).toMatchObject({ cardId: 3, quantitySold: 1, salePriceCents: 980 });
+    });
+  });
+
+  it('submits applyEstimatedExpenses=false for each sale when unchecked', async () => {
+    const user = userEvent.setup();
+    onSubmit.mockResolvedValueOnce(undefined);
+
+    render(
+      <BulkSellModal
+        cards={mockCards}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        defaultApplyExpenses
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('checkbox', { name: /apply estimated expenses/i }),
+    );
+    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      const sales: CreateSaleRequest[] = onSubmit.mock.calls[0][0];
+      expect(sales).toHaveLength(3);
+      for (const sale of sales) {
+        expect(sale.applyEstimatedExpenses).toBe(false);
+      }
     });
   });
 

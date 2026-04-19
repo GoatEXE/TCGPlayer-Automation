@@ -14,6 +14,7 @@ import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
+import { createSaleAutoEstimates, getOrCreateExpenseSettings } from '../lib/expenses/index.js';
 import { sendSaleConfirmedAlert } from '../lib/notifications/telegram.js';
 import { isValidTransition } from '../lib/sales/status-machine.js';
 import { createShipmentOnConfirm } from '../lib/shipments/index.js';
@@ -34,6 +35,7 @@ interface RecordSaleBody {
   orderStatus?: OrderStatus;
   soldAt?: string;
   notes?: string | null;
+  applyEstimatedExpenses?: boolean;
 }
 
 interface UpdateSaleBody {
@@ -130,6 +132,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
       orderStatus = 'pending',
       soldAt,
       notes,
+      applyEstimatedExpenses,
     } = request.body;
 
     if (!Number.isInteger(cardId) || cardId <= 0) {
@@ -152,6 +155,15 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
     if (!validOrderStatuses.includes(orderStatus)) {
       return reply.code(400).send({ error: 'Invalid orderStatus' });
+    }
+
+    if (
+      applyEstimatedExpenses !== undefined &&
+      typeof applyEstimatedExpenses !== 'boolean'
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'applyEstimatedExpenses must be a boolean' });
     }
 
     const soldAtDate = soldAt ? parseDate(soldAt) : new Date();
@@ -213,6 +225,23 @@ export async function salesRoutes(fastify: FastifyInstance) {
         newStatus: orderStatus,
         source: 'manual',
       });
+
+      const expenseSettings =
+        applyEstimatedExpenses === false
+          ? null
+          : await getOrCreateExpenseSettings(db);
+      const shouldApplyEstimatedExpenses =
+        applyEstimatedExpenses ?? expenseSettings?.autoRecordSaleExpenses ?? false;
+
+      if (shouldApplyEstimatedExpenses && expenseSettings) {
+        await createSaleAutoEstimates(db, {
+          saleId: sale.id,
+          salePriceCents: sale.salePriceCents,
+          soldAt: sale.soldAt,
+          tcgplayerOrderId: sale.tcgplayerOrderId,
+          settings: expenseSettings,
+        });
+      }
 
       if (orderStatus === 'confirmed') {
         await createShipmentOnConfirm(db, sale.id);

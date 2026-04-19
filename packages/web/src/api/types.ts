@@ -123,6 +123,114 @@ export type OrderStatus =
   | 'delivered'
   | 'cancelled';
 
+export type ExpenseCategory =
+  | 'supplies'
+  | 'shipping'
+  | 'tcgplayer_fees'
+  | 'inventory_acquisition'
+  | 'other';
+
+export type ExpenseSource = 'manual' | 'sale_auto_estimate';
+
+export type AutoExpenseKind =
+  | 'shipping_order'
+  | 'supplies_order'
+  | 'transaction_flat_order'
+  | 'marketplace_percent_line'
+  | 'transaction_percent_line';
+
+export interface Expense {
+  id: number;
+  occurredAt: string;
+  amountCents: number;
+  category: ExpenseCategory;
+  subcategory: string | null;
+  description: string | null;
+  quantity: number | null;
+  unit: string | null;
+  unitCostCents: number | null;
+  source: ExpenseSource;
+  isEstimate: boolean;
+  autoKind: AutoExpenseKind | null;
+  saleId: number | null;
+  tcgplayerOrderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateExpenseRequest {
+  amountCents: number;
+  category: ExpenseCategory;
+  occurredAt?: string;
+  description?: string | null;
+  subcategory?: string | null;
+  quantity?: number;
+  unit?: string | null;
+  isEstimate?: boolean;
+}
+
+export type UpdateExpenseRequest = Partial<CreateExpenseRequest>;
+
+export interface GetExpensesParams {
+  page?: number;
+  limit?: number;
+  category?: ExpenseCategory;
+  source?: ExpenseSource;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface GetExpensesResponse {
+  expenses: Expense[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface PerformanceSummaryResponse {
+  revenueCents: number;
+  expensesCents: number;
+  netProfitCents: number;
+  marginPercent: number | null;
+  salesCount: number;
+  expenseCount: number;
+  estimatedExpensesCents: number;
+  actualExpensesCents: number;
+  byCategory: Array<{
+    category: ExpenseCategory;
+    totalCents: number;
+    count: number;
+  }>;
+}
+
+export interface ExpenseSettings {
+  id: number;
+  autoRecordSaleExpenses: boolean;
+  autoRecordShipping: boolean;
+  shippingCostCents: number;
+  autoRecordSupplies: boolean;
+  suppliesCostCents: number;
+  autoRecordTcgplayerFees: boolean;
+  marketplaceFeeBps: number;
+  transactionFeeBps: number;
+  transactionFlatFeeCents: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateExpenseSettingsRequest {
+  autoRecordSaleExpenses?: boolean;
+  autoRecordShipping?: boolean;
+  shippingCostCents?: number;
+  autoRecordSupplies?: boolean;
+  suppliesCostCents?: number;
+  autoRecordTcgplayerFees?: boolean;
+  marketplaceFeeBps?: number;
+  transactionFeeBps?: number;
+  transactionFlatFeeCents?: number;
+}
+
 export interface Sale {
   id: number;
   cardId: number | null;
@@ -164,6 +272,7 @@ export interface CreateSaleRequest {
   orderStatus?: OrderStatus;
   soldAt?: string;
   notes?: string | null;
+  applyEstimatedExpenses?: boolean;
 }
 
 export type CreateSaleResponse = Sale;
