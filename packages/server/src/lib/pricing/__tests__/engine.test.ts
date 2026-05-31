@@ -15,6 +15,18 @@ describe('calculatePrice', () => {
     expect(result.reason).toBe('No market price available');
   });
 
+  it('should return needs_attention for non-finite market prices', () => {
+    const input: PricingInput = {
+      marketPrice: Number.NaN,
+    };
+
+    const result = calculatePrice(input);
+
+    expect(result.status).toBe('needs_attention');
+    expect(result.listingPrice).toBeNull();
+    expect(result.reason).toBe('No market price available');
+  });
+
   it('should return gift status for price below minimum threshold ($0.03 < $0.05)', () => {
     const input: PricingInput = {
       marketPrice: 0.03,

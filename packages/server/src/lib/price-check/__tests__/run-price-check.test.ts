@@ -196,6 +196,82 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
+  it('repairs only explicit legacy misaligned collection rows by treating tcgplayerId as product id', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 12,
+        tcgplayerId: 123,
+        tcgProductId: null,
+        productLine: '9197759',
+        setName: 'Riftbound: League of Legends Trading Card Game',
+        productName: 'Unleashed',
+        title: 'Backfill Me',
+        number: null,
+        rarity: '215/219',
+        photoUrl: '2',
+        condition: 'Normal',
+        marketPrice: '1.25',
+        listingPrice: '1.00',
+        status: 'listed',
+        notes: null,
+        floorPriceCents: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: 0.5,
+      status: 'matched',
+      reason: 'drop',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 503 }]);
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tcgProductId: 123,
+        marketPrice: '0.51',
+        listingPrice: '0.8',
+        status: 'listed',
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 1,
+      notFound: 0,
+    });
+  });
+
+  it('does not treat arbitrary tcgplayerId values as product ids without the legacy misalignment signature', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 13,
+        tcgplayerId: 123,
+        tcgProductId: null,
+        productLine: 'Riftbound: League of Legends Trading Card Game',
+        setName: 'Origins',
+        productName: 'Legit Row',
+        title: null,
+        number: '1/298',
+        rarity: 'Common',
+        photoUrl: null,
+        condition: 'Near Mint',
+        marketPrice: '1.25',
+        listingPrice: '1.00',
+        status: 'listed',
+        notes: null,
+        floorPriceCents: null,
+      },
+    ]);
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(calculatePrice).not.toHaveBeenCalled();
+    expect(dbSet).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      updated: 0,
+      notFound: 0,
+    });
+  });
+
   it('caps a listed card downward reprice to the configured max drop percent', async () => {
     dbFrom.mockResolvedValueOnce([
       {

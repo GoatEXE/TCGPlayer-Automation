@@ -23,6 +23,20 @@ interface CardTableProps {
 type SortField = keyof Card | null;
 type SortDirection = 'asc' | 'desc';
 
+function isValidPhotoUrl(photoUrl: string | null | undefined) {
+  if (!photoUrl) return false;
+
+  try {
+    const url = new URL(photoUrl);
+    const isHttpImage =
+      (url.protocol === 'https:' || url.protocol === 'http:') &&
+      /\.(jpe?g|png|gif|webp)$/i.test(url.pathname);
+    return isHttpImage;
+  } catch {
+    return false;
+  }
+}
+
 export function CardTable({
   cards,
   loading,
@@ -52,6 +66,10 @@ export function CardTable({
   const [listingEditValue, setListingEditValue] = useState<string>('');
   const [recordSaleCardId, setRecordSaleCardId] = useState<number | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<{
+    url: string;
+    cardName: string;
+  } | null>(null);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -169,13 +187,16 @@ export function CardTable({
     await onUpdateCard(id, { floorPriceCents: cents } as Partial<Card>);
   };
 
+  const parsePriceValue = (price: string | null | undefined) => {
+    if (!price) return null;
+    const parsed = Number.parseFloat(price);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const handleListingEdit = (card: Card) => {
     setEditingListingId(card.id);
-    setListingEditValue(
-      card.listingPrice != null
-        ? parseFloat(card.listingPrice).toFixed(2)
-        : '',
-    );
+    const listingPrice = parsePriceValue(card.listingPrice);
+    setListingEditValue(listingPrice !== null ? listingPrice.toFixed(2) : '');
   };
 
   const handleListingSave = async (id: number) => {
@@ -199,8 +220,9 @@ export function CardTable({
   };
 
   const formatRecommendedPrice = (marketPrice: string | null) => {
-    if (!marketPrice) return '\u2014';
-    const recommended = Math.round(parseFloat(marketPrice) * 98) / 100;
+    const parsedMarketPrice = parsePriceValue(marketPrice);
+    if (parsedMarketPrice === null) return '\u2014';
+    const recommended = Math.round(parsedMarketPrice * 98) / 100;
     return `$${recommended.toFixed(2)}`;
   };
 
@@ -221,8 +243,9 @@ export function CardTable({
   };
 
   const formatPrice = (price: string | null, isFoil?: boolean) => {
-    if (!price) return '—';
-    const formattedPrice = `$${parseFloat(price).toFixed(2)}`;
+    const parsedPrice = parsePriceValue(price);
+    if (parsedPrice === null) return '—';
+    const formattedPrice = `$${parsedPrice.toFixed(2)}`;
     if (isFoil) {
       return (
         <span title="Price based on Foil variant (no Normal pricing available)">
@@ -346,6 +369,7 @@ export function CardTable({
             const isMatched = card.status === 'matched';
             const isListed = card.status === 'listed';
             const isSelected = selectedIds.has(card.id);
+            const photoUrl = isValidPhotoUrl(card.photoUrl) ? card.photoUrl : null;
 
             return (
               <tr key={card.id} className={isListed ? 'listed-row' : ''}>
@@ -373,16 +397,21 @@ export function CardTable({
                 </td>
                 <td className="card-name">
                   {card.title || card.productName}
-                  {card.photoUrl && (
-                    <a
-                      href={card.photoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {photoUrl && (
+                    <button
+                      type="button"
                       className="photo-link"
                       title="View photo"
+                      aria-label={`View photo for ${card.title || card.productName}`}
+                      onClick={() =>
+                        setSelectedPhoto({
+                          url: photoUrl,
+                          cardName: card.title || card.productName,
+                        })
+                      }
                     >
                       🖼️
-                    </a>
+                    </button>
                   )}
                 </td>
                 <td>{card.setName || '—'}</td>
@@ -505,6 +534,34 @@ export function CardTable({
           })}
         </tbody>
       </table>
+      {selectedPhoto && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Card photo: ${selectedPhoto.cardName}`}
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div
+            className="modal-content photo-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>{selectedPhoto.cardName}</h2>
+              <button
+                className="modal-close"
+                onClick={() => setSelectedPhoto(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="photo-modal-body">
+              <img src={selectedPhoto.url} alt={selectedPhoto.cardName} />
+            </div>
+          </div>
+        </div>
+      )}
       {showReviewModal && (
         <ReviewListModal
           cards={sortedCards.filter((card) => selectedIds.has(card.id))}

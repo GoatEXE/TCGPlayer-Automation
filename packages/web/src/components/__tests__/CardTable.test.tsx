@@ -338,6 +338,69 @@ describe('CardTable floor price column', () => {
   });
 });
 
+describe('CardTable photo viewer', () => {
+  it('opens valid absolute image URLs in an in-app dialog', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            productName: 'Photo Card',
+            photoUrl: 'https://tcgplayer-cdn.tcgplayer.com/product/653083_in_400x400.jpg',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: /view photo for photo card/i }),
+    );
+
+    const dialog = screen.getByRole('dialog', { name: /card photo: photo card/i });
+    expect(
+      within(dialog).getByRole('img', { name: /photo card/i }),
+    ).toHaveAttribute(
+      'src',
+      'https://tcgplayer-cdn.tcgplayer.com/product/653083_in_400x400.jpg',
+    );
+  });
+
+  it('does not render a photo trigger for invalid or relative photo URLs', () => {
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, productName: 'Bare Numeric', photoUrl: '2' }),
+          makeCard({
+            id: 2,
+            productName: 'Relative Path',
+            photoUrl: '/product/653083',
+          }),
+          makeCard({
+            id: 3,
+            productName: 'Not Image',
+            photoUrl: 'https://example.com/product/653083',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /view photo/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /🖼️/i })).toBeNull();
+  });
+});
+
 describe('CardTable price history button', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -504,6 +567,32 @@ describe('CardTable recommended price column', () => {
     const cells = rows[1].querySelectorAll('td');
     const recdCell = cells[9];
     expect(recdCell.textContent).toBe('\u2014');
+  });
+
+  it('shows dashes instead of $NaN for invalid numeric price strings', () => {
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'listed',
+            marketPrice: 'NaN',
+            listingPrice: 'NaN',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn()}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    expect(cells[8].textContent).toBe('—');
+    expect(cells[9].textContent).toBe('—');
+    expect(cells[10].textContent).toBe('—');
   });
 
   it('correctly computes 98% for fractional prices', () => {

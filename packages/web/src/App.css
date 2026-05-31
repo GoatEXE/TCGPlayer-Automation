@@ -803,13 +803,39 @@ body {
 
 .photo-link {
   margin-left: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
   text-decoration: none;
   opacity: 0.6;
   transition: opacity 0.2s;
 }
 
-.photo-link:hover {
+.photo-link:hover,
+.photo-link:focus-visible {
   opacity: 1;
+}
+
+.photo-modal {
+  max-width: min(92vw, 720px);
+  max-height: 92vh;
+}
+
+.photo-modal-body {
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  padding: 1rem;
+  background: var(--color-surface);
+}
+
+.photo-modal-body img {
+  display: block;
+  max-width: 100%;
+  max-height: 75vh;
+  object-fit: contain;
 }
 
 .quantity,

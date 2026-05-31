@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
-import { cards } from '../../db/schema/cards.js';
+import { cards, type Card } from '../../db/schema/cards.js';
 import {
   priceHistory,
   type NewPriceHistory,
@@ -52,6 +52,63 @@ function parseDecimal(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function extractProductIdFromPhotoUrl(
+  photoUrl: string | null | undefined,
+): number | null {
+  if (!photoUrl) return null;
+  const match = photoUrl.match(/\/product\/(\d+)/);
+  if (!match) return null;
+
+  const productId = Number.parseInt(match[1], 10);
+  return Number.isNaN(productId) ? null : productId;
+}
+
+function isLegacyMisalignedCollectionImport(card: Card): boolean {
+  const hasNumericProductLine = /^\d+$/.test(card.productLine);
+  const hasMisplacedProductLine =
+    card.setName === 'Riftbound: League of Legends Trading Card Game';
+  const hasShiftedCardName = card.title !== null && card.number === null;
+  const hasCollectorNumberInRarity =
+    card.rarity !== null && /^\d+\/\d+$/.test(card.rarity);
+  const hasPrintingInCondition = /^(Normal|Foil)$/i.test(card.condition);
+  const hasQuantityInPhotoUrl =
+    card.photoUrl !== null && /^\d+$/.test(card.photoUrl);
+
+  return (
+    card.tcgProductId === null &&
+    hasNumericProductLine &&
+    hasMisplacedProductLine &&
+    hasShiftedCardName &&
+    hasCollectorNumberInRarity &&
+    hasPrintingInCondition &&
+    hasQuantityInPhotoUrl
+  );
+}
+
+function resolveProductId(
+  card: Card,
+  pricingByProductId: Map<string, TCGTrackingProductPrice>,
+): number | null {
+  if (card.tcgProductId != null) {
+    return card.tcgProductId;
+  }
+
+  const productIdFromPhotoUrl = extractProductIdFromPhotoUrl(card.photoUrl);
+  if (productIdFromPhotoUrl != null) {
+    return productIdFromPhotoUrl;
+  }
+
+  if (
+    isLegacyMisalignedCollectionImport(card) &&
+    card.tcgplayerId != null &&
+    pricingByProductId.has(card.tcgplayerId.toString())
+  ) {
+    return card.tcgplayerId;
+  }
+
+  return null;
 }
 
 function calculateDriftPercent(
@@ -180,11 +237,13 @@ export async function runPriceCheck(
   const csvDiffRows: PriceCheckCsvDiffRow[] = [];
 
   for (const card of allCards) {
-    if (!card.tcgProductId) {
+    const resolvedProductId = resolveProductId(card, pricingByProductId);
+
+    if (!resolvedProductId) {
       continue;
     }
 
-    const productPricing = pricingByProductId.get(card.tcgProductId.toString());
+    const productPricing = pricingByProductId.get(resolvedProductId.toString());
     if (!productPricing) {
       notFound++;
 
@@ -195,6 +254,7 @@ export async function runPriceCheck(
       await db
         .update(cards)
         .set({
+          tcgProductId: resolvedProductId,
           marketPrice: null,
           listingPrice: null,
           status: 'needs_attention',
@@ -278,6 +338,7 @@ export async function runPriceCheck(
       await db
         .update(cards)
         .set({
+          tcgProductId: resolvedProductId,
           marketPrice: null,
           listingPrice: null,
           status: 'needs_attention',
@@ -415,6 +476,7 @@ export async function runPriceCheck(
     await db
       .update(cards)
       .set({
+        tcgProductId: resolvedProductId,
         marketPrice: newMarketPrice.toString(),
         listingPrice: newListingPrice?.toString() ?? null,
         status: newStatus,

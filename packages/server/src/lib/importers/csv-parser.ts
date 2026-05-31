@@ -1,17 +1,74 @@
 import type { ImportResult, ImportedCard } from './types';
 
+function normalizeHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function parseOptionalFloat(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseOptionalInt(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function buildHeaderIndex(headerLine: string): Map<string, number> {
+  const headers = parseCsvLine(headerLine);
+  return new Map(headers.map((header, index) => [normalizeHeader(header), index]));
+}
+
+function getColumnValue(
+  cols: string[],
+  headerIndex: Map<string, number>,
+  ...headerNames: string[]
+): string | undefined {
+  for (const headerName of headerNames) {
+    const index = headerIndex.get(normalizeHeader(headerName));
+    if (index !== undefined) {
+      return cols[index]?.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function resolveQuantity(addToQuantity: string | undefined, totalQuantity: string | undefined): number {
+  const addQuantity = parseOptionalInt(addToQuantity);
+  if (addQuantity !== null) {
+    return addQuantity;
+  }
+
+  const total = parseOptionalInt(totalQuantity);
+  return total ?? 0;
+}
+
+function resolveCondition(
+  condition: string | undefined,
+  printing: string | undefined,
+): string {
+  const baseCondition = condition || 'Near Mint';
+
+  if (printing && /foil/i.test(printing) && !/foil/i.test(baseCondition)) {
+    return `${baseCondition} Foil`;
+  }
+
+  return baseCondition;
+}
+
 /**
- * Parse TCGPlayer mobile app CSV export format
+ * Parse TCGPlayer collection/mobile-app CSV export formats.
  *
- * Expected columns:
- * TCGplayer Id, Product Line, Set Name, Product Name, Title, Number, Rarity,
- * Condition, TCG Market Price, TCG Direct Low, TCG Low Price With Shipping,
- * TCG Low Price, Total Quantity, Add to Quantity, TCG Marketplace Price, Photo URL
+ * Supported headers include both the older 16-column export and newer 18-column
+ * collection export with Product ID + Printing columns.
  */
 export function parseCsv(content: string): ImportResult {
-  const lines = content.trim().split('\n');
+  const trimmedContent = content.trim();
 
-  if (lines.length === 0 || content.trim() === '') {
+  if (trimmedContent === '') {
     return {
       source: 'csv',
       cards: [],
@@ -20,7 +77,17 @@ export function parseCsv(content: string): ImportResult {
     };
   }
 
-  // Skip header row
+  const lines = trimmedContent.split(/\r?\n/);
+  if (lines.length === 0) {
+    return {
+      source: 'csv',
+      cards: [],
+      errors: [],
+      totalRows: 0,
+    };
+  }
+
+  const headerIndex = buildHeaderIndex(lines[0]);
   const dataLines = lines.slice(1);
 
   const cards: ImportedCard[] = [];
@@ -30,45 +97,49 @@ export function parseCsv(content: string): ImportResult {
     const line = dataLines[i].trim();
     if (!line) continue;
 
-    const rowNumber = i + 2; // +2 because we skip header (1) and arrays are 0-indexed
+    const rowNumber = i + 2;
 
     try {
       const cols = parseCsvLine(line);
 
-      // Column indices (0-based)
-      const tcgplayerIdStr = cols[0]?.trim();
-      const productLine = cols[1]?.trim();
-      const setName = cols[2]?.trim();
-      const productName = cols[3]?.trim();
-      const title = cols[4]?.trim();
-      const number = cols[5]?.trim();
-      const rarity = cols[6]?.trim();
-      const condition = cols[7]?.trim() || 'Near Mint';
-      const marketPriceStr = cols[8]?.trim();
-      const addToQuantityStr = cols[13]?.trim(); // "Add to Quantity" column
-      const photoUrl = cols[15]?.trim();
+      const tcgProductIdStr = getColumnValue(cols, headerIndex, 'Product ID');
+      const tcgplayerIdStr = getColumnValue(cols, headerIndex, 'TCGplayer Id');
+      const productLine = getColumnValue(cols, headerIndex, 'Product Line');
+      const setName = getColumnValue(cols, headerIndex, 'Set Name');
+      const productName = getColumnValue(cols, headerIndex, 'Product Name');
+      const title = getColumnValue(cols, headerIndex, 'Title');
+      const number = getColumnValue(cols, headerIndex, 'Number');
+      const printing = getColumnValue(cols, headerIndex, 'Printing');
+      const rarity = getColumnValue(cols, headerIndex, 'Rarity');
+      const condition = getColumnValue(cols, headerIndex, 'Condition');
+      const marketPriceStr = getColumnValue(cols, headerIndex, 'TCG Market Price');
+      const totalQuantityStr = getColumnValue(cols, headerIndex, 'Total Quantity');
+      const addToQuantityStr = getColumnValue(cols, headerIndex, 'Add to Quantity');
+      const photoUrl = getColumnValue(cols, headerIndex, 'Photo URL');
 
-      // Validation: required fields
-      if (!tcgplayerIdStr || !productLine || !setName || !productName) {
+      if (!productLine || !setName || !productName) {
         errors.push(
-          `Row ${rowNumber}: Missing required fields (TCGplayer Id, Product Line, Set Name, or Product Name)`,
+          `Row ${rowNumber}: Missing required fields (Product Line, Set Name, or Product Name)`,
         );
         continue;
       }
 
+      const parsedProductId = parseOptionalInt(tcgProductIdStr);
+      const parsedPhotoUrl = photoUrl || null;
+
       const card: ImportedCard = {
-        tcgplayerId: parseInt(tcgplayerIdStr, 10),
-        tcgProductId: extractProductId(photoUrl || null),
+        tcgplayerId: parseOptionalInt(tcgplayerIdStr),
+        tcgProductId: parsedProductId ?? extractProductId(parsedPhotoUrl),
         productLine,
         setName,
         productName,
         title: title || null,
         number: number || null,
         rarity: rarity || null,
-        condition,
-        quantity: addToQuantityStr ? parseInt(addToQuantityStr, 10) : 0,
-        snapshotMarketPrice: marketPriceStr ? parseFloat(marketPriceStr) : null,
-        photoUrl: photoUrl || null,
+        condition: resolveCondition(condition, printing),
+        quantity: resolveQuantity(addToQuantityStr, totalQuantityStr),
+        snapshotMarketPrice: parseOptionalFloat(marketPriceStr),
+        photoUrl: parsedPhotoUrl,
       };
 
       cards.push(card);
@@ -94,7 +165,10 @@ export function parseCsv(content: string): ImportResult {
 function extractProductId(photoUrl: string | null): number | null {
   if (!photoUrl) return null;
   const match = photoUrl.match(/\/product\/(\d+)/);
-  return match ? parseInt(match[1], 10) : null;
+  if (!match) return null;
+
+  const productId = Number.parseInt(match[1], 10);
+  return Number.isNaN(productId) ? null : productId;
 }
 
 /**
@@ -109,10 +183,9 @@ function parseCsvLine(line: string): string[] {
     const char = line[i];
 
     if (char === '"') {
-      // Handle escaped quotes (double quotes)
       if (inQuotes && line[i + 1] === '"') {
         current += '"';
-        i++; // Skip next quote
+        i++;
       } else {
         inQuotes = !inQuotes;
       }
@@ -124,7 +197,6 @@ function parseCsvLine(line: string): string[] {
     }
   }
 
-  // Push the last field
   result.push(current);
 
   return result;

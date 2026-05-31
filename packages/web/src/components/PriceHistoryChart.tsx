@@ -15,19 +15,25 @@ const PADDING = { top: 16, right: 16, bottom: 24, left: 48 };
 const MAX_POINTS = 10;
 const DOT_RADIUS = 4;
 
+function parsePriceValue(price: string | null | undefined): number | null {
+  if (!price) return null;
+  const parsed = Number.parseFloat(price);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function toChartPoints(history: PriceHistoryEntry[]): ChartPoint[] {
   return history
-    .filter((e) => e.newMarketPrice !== null)
     .map((e) => ({
       date: new Date(e.checkedAt),
-      price: parseFloat(e.newMarketPrice!),
+      price: parsePriceValue(e.newMarketPrice),
     }))
+    .filter((point): point is ChartPoint => point.price !== null)
     .sort((a, b) => a.date.getTime() - b.date.getTime())
     .slice(-MAX_POINTS);
 }
 
-function formatPrice(cents: number): string {
-  return `$${cents.toFixed(2)}`;
+function formatPrice(price: number): string {
+  return `$${price.toFixed(2)}`;
 }
 
 function formatDateLabel(d: Date): string {

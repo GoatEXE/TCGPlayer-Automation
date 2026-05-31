@@ -160,6 +160,31 @@ describe('PriceHistoryModal', () => {
     expect(screen.getByText('matched → listed')).toBeInTheDocument();
   });
 
+  it('shows dashes instead of $NaN for invalid or blank prices', async () => {
+    mockGetCardPriceHistory.mockResolvedValue({
+      history: [
+        makeEntry({
+          id: 1,
+          previousMarketPrice: 'not-a-price',
+          newMarketPrice: 'NaN',
+          previousListingPrice: '',
+          newListingPrice: 'Infinity',
+        }),
+      ],
+    });
+
+    render(
+      <PriceHistoryModal cardId={42} cardName="Test Card" onClose={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('scheduled')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/\$NaN/i)).toBeNull();
+    expect(screen.getAllByText('— → —').length).toBeGreaterThanOrEqual(2);
+  });
+
   it('formats negative drift correctly', async () => {
     mockGetCardPriceHistory.mockResolvedValue({
       history: [makeEntry({ id: 1, driftPercent: '-5.50' })],

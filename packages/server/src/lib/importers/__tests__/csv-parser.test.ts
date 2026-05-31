@@ -64,6 +64,15 @@ describe('CSV Parser', () => {
     expect(result.cards[0].snapshotMarketPrice).toBe(3.01);
   });
 
+  it('treats invalid market prices as null instead of NaN', () => {
+    const csvContent = `TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
+8927072,Riftbound: League of Legends Trading Card Game,Origins,Rhasa the Sunderer,,195/298,Rare,Near Mint,NaN,,,,,1,,https://tcgplayer-cdn.tcgplayer.com/product/652985_in_400x400.jpg`;
+
+    const result = parseCsv(csvContent);
+
+    expect(result.cards[0].snapshotMarketPrice).toBeNull();
+  });
+
   it('handles quantity of 1 and quantity > 1', () => {
     const csvContent = `TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
 8927752,Riftbound: League of Legends Trading Card Game,Origins,Card One,,001/298,Common,Near Mint,0.18,,,,,1,,
@@ -164,6 +173,42 @@ describe('CSV Parser', () => {
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].tcgProductId).toBe(652954);
     expect(result.cards[0].tcgplayerId).toBe(8926802); // SKU ID is different
+  });
+
+  it('parses the newer 18-column collection export by header name', () => {
+    const csvContent = `Product ID,TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Printing,Rarity,Condition,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL
+685601,9197759,Riftbound: League of Legends Trading Card Game,Unleashed,Star Spring,,215/219,Normal,Uncommon,Near Mint,0.08,,,,,1,,https://tcgplayer-cdn.tcgplayer.com/product/685601_in_400x400.jpg
+684677,9192298,Riftbound: League of Legends Trading Card Game,Unleashed,Ripper's Bay,,214/219,Foil,Uncommon,Near Mint,0.25,,,,,1,,https://tcgplayer-cdn.tcgplayer.com/product/684677_in_400x400.jpg`;
+
+    const result = parseCsv(csvContent);
+
+    expect(result.errors).toEqual([]);
+    expect(result.cards).toHaveLength(2);
+    expect(result.cards[0]).toEqual({
+      tcgplayerId: 9197759,
+      tcgProductId: 685601,
+      productLine: 'Riftbound: League of Legends Trading Card Game',
+      setName: 'Unleashed',
+      productName: 'Star Spring',
+      title: null,
+      number: '215/219',
+      rarity: 'Uncommon',
+      condition: 'Near Mint',
+      quantity: 1,
+      snapshotMarketPrice: 0.08,
+      photoUrl:
+        'https://tcgplayer-cdn.tcgplayer.com/product/685601_in_400x400.jpg',
+    });
+    expect(result.cards[1]).toMatchObject({
+      tcgplayerId: 9192298,
+      tcgProductId: 684677,
+      productName: "Ripper's Bay",
+      condition: 'Near Mint Foil',
+      quantity: 1,
+      snapshotMarketPrice: 0.25,
+      photoUrl:
+        'https://tcgplayer-cdn.tcgplayer.com/product/684677_in_400x400.jpg',
+    });
   });
 
   it('handles tcgProductId as null when photo URL is missing', () => {

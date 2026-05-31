@@ -72,9 +72,16 @@ export function PriceHistoryModal({
     }
   };
 
+  const parsePriceValue = (price: string | null | undefined) => {
+    if (!price) return null;
+    const parsed = Number.parseFloat(price);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const formatPrice = (price: string | null) => {
-    if (!price) return '—';
-    return `$${parseFloat(price).toFixed(2)}`;
+    const parsed = parsePriceValue(price);
+    if (parsed === null) return '—';
+    return `$${parsed.toFixed(2)}`;
   };
 
   const formatPriceChange = (before: string | null, after: string | null) => {

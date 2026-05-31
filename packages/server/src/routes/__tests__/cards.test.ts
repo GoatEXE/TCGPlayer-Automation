@@ -14,6 +14,37 @@ const getFormHeaders = (form: FormData): Record<string, string> => {
   return {};
 };
 
+const containsColumnName = (
+  value: unknown,
+  columnName: string,
+  seen = new Set<unknown>(),
+): boolean => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if ('name' in value && (value as { name?: unknown }).name === columnName) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsColumnName(item, columnName, seen));
+  }
+
+  if ('queryChunks' in value && Array.isArray((value as { queryChunks?: unknown[] }).queryChunks)) {
+    return (value as { queryChunks: unknown[] }).queryChunks.some((item) =>
+      containsColumnName(item, columnName, seen),
+    );
+  }
+
+  return false;
+};
+
 // Mock the database
 vi.mock('../../db/index.js', () => ({
   db: {
@@ -348,6 +379,52 @@ describe('GET /api/cards', () => {
     expect(body.cards[0].floorPriceCents).toBe(150);
     expect(body.cards[1].lastCheckedAt).toBeNull();
     expect(body.cards[1].floorPriceCents).toBeNull();
+  });
+
+  it('should serialize invalid numeric price strings as null instead of NaN', async () => {
+    const mockCards = [
+      {
+        id: 1,
+        productName: 'Broken Price Card',
+        quantity: 1,
+        status: 'listed' as const,
+        marketPrice: 'NaN',
+        listingPrice: 'NaN',
+        floorPriceCents: null,
+        importedAt: new Date('2026-03-30T10:00:00.000Z'),
+        lastCheckedAt: null,
+      },
+    ];
+
+    const mockOffset = vi.fn().mockResolvedValue(mockCards);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockResolvedValue([{ count: 1 }]),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({
+          orderBy: mockOrderBy,
+        }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.cards[0].marketPrice).toBeNull();
+    expect(body.cards[0].listingPrice).toBeNull();
   });
 
   it('should filter cards by status', async () => {
@@ -950,7 +1027,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
 
-  it('should increment quantity when importing duplicate card with same tcgplayerId and condition', async () => {
+  it('should increment quantity when importing duplicate CSV card by tcgplayerId alone', async () => {
     const mockImportedCards = [
       {
         tcgplayerId: 12345,
@@ -961,7 +1038,7 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
         title: null,
         number: '1/298',
         rarity: 'Common',
-        condition: 'Near Mint',
+        condition: 'Near Mint Foil',
         quantity: 2,
         snapshotMarketPrice: 1.5,
         photoUrl: null,
@@ -1003,10 +1080,12 @@ describe('POST /api/cards/import - Duplicate Handling', () => {
 
     vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
 
-    // Mock select to find existing card
+    // Mock select to only match when the query does not also key on condition
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([existingCard]),
+        where: vi.fn().mockImplementation(async (expr) => {
+          return containsColumnName(expr, 'condition') ? [] : [existingCard];
+        }),
       }),
     } as any);
 
@@ -2079,6 +2158,7 @@ describe('GET /api/cards/:id/price-history', () => {
     expect(JSON.parse(response.body)).toEqual({
       history: mockHistory.map((entry) => ({
         ...entry,
+        adjustedToPrice: null,
         checkedAt: entry.checkedAt.toISOString(),
       })),
     });
@@ -2103,6 +2183,60 @@ describe('GET /api/cards/:id/price-history', () => {
     expect(response.statusCode).toBe(200);
     expect(limit).toHaveBeenCalledWith(200);
     expect(JSON.parse(response.body)).toEqual({ history: [] });
+  });
+
+  it('should sanitize invalid numeric strings in price history responses', async () => {
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: 1,
+                cardId: 123,
+                source: 'manual',
+                previousMarketPrice: 'NaN',
+                newMarketPrice: '',
+                previousListingPrice: ' ',
+                newListingPrice: '0.98',
+                adjustedToPrice: 'NaN',
+                previousStatus: 'matched',
+                newStatus: 'listed',
+                driftPercent: 'NaN',
+                notificationSent: false,
+                checkedAt: new Date('2026-03-30T12:00:00.000Z'),
+              },
+            ]),
+          }),
+        }),
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/123/price-history',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      history: [
+        {
+          id: 1,
+          cardId: 123,
+          source: 'manual',
+          previousMarketPrice: null,
+          newMarketPrice: null,
+          previousListingPrice: null,
+          newListingPrice: '0.98',
+          adjustedToPrice: null,
+          previousStatus: 'matched',
+          newStatus: 'listed',
+          driftPercent: null,
+          notificationSent: false,
+          checkedAt: '2026-03-30T12:00:00.000Z',
+        },
+      ],
+    });
   });
 
   it('should return an empty history array when no price history exists', async () => {

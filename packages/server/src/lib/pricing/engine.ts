@@ -24,8 +24,8 @@ export function calculatePrice(input: PricingInput): PricingResult {
     priceMultiplier = DEFAULT_PRICE_MULTIPLIER,
   } = input;
 
-  // Handle null market price
-  if (marketPrice === null) {
+  // Handle null/invalid market price
+  if (marketPrice === null || !Number.isFinite(marketPrice)) {
     return {
       listingPrice: null,
       status: 'needs_attention',

@@ -104,6 +104,42 @@ interface PriceHistoryResponse {
   history: PriceHistory[];
 }
 
+function sanitizeNumericString(value: string | null | undefined): string | null {
+  if (value == null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? trimmed : null;
+}
+
+function sanitizeCard<T extends Pick<Card, 'marketPrice' | 'listingPrice'>>(
+  card: T,
+): T {
+  return {
+    ...card,
+    marketPrice: sanitizeNumericString(card.marketPrice),
+    listingPrice: sanitizeNumericString(card.listingPrice),
+  };
+}
+
+function sanitizePriceHistoryEntry(entry: PriceHistory): PriceHistory {
+  return {
+    ...entry,
+    previousMarketPrice: sanitizeNumericString(entry.previousMarketPrice),
+    newMarketPrice: sanitizeNumericString(entry.newMarketPrice),
+    previousListingPrice: sanitizeNumericString(entry.previousListingPrice),
+    newListingPrice: sanitizeNumericString(entry.newListingPrice),
+    adjustedToPrice: sanitizeNumericString(entry.adjustedToPrice),
+    driftPercent: sanitizeNumericString(entry.driftPercent),
+  };
+}
+
 export async function cardsRoutes(fastify: FastifyInstance) {
   // POST /import - Import cards from CSV or TXT with duplicate handling
   fastify.post('/import', async (request, reply) => {
@@ -144,16 +180,13 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         let existingCards: Card[];
 
         if (importedCard.tcgplayerId) {
-          // For CSV imports with tcgplayerId: match on tcgplayerId + condition
+          // For CSV imports with tcgplayerId/SKU: match on SKU alone.
+          // Collection exports have distinct SKUs for variants like Foil/Normal,
+          // so condition should not participate in duplicate matching.
           existingCards = await db
             .select()
             .from(cards)
-            .where(
-              and(
-                eq(cards.tcgplayerId, importedCard.tcgplayerId),
-                eq(cards.condition, importedCard.condition),
-              ),
-            );
+            .where(eq(cards.tcgplayerId, importedCard.tcgplayerId));
         } else {
           // For TXT imports without tcgplayerId: match on productName + setName + number + condition
           const conditions = [
@@ -195,7 +228,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
             .where(eq(cards.id, existingCard.id))
             .returning();
 
-          processedCards.push(updatedCard);
+          processedCards.push(sanitizeCard(updatedCard));
           updatedCount++;
         } else {
           // Card doesn't exist - insert new
@@ -220,7 +253,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
             .insert(cards)
             .values(cardData)
             .returning();
-          processedCards.push(insertedCard);
+          processedCards.push(sanitizeCard(insertedCard));
           importedCount++;
         }
       }
@@ -290,7 +323,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         .offset(offset);
 
       return reply.send({
-        cards: cardsResult,
+        cards: cardsResult.map((card: CardListItem) => sanitizeCard(card)),
         total,
         page: pageNum,
         limit: limitNum,
@@ -349,6 +382,15 @@ export async function cardsRoutes(fastify: FastifyInstance) {
 
       // Convert listingPrice to string if provided
       if (updates.listingPrice !== undefined) {
+        if (
+          !Number.isFinite(updates.listingPrice) ||
+          updates.listingPrice < 0
+        ) {
+          return reply.code(400).send({
+            error: 'listingPrice must be a non-negative number',
+          });
+        }
+
         updateData.listingPrice = updates.listingPrice.toString();
       }
 
@@ -377,7 +419,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         return reply.code(404).send({ error: 'Card not found' });
       }
 
-      return reply.send(updatedCard);
+      return reply.send(sanitizeCard(updatedCard));
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to update card' });
@@ -452,7 +494,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         .where(eq(cards.id, parseInt(id, 10)))
         .returning();
 
-      return reply.send(updatedCard);
+      return reply.send(sanitizeCard(updatedCard));
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to reprice card' });
@@ -587,7 +629,11 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         .orderBy(desc(priceHistory.checkedAt))
         .limit(limitNum);
 
-      return reply.send({ history });
+      return reply.send({
+        history: history.map((entry: PriceHistory) =>
+          sanitizePriceHistoryEntry(entry),
+        ),
+      });
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to fetch price history' });
@@ -689,7 +735,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         .where(eq(cards.id, parseInt(id, 10)))
         .returning();
 
-      return reply.send(updatedCard);
+      return reply.send(sanitizeCard(updatedCard));
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to unlist card' });
