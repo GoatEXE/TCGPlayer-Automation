@@ -859,9 +859,73 @@ body {
 }
 
 .actions {
-  display: flex;
-  gap: 0.25rem;
+  position: relative;
+  text-align: right;
+}
+
+.action-menu-container {
+  position: relative;
+  display: inline-flex;
   justify-content: flex-end;
+}
+
+.action-menu-trigger {
+  min-width: 2rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.action-menu-trigger:hover,
+.action-menu-trigger[aria-expanded='true'] {
+  background: var(--color-surface);
+}
+
+.action-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 20;
+  min-width: 11rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.action-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.action-menu button:hover:not(:disabled),
+.action-menu button:focus-visible:not(:disabled) {
+  background: var(--color-surface);
+  outline: none;
+}
+
+.action-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-menu .danger-menu-item {
+  color: var(--color-error);
 }
 
 .action-button {

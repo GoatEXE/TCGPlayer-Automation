@@ -434,13 +434,13 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 
 **Goal:** Keep listings competitively priced by checking market prices on a lazy schedule and adjusting when drift exceeds a threshold.
 
-**Current Status:** Phase 2 infrastructure is largely complete (scheduler, history, safeguards, floor controls, notification tracking)
+**Current Status:** Phase 2 infrastructure is largely complete (scheduler, history, safeguards, backend floor support, notification tracking)
 
 **Implementation docs:**
 - [Phase 2.1 BullMQ + Redis Migration](./phase2/PHASE2_BULLMQ_REDIS.md)
 - [Phase 2.2 Max Drop Safeguard](./phase2/PHASE2_MAX_DROP_SAFEGUARD.md)
 - [Phase 2.3 Price History UI](./phase2/PHASE2_PRICE_HISTORY_UI.md)
-- [Phase 2.4 Floor Price Backend/UI](./phase2/PHASE2_FLOOR_PRICE_BACKEND.md)
+- [Phase 2.4 Floor Price Backend](./phase2/PHASE2_FLOOR_PRICE_BACKEND.md)
 - [Phase 2.5 Notification Loop](./phase2/PHASE2_NOTIFICATION_LOOP.md)
 
 ### 5.1 Price Check Scheduler ✅ CORE COMPLETE
@@ -467,7 +467,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Log adjustments in `PriceHistory` (with `adjustedToPrice` populated)
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [x] Add backend support for a floor price option per card (optional, default: none) to prevent listing below a minimum
-- [x] Add floor price controls in the dashboard UI (set/clear per-card `floorPriceCents`)
+- [x] Add backend/API support for per-card `floorPriceCents`; main Card Inventory UI floor controls are currently hidden
 - [x] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
 - [x] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market (`matched` status)
 - [x] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes

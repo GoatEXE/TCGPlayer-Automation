@@ -666,8 +666,9 @@ describe('App record sale + bulk sell integration', () => {
       expect(screen.getByText('Test Card')).toBeTruthy();
     });
 
-    // Click Record Sale button
-    await user.click(screen.getByTitle('Record sale'));
+    // Open row actions menu and click Record Sale
+    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /record sale/i })).toBeTruthy();
@@ -749,7 +750,8 @@ describe('App record sale + bulk sell integration', () => {
       expect(screen.getByText('Test Card')).toBeTruthy();
     });
 
-    await user.click(screen.getByTitle('Record sale'));
+    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
     const checkbox = within(dialog).getByRole('checkbox', {

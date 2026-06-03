@@ -149,7 +149,7 @@ describe('CardTable Last Checked column', () => {
     // row[0] is thead, row[1] is the data row
     const cells = rows[1].querySelectorAll('td');
     // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, rec'd, listing, floor, lastChecked, updated, actions
-    const lastCheckedCell = cells[12];
+    const lastCheckedCell = cells[11];
     expect(lastCheckedCell.textContent).toBe('—');
   });
 
@@ -168,47 +168,13 @@ describe('CardTable Last Checked column', () => {
 
     const rows = screen.getAllByRole('row');
     const cells = rows[1].querySelectorAll('td');
-    const lastCheckedCell = cells[12];
+    const lastCheckedCell = cells[11];
     expect(lastCheckedCell.textContent).toBe('3h ago');
   });
 });
 
 describe('CardTable floor price column', () => {
-  it('renders Floor column header', () => {
-    render(
-      <CardTable
-        cards={[makeCard()]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Floor')).toBeInTheDocument();
-  });
-
-  it('shows dash when floorPriceCents is null', () => {
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, floorPriceCents: null })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn()}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, rec'd, listing, floor, lastChecked, updated, actions
-    const cells = rows[1].querySelectorAll('td');
-    const floorCell = cells[11];
-    expect(floorCell.textContent).toBe('—');
-  });
-
-  it('shows formatted dollar value when floorPriceCents is set', () => {
+  it('does not render the Floor column or floor edit control in the main table', () => {
     render(
       <CardTable
         cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
@@ -220,121 +186,10 @@ describe('CardTable floor price column', () => {
       />,
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const floorCell = cells[11];
-    expect(floorCell.textContent).toBe('$1.50');
-  });
-
-  it('shows floor price edit input when floor cell is clicked', async () => {
-    const user = userEvent.setup();
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn()}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const floorCell = cells[11];
-    await user.click(floorCell.querySelector('button')!);
-
-    expect(screen.getByRole('spinbutton')).toBeInTheDocument();
-  });
-
-  it('saves floor price when edit is confirmed', async () => {
-    const user = userEvent.setup();
-    const onUpdateCard = vi
-      .fn()
-      .mockResolvedValue(makeCard({ id: 1, floorPriceCents: 200 }));
-
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={onUpdateCard}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const floorCell = cells[11];
-    await user.click(floorCell.querySelector('button')!);
-
-    const input = screen.getByRole('spinbutton');
-    await user.clear(input);
-    await user.type(input, '2.00');
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      expect(onUpdateCard).toHaveBeenCalledWith(1, { floorPriceCents: 200 });
-    });
-  });
-
-  it('clears floor price when input is emptied and confirmed', async () => {
-    const user = userEvent.setup();
-    const onUpdateCard = vi
-      .fn()
-      .mockResolvedValue(makeCard({ id: 1, floorPriceCents: null }));
-
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={onUpdateCard}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const floorCell = cells[11];
-    await user.click(floorCell.querySelector('button')!);
-
-    const input = screen.getByRole('spinbutton');
-    await user.clear(input);
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      expect(onUpdateCard).toHaveBeenCalledWith(1, { floorPriceCents: null });
-    });
-  });
-
-  it('cancels floor price edit on Escape', async () => {
-    const user = userEvent.setup();
-    const onUpdateCard = vi.fn();
-
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, floorPriceCents: 150 })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={onUpdateCard}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const floorCell = cells[11];
-    await user.click(floorCell.querySelector('button')!);
-
-    const input = screen.getByRole('spinbutton');
-    await user.keyboard('{Escape}');
-
-    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
-    expect(onUpdateCard).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('columnheader', { name: /^Floor$/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Click to set floor price')).toBeNull();
   });
 });
 
@@ -406,7 +261,7 @@ describe('CardTable price history button', () => {
     vi.clearAllMocks();
   });
 
-  it('renders a history button for each card row', () => {
+  it('renders an actions menu button for each card row', () => {
     render(
       <CardTable
         cards={[
@@ -421,8 +276,8 @@ describe('CardTable price history button', () => {
       />,
     );
 
-    const historyButtons = screen.getAllByTitle('View price history');
-    expect(historyButtons).toHaveLength(2);
+    const actionButtons = screen.getAllByRole('button', { name: /actions for/i });
+    expect(actionButtons).toHaveLength(2);
   });
 
   it('opens price history modal when history button clicked', async () => {
@@ -440,7 +295,8 @@ describe('CardTable price history button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('View price history'));
+    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /view price history/i }));
 
     await waitFor(() => {
       const dialog = screen.getByRole('dialog');
@@ -469,7 +325,8 @@ describe('CardTable price history button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('View price history'));
+    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /view price history/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -505,7 +362,8 @@ describe('CardTable price history button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('View price history'));
+    await user.click(screen.getByRole('button', { name: /actions for display title/i }));
+    await user.click(screen.getByRole('menuitem', { name: /view price history/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toHaveAttribute(
@@ -513,6 +371,82 @@ describe('CardTable price history button', () => {
         'Price history for Display Title',
       );
     });
+  });
+});
+
+describe('CardTable row actions menu', () => {
+  it('triggers Re-price from the row actions menu', async () => {
+    const user = userEvent.setup();
+    const onReprice = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, productName: 'Matched Card' })]}
+        onReprice={onReprice}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for matched card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /re-price/i }));
+
+    await waitFor(() => {
+      expect(onReprice).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('triggers Remove from listing from the row actions menu', async () => {
+    const user = userEvent.setup();
+    const onUnlist = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, status: 'listed', productName: 'Listed Card' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={onUnlist}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for listed card/i }));
+    await user.click(
+      screen.getByRole('menuitem', { name: /remove from listing/i }),
+    );
+
+    await waitFor(() => {
+      expect(onUnlist).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('triggers Delete from the row actions menu after confirmation', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, productName: 'Delete Card' })]}
+        onReprice={() => {}}
+        onDelete={onDelete}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for delete card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /^delete$/i }));
+
+    await waitFor(() => {
+      expect(onDelete).toHaveBeenCalledWith(1);
+    });
+
+    confirmSpy.mockRestore();
   });
 });
 
@@ -829,7 +763,7 @@ describe('CardTable Record Sale button', () => {
     vi.clearAllMocks();
   });
 
-  it('shows Record Sale button on listed cards', () => {
+  it('shows Record Sale action in the row menu on listed cards', async () => {
     render(
       <CardTable
         {...defaultTableProps}
@@ -837,10 +771,14 @@ describe('CardTable Record Sale button', () => {
       />,
     );
 
-    expect(screen.getByTitle('Record sale')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /actions for listed card/i }));
+    expect(
+      screen.getByRole('menuitem', { name: /record sale/i }),
+    ).toBeInTheDocument();
   });
 
-  it('does NOT show Record Sale button on non-listed cards', () => {
+  it('does NOT show Record Sale action on non-listed cards', async () => {
     render(
       <CardTable
         {...defaultTableProps}
@@ -853,7 +791,11 @@ describe('CardTable Record Sale button', () => {
       />,
     );
 
-    expect(screen.queryByTitle('Record sale')).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /actions for matched card/i }));
+    expect(
+      screen.queryByRole('menuitem', { name: /record sale/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('clicking Record Sale opens RecordSaleModal with correct card', async () => {
@@ -867,7 +809,8 @@ describe('CardTable Record Sale button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('Record sale'));
+    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
     expect(dialog).toBeInTheDocument();
@@ -886,7 +829,8 @@ describe('CardTable Record Sale button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('Record sale'));
+    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
     const checkbox = within(dialog).getByRole('checkbox', {
@@ -908,7 +852,8 @@ describe('CardTable Record Sale button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('Record sale'));
+    await user.click(screen.getByRole('button', { name: /actions for sell me/i }));
+    await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
     // Submit the form as-is (defaults)

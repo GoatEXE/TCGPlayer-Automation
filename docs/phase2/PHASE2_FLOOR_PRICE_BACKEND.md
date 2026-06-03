@@ -153,11 +153,9 @@ curl -X POST http://localhost:3000/api/cards/1/reprice
 ```
 
 ## Frontend UI Behavior
-- Card table includes a **Floor** column.
-- Clicking a floor cell opens an inline editor.
-- Enter a dollar amount (for example `0.50`) to set floor (`50` cents).
-- Leave input blank and confirm to clear floor (`null`).
-- Escape cancels editing without update.
+- The main Card Inventory table currently hides the **Floor** column/control.
+- Backend and API support for `floorPriceCents` remains in place for future UI restoration.
+- When restored, the intended behavior is inline set/clear using dollar input values, with blank input clearing the floor (`null`).
 
 ## Not Included in This Phase
 - **Bulk floor operations** (e.g., set floor for all cards in a set).

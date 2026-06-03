@@ -76,15 +76,15 @@ With no external server access, the Telegram bot cannot receive webhooks. All Te
 
 ### Phase 2 — Price Monitoring
 
-**Status:** Phase 2 core workflows implemented — scheduler, history tracking, safeguards, floor controls, notification tracking loop, and adjustment CSV diff generation
+**Status:** Phase 2 core workflows implemented — scheduler, history tracking, safeguards, backend floor support, notification tracking loop, and adjustment CSV diff generation
 
 - **BullMQ + Redis scheduler** ✅ Implemented — persistent repeatable background checks every 12 hours (configurable)
 - **Lazy price checks** ✅ Implemented — runs via BullMQ repeatable job calling `runPriceCheck({ source: 'scheduled' })`
 - **Manual "Refresh Prices" button** ✅ Implemented — `POST /api/cards/fetch-prices` triggers on-demand checks
-- **Price history tracking** ✅ Implemented — per-card 📈 action opens modal with price/adjustment history table
+- **Price history tracking** ✅ Implemented — per-card Actions menu opens a modal with price/adjustment history table
 - **Last Checked column** ✅ Implemented — sortable column in card table shows relative time since last price check (e.g., "2 hours ago")
 - **Max drop safeguard** ✅ Implemented — caps single-cycle listing price drops at 20% (configurable via `MAX_PRICE_DROP_PERCENT`)
-- **Per-card floor price** ✅ Implemented (backend + UI) — optional `floorPriceCents` is enforced during price checks/repricing and editable inline in the card table
+- **Per-card floor price** ✅ Backend implemented — optional `floorPriceCents` is enforced during price checks/repricing; the main card table currently hides floor controls
 - **Notification tracking loop** ✅ Implemented — successful scheduler Telegram sends now mark matching `price_history.notificationSent = true` for drift and needs_attention alerts
 - **Adjustment logging + CSV diff generation** ✅ Implemented — `price_history.adjustedToPrice` is recorded for threshold listed-price adjustments and each price-check cycle emits deterministic add/remove/price-change CSV diff output
 
@@ -104,7 +104,7 @@ Implementation details:
   - Cards can have individual `floorPriceCents` minimum listing price
   - Floor enforced during price checks and manual repricing
   - Does not override gift/needs_attention status transitions
-  - Dashboard supports inline set/clear in the Floor column
+  - Main Card Inventory table currently hides the Floor column/control; backend/API support remains for future restoration
 
 ### Phase 3 — Dashboard, Notifications & Invoicing
 
@@ -647,8 +647,8 @@ The dashboard provides a bulk workflow for marking cards as listed on TCGPlayer 
 - **Select all**: Header checkbox selects all matched cards on current page
 - **Bulk action**: "📋 Mark X as Listed" opens a review modal before applying changes
 - **Review modal**: Shows selected cards, quantity, listing price, and estimated total value before confirmation
-- **Visual distinction**: Listed cards show green background + ↩️ unlist button
-- **Unlist**: Returns card to `matched` status and re-runs pricing engine
+- **Visual distinction**: Listed cards show green background
+- **Unlist**: Available from the row Actions menu; returns card to `matched` status and re-runs pricing engine
 - **Status preservation**: Repricing operations preserve `listed` status unless price drops below thresholds
 
 ### Response Conventions

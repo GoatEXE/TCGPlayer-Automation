@@ -244,7 +244,7 @@ sales
   - Import `SalesTable`, `RecordSaleModal`
   - Add sales state management (sales list, sales stats, sales loading)
   - Handle `sales-history` view mode: render `SalesTable` instead of `CardTable`
-  - Add "Record Sale" button in `CardTable` actions for `listed` cards (triggers `RecordSaleModal`)
+  - Add `Record sale` entry in the `CardTable` Actions menu for `listed` cards (triggers `RecordSaleModal`)
   - Add sales stats to `StatsBar` (or a secondary stats row on the sales view)
 - `packages/web/src/App.css` — styles for new components (sale table, modal, stats)
 
@@ -254,9 +254,9 @@ sales
 
 ---
 
-### WP-10: CardTable "Record Sale" action (web)
+### WP-10: CardTable `Record sale` action (web)
 **Files:**
-- `packages/web/src/components/CardTable.tsx` — add "Record Sale" action button (💲 or 🏷️) for cards with `status === 'listed'`; clicking opens `RecordSaleModal` with card data pre-filled
+- `packages/web/src/components/CardTable.tsx` — add `Record sale` entry in the row Actions menu for cards with `status === 'listed'`; selecting it opens `RecordSaleModal` with card data pre-filled
 
 **Dependencies:** WP-7, WP-9.
 **Risk:** Low. Small addition to existing component.
@@ -281,7 +281,7 @@ WP-7  RecordSaleModal component   [web]
 WP-8  Frontend component tests    [web, parallel with WP-6/WP-7]
   ↓
 WP-9  App integration + tab       [web]
-WP-10 CardTable action button     [web]
+WP-10 CardTable row action        [web]
 ```
 
 **Parallelizable:** WP-2 + WP-3 (test-first pair). WP-6 + WP-7 + WP-8 (independent components).
@@ -309,7 +309,7 @@ WP-10 CardTable action button     [web]
 | RecordSaleModal | `components/__tests__/RecordSaleModal.test.tsx` | Form behavior, validation, submit payload |
 | ViewTabs | `components/__tests__/ViewTabs.test.tsx` | New tab renders, click handler emits `sales-history` |
 | App integration | `App.test.tsx` | Sales tab triggers sales fetch, correct view renders |
-| CardTable | `components/__tests__/CardTable.test.tsx` | Record Sale button appears for listed cards |
+| CardTable | `components/__tests__/CardTable.test.tsx` | `Record sale` row action appears for listed cards |
 
 ### Manual validation checklist (after all WPs complete)
 - [ ] Import cards → price → mark listed → record sale → verify sales history tab shows it

@@ -5,7 +5,7 @@ Date: 2026-03-31
 ## Summary
 Implemented a per-card price history viewer end-to-end:
 - backend endpoint to read `price_history`
-- frontend 📈 row action in the card table
+- frontend row Actions menu entry in the card table
 - modal UI showing change history (market/listing/drift/status)
 - tests for backend route, API client, modal, and CardTable integration
 
@@ -52,8 +52,8 @@ Notes:
 ## Frontend
 
 ### UI behavior
-- Added a 📈 action button on each card row in `CardTable`.
-- Clicking it opens `PriceHistoryModal` for that card.
+- Added a `View price history` entry to each card row's Actions menu in `CardTable`.
+- Selecting it opens `PriceHistoryModal` for that card.
 - Modal states:
   - loading
   - error

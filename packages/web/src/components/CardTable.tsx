@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Card, CreateSaleRequest } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 import { ReviewListModal } from './ReviewListModal';
@@ -60,16 +60,42 @@ export function CardTable({
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [historyCardId, setHistoryCardId] = useState<number | null>(null);
   const [historyCardName, setHistoryCardName] = useState<string>('');
-  const [editingFloorId, setEditingFloorId] = useState<number | null>(null);
-  const [floorEditValue, setFloorEditValue] = useState<string>('');
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listingEditValue, setListingEditValue] = useState<string>('');
   const [recordSaleCardId, setRecordSaleCardId] = useState<number | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{
     url: string;
     cardName: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (openActionMenuId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        actionMenuRef.current &&
+        !actionMenuRef.current.contains(event.target as Node)
+      ) {
+        setOpenActionMenuId(null);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionMenuId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openActionMenuId]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -170,23 +196,6 @@ export function CardTable({
     ? sortedCards.filter((card) => card.status === 'listed')
     : matchedCards;
 
-  const handleFloorEdit = (card: Card) => {
-    setEditingFloorId(card.id);
-    setFloorEditValue(
-      card.floorPriceCents != null
-        ? (card.floorPriceCents / 100).toFixed(2)
-        : '',
-    );
-  };
-
-  const handleFloorSave = async (id: number) => {
-    const trimmed = floorEditValue.trim();
-    const cents = trimmed === '' ? null : Math.round(parseFloat(trimmed) * 100);
-    if (cents !== null && (isNaN(cents) || cents < 0)) return;
-    setEditingFloorId(null);
-    await onUpdateCard(id, { floorPriceCents: cents } as Partial<Card>);
-  };
-
   const parsePriceValue = (price: string | null | undefined) => {
     if (!price) return null;
     const parsed = Number.parseFloat(price);
@@ -224,22 +233,6 @@ export function CardTable({
     if (parsedMarketPrice === null) return '\u2014';
     const recommended = Math.round(parsedMarketPrice * 98) / 100;
     return `$${recommended.toFixed(2)}`;
-  };
-
-  const handleFloorKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    id: number,
-  ) => {
-    if (e.key === 'Enter') {
-      handleFloorSave(id);
-    } else if (e.key === 'Escape') {
-      setEditingFloorId(null);
-    }
-  };
-
-  const formatFloorPrice = (cents: number | null) => {
-    if (cents == null) return '—';
-    return `$${(cents / 100).toFixed(2)}`;
   };
 
   const formatPrice = (price: string | null, isFoil?: boolean) => {
@@ -358,7 +351,6 @@ export function CardTable({
             <SortableHeader field="marketPrice">Market</SortableHeader>
             <th>Rec'd</th>
             <SortableHeader field="listingPrice">Listing</SortableHeader>
-            <SortableHeader field="floorPriceCents">Floor</SortableHeader>
             <SortableHeader field="lastCheckedAt">Last Checked</SortableHeader>
             <SortableHeader field="updatedAt">Updated</SortableHeader>
             <th>Actions</th>
@@ -455,81 +447,96 @@ export function CardTable({
                     formatPrice(card.listingPrice)
                   )}
                 </td>
-                <td className="price floor-price-cell">
-                  {editingFloorId === card.id ? (
-                    <input
-                      type="number"
-                      className="floor-price-input"
-                      value={floorEditValue}
-                      onChange={(e) => setFloorEditValue(e.target.value)}
-                      onKeyDown={(e) => handleFloorKeyDown(e, card.id)}
-                      onBlur={() => handleFloorSave(card.id)}
-                      min="0"
-                      step="0.01"
-                      placeholder="—"
-                      autoFocus
-                    />
-                  ) : (
-                    <button
-                      className="floor-price-display"
-                      onClick={() => handleFloorEdit(card)}
-                      title="Click to set floor price"
-                    >
-                      {formatFloorPrice(card.floorPriceCents)}
-                    </button>
-                  )}
-                </td>
                 <td className="date">
                   {card.lastCheckedAt ? formatDate(card.lastCheckedAt) : '—'}
                 </td>
                 <td className="date">{formatDate(card.updatedAt)}</td>
                 <td className="actions">
-                  {isListed ? (
-                    <>
-                      <button
-                        onClick={() => setRecordSaleCardId(card.id)}
-                        className="action-button"
-                        title="Record sale"
-                      >
-                        💵
-                      </button>
-                      <button
-                        onClick={() => handleUnlist(card.id)}
-                        disabled={unlistingId === card.id}
-                        className="action-button unlist"
-                        title="Remove from listing"
-                      >
-                        {unlistingId === card.id ? '⏳' : '↩️'}
-                      </button>
-                    </>
-                  ) : (
+                  <div
+                    className="action-menu-container"
+                    ref={openActionMenuId === card.id ? actionMenuRef : null}
+                  >
                     <button
-                      onClick={() => handleReprice(card.id)}
-                      disabled={repricingId === card.id}
-                      className="action-button reprice"
-                      title="Re-price this card"
+                      type="button"
+                      className="action-menu-trigger"
+                      aria-label={`Actions for ${card.title || card.productName}`}
+                      aria-haspopup="menu"
+                      aria-expanded={openActionMenuId === card.id}
+                      onClick={() =>
+                        setOpenActionMenuId((current) =>
+                          current === card.id ? null : card.id,
+                        )
+                      }
                     >
-                      {repricingId === card.id ? '⏳' : '💰'}
+                      …
                     </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setHistoryCardId(card.id);
-                      setHistoryCardName(card.title || card.productName);
-                    }}
-                    className="action-button history"
-                    title="View price history"
-                  >
-                    📈
-                  </button>
-                  <button
-                    onClick={() => handleDelete(card.id)}
-                    disabled={deletingId === card.id}
-                    className="action-button delete"
-                    title="Delete this card"
-                  >
-                    {deletingId === card.id ? '⏳' : '🗑️'}
-                  </button>
+                    {openActionMenuId === card.id && (
+                      <div className="action-menu" role="menu">
+                        {isListed ? (
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                setRecordSaleCardId(card.id);
+                              }}
+                            >
+                              Record sale
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                handleUnlist(card.id);
+                              }}
+                              disabled={unlistingId === card.id}
+                            >
+                              {unlistingId === card.id
+                                ? 'Removing…'
+                                : 'Remove from listing'}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setOpenActionMenuId(null);
+                              handleReprice(card.id);
+                            }}
+                            disabled={repricingId === card.id}
+                          >
+                            {repricingId === card.id ? 'Re-pricing…' : 'Re-price'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setOpenActionMenuId(null);
+                            setHistoryCardId(card.id);
+                            setHistoryCardName(card.title || card.productName);
+                          }}
+                        >
+                          View price history
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setOpenActionMenuId(null);
+                            handleDelete(card.id);
+                          }}
+                          disabled={deletingId === card.id}
+                          className="danger-menu-item"
+                        >
+                          {deletingId === card.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
             );

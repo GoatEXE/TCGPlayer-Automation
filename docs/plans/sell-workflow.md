@@ -139,7 +139,7 @@ export interface CreateSaleRequest {
 
 ### Slice 3: Inline Listing Price Editing (Active Listings)
 
-**Goal:** Make the Listing Price column editable inline in the Active Listings tab, following the same UX pattern as the existing floor price inline editing.
+**Goal:** Make the Listing Price column editable inline in the Active Listings tab, following the same inline editing pattern previously used for floor price editing.
 
 **Scope:** Frontend `CardTable` component.
 
@@ -147,11 +147,11 @@ export interface CreateSaleRequest {
 
 | File | Change |
 |------|--------|
-| `packages/web/src/components/CardTable.tsx` | Add inline editing state/handlers for listing price (mirror `editingFloorId`/`floorEditValue` pattern); show editable listing price cell when card is `listed`; add "Recommended" column header |
+| `packages/web/src/components/CardTable.tsx` | Add inline editing state/handlers for listing price; show editable listing price cell when card is `listed`; add "Recommended" column header |
 
 **Detailed behavior:**
 - When viewing Active Listings (all cards are `listed`), the Listing Price column becomes click-to-edit
-- Click on a listing price → input field appears (same as floor price pattern)
+- Click on a listing price → input field appears
 - Enter → save via `onUpdateCard(id, { listingPrice: newValueAsNumber })`
 - Escape → cancel edit
 - Blur → save
@@ -167,7 +167,7 @@ export interface CreateSaleRequest {
 **Dependencies:** None directly, but logically grouped after Slice 1 (sold status) to avoid type conflicts.
 
 **Risks:**
-- Low. Mirrors an established pattern (floor price editing) in the same component.
+- Low. Mirrors an established inline editing pattern in the same component.
 - The `PATCH /api/cards/:id` endpoint already accepts `listingPrice` as a number and converts to string for storage (confirmed in `cards.ts` line 351).
 
 **Acceptance criteria:**
@@ -332,7 +332,7 @@ interface BulkSellModalProps {
 
 ### Slice 6: Wiring — CardTable + App Integration
 
-**Goal:** Wire RecordSaleModal and BulkSellModal into CardTable and App.tsx. Add "Record Sale" action button and bulk sell checkbox flow.
+**Goal:** Wire RecordSaleModal and BulkSellModal into CardTable and App.tsx. Add a "Record sale" row action and bulk sell checkbox flow.
 
 **Scope:** Modifications to existing components.
 
@@ -340,7 +340,7 @@ interface BulkSellModalProps {
 
 | File | Change |
 |------|--------|
-| `packages/web/src/components/CardTable.tsx` | (1) Add "Record Sale" action button (🏷️ or 💵) for `listed` cards. (2) Extend checkbox selection to include `listed` cards (not just `matched`). (3) Add "Attach to Order" bulk action button when listed cards are selected. (4) State for `recordSaleCardId` (which card's modal is open) and `showBulkSellModal`. (5) Import and render `RecordSaleModal` and `BulkSellModal`. |
+| `packages/web/src/components/CardTable.tsx` | (1) Add a `Record sale` row action for `listed` cards. (2) Extend checkbox selection to include `listed` cards (not just `matched`). (3) Add "Attach to Order" bulk action button when listed cards are selected. (4) State for `recordSaleCardId` (which card's modal is open) and `showBulkSellModal`. (5) Import and render `RecordSaleModal` and `BulkSellModal`. |
 | `packages/web/src/App.tsx` | (1) Add `handleRecordSale` callback that calls `api.createSale`, then refreshes cards/stats. (2) Add `handleBulkSell` callback that calls `api.createSale` for each request in the array, then refreshes. (3) Pass new callbacks through `CardTable` props. (4) Add `onRecordSale` and `onBulkSell` to `CardTableProps`. |
 
 **CardTable prop additions:**
@@ -354,14 +354,7 @@ interface CardTableProps {
 
 **Detailed CardTable changes:**
 
-1. **"Record Sale" button** — shown in the Actions column for `listed` cards:
-   ```tsx
-   {isListed && (
-     <button onClick={() => setRecordSaleCardId(card.id)} className="action-button" title="Record sale">
-       💵
-     </button>
-   )}
-   ```
+1. **`Record sale` row action** — shown in the Actions menu for `listed` cards and opens `RecordSaleModal` for that card.
 
 2. **Checkbox selection expansion** — Currently, checkboxes are only enabled for `matched` cards. The change:
    - In Active Listings view: checkboxes enabled for `listed` cards (for bulk sell)
@@ -381,7 +374,7 @@ interface CardTableProps {
    </button>
    ```
 
-4. **Record Sale in Inventory view** — The "Record Sale" button also appears on `listed` cards in the Inventory view. Only the bulk-sell checkbox flow is limited to Active Listings.
+4. **Record sale in Inventory view** — The `Record sale` action also appears on `listed` cards in the Inventory view. Only the bulk-sell checkbox flow is limited to Active Listings.
 
 **App.tsx handler implementations:**
 
@@ -491,7 +484,7 @@ Slice 6 (Wiring) ◄───────────┴────────
 - `packages/web/src/api/client.ts` — `createSale()` method
 - `packages/web/src/components/StatusBadge.tsx` — sold config
 - `packages/web/src/components/StatsBar.tsx` — sold count display
-- `packages/web/src/components/CardTable.tsx` — inline listing price edit, Record Sale button, bulk sell checkbox flow, `enableSellFlow` prop
+- `packages/web/src/components/CardTable.tsx` — inline listing price edit, `Record sale` row action, bulk sell checkbox flow, `enableSellFlow` prop
 - `packages/web/src/App.tsx` — sold filter, handleRecordSale, handleBulkSell, prop wiring
 
 ### NOT Modified (Backend)
@@ -511,7 +504,7 @@ For each slice, write tests BEFORE implementation:
 3. **Slice 3 tests:** Listing price click-to-edit on listed cards, save on Enter, cancel on Escape, non-listed not editable
 4. **Slice 4 tests:** RecordSaleModal rendering, default values, validation, submit payload, error handling
 5. **Slice 5 tests:** BulkSellModal rendering, per-card editing, shared fields, grand total, submit payload array
-6. **Slice 6 tests:** CardTable Record Sale button rendering, modal opening, bulk sell flow, App integration handlers
+6. **Slice 6 tests:** CardTable `Record sale` action rendering, modal opening, bulk sell flow, App integration handlers
 
 All existing tests must continue to pass after each slice.
 
