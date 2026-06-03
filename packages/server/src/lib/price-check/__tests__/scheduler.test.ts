@@ -45,6 +45,7 @@ vi.mock('../../../config/env.js', () => ({
   env: {
     NODE_ENV: 'development',
     PRICE_CHECK_INTERVAL_HOURS: 12,
+    LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT: 5,
     PRICE_DRIFT_THRESHOLD_PERCENT: 2,
     REDIS_URL: 'redis://localhost:6379',
   },
@@ -209,6 +210,7 @@ describe('BullMQ price check scheduler', () => {
       enabled: true,
       intervalHours: 12,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 5,
       running: false,
       lastRun: null,
     });
@@ -260,6 +262,33 @@ describe('BullMQ price check scheduler', () => {
     );
     const { getPriceCheckSchedulerStatus } = await loadSchedulerModule();
     expect(getPriceCheckSchedulerStatus()).toMatchObject({ intervalHours: 6 });
+  });
+
+  it('updates listed price attention threshold at runtime without re-registering jobs', async () => {
+    const {
+      startPriceCheckScheduler,
+      updateListedPriceAttentionThresholdPercent,
+      getPriceCheckSchedulerStatus,
+    } = await loadSchedulerModule();
+
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await startPriceCheckScheduler(logger);
+    vi.clearAllMocks();
+
+    await updateListedPriceAttentionThresholdPercent(7.5, logger);
+
+    expect(queueGetRepeatableJobs).not.toHaveBeenCalled();
+    expect(queueRemoveRepeatableByKey).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
+    expect(getPriceCheckSchedulerStatus()).toMatchObject({
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 7.5,
+    });
   });
 
   it('removes existing repeat jobs for the scheduler before adding the current one', async () => {

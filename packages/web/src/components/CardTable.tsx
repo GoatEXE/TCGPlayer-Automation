@@ -368,6 +368,8 @@ export function CardTable({
           {sortedCards.map((card) => {
             const isMatched = card.status === 'matched';
             const isListed = card.status === 'listed';
+            const canEditListingPrice =
+              card.status === 'listed' || card.status === 'needs_attention';
             const isSelected = selectedIds.has(card.id);
             const photoUrl = isValidPhotoUrl(card.photoUrl) ? card.photoUrl : null;
 
@@ -426,7 +428,7 @@ export function CardTable({
                   {formatRecommendedPrice(card.marketPrice)}
                 </td>
                 <td className="price listing-price-cell">
-                  {isListed ? (
+                  {canEditListingPrice ? (
                     editingListingId === card.id ? (
                       <input
                         type="number"

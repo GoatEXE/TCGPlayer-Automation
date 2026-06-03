@@ -417,6 +417,15 @@ export function App() {
     setPriceCheckStatus(updated);
   };
 
+  const handleUpdateListedPriceAttentionThreshold = async (
+    listedPriceAttentionThresholdPercent: number,
+  ) => {
+    const updated = await api.updatePriceCheckSettings({
+      listedPriceAttentionThresholdPercent,
+    });
+    setPriceCheckStatus(updated);
+  };
+
   const handleUnlist = async (id: number) => {
     try {
       const updatedCard = await api.unlistCard(id);
@@ -674,6 +683,9 @@ export function App() {
             loading={priceCheckLoading}
             error={priceCheckError}
             onUpdateInterval={handleUpdateInterval}
+            onUpdateListedPriceAttentionThreshold={
+              handleUpdateListedPriceAttentionThreshold
+            }
           />
         </div>
 

@@ -85,6 +85,7 @@ vi.mock('../../lib/pricing/index.js', () => ({
 const priceCheckMocks = vi.hoisted(() => ({
   getPriceCheckSchedulerStatus: vi.fn(),
   updatePriceCheckIntervalHours: vi.fn(),
+  updateListedPriceAttentionThresholdPercent: vi.fn(),
 }));
 vi.mock('../../lib/price-check/index.js', async () => {
   const actual = await vi.importActual<
@@ -96,6 +97,8 @@ vi.mock('../../lib/price-check/index.js', async () => {
     getPriceCheckSchedulerStatus: priceCheckMocks.getPriceCheckSchedulerStatus,
     updatePriceCheckIntervalHours:
       priceCheckMocks.updatePriceCheckIntervalHours,
+    updateListedPriceAttentionThresholdPercent:
+      priceCheckMocks.updateListedPriceAttentionThresholdPercent,
   };
 });
 
@@ -313,7 +316,8 @@ describe('GET /api/cards', () => {
     priceCheckMocks.getPriceCheckSchedulerStatus.mockReturnValue({
       enabled: true,
       intervalHours: 12,
-      thresholdPercent: 2,
+      thresholdPercent: 5,
+      listedPriceAttentionThresholdPercent: 5,
       running: false,
       lastRun: null,
     });
@@ -800,7 +804,7 @@ describe('POST /api/cards/:id/reprice', () => {
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
 
-  it('should reprice card and return updated card', async () => {
+  it('preserves listingPrice when repricing a listed card', async () => {
     const mockCard = {
       id: 1,
       productName: 'Card to Reprice',
@@ -825,17 +829,20 @@ describe('POST /api/cards/:id/reprice', () => {
 
     vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
 
-    const mockUpdatedCard = {
-      ...mockCard,
-      listingPrice: '1.96',
-      updatedAt: new Date(),
-    };
-
+    let updateArgs: any = null;
     vi.mocked(db.update).mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([mockUpdatedCard]),
-        }),
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                ...mockCard,
+                updatedAt: new Date(),
+              },
+            ]),
+          }),
+        };
       }),
     } as any);
 
@@ -845,16 +852,21 @@ describe('POST /api/cards/:id/reprice', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
-    expect(body.id).toBe(1);
     expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 2.0 });
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        listingPrice: '1.8',
+        status: 'listed',
+        updatedAt: expect.any(Date),
+      }),
+    );
   });
 
-  it('should apply floorPriceCents during repricing when a listing price exists', async () => {
+  it('marks a listed card as needs_attention instead of clearing its listing price when repricing finds no viable recommendation', async () => {
     const mockCard = {
       id: 1,
       productName: 'Card to Reprice',
-      marketPrice: '2.00',
+      marketPrice: '0.02',
       listingPrice: '1.80',
       floorPriceCents: 250,
       status: 'listed' as const,
@@ -869,9 +881,9 @@ describe('POST /api/cards/:id/reprice', () => {
     } as any);
 
     vi.mocked(calculatePrice).mockReturnValue({
-      listingPrice: 1.96,
-      status: 'matched' as const,
-      reason: 'Priced at 98% of market — ready to list',
+      listingPrice: null,
+      status: 'gift' as const,
+      reason: 'Market price below minimum threshold',
     });
 
     let updateArgs: any = null;
@@ -883,7 +895,7 @@ describe('POST /api/cards/:id/reprice', () => {
             returning: vi.fn().mockResolvedValue([
               {
                 ...mockCard,
-                listingPrice: '2.5',
+                status: 'needs_attention',
                 updatedAt: new Date(),
               },
             ]),
@@ -900,15 +912,11 @@ describe('POST /api/cards/:id/reprice', () => {
     expect(response.statusCode).toBe(200);
     expect(updateArgs).toEqual(
       expect.objectContaining({
-        listingPrice: '2.5',
-        status: 'listed',
+        listingPrice: '1.8',
+        status: 'needs_attention',
         updatedAt: expect.any(Date),
       }),
     );
-    expect(JSON.parse(response.body)).toMatchObject({
-      id: 1,
-      listingPrice: '2.5',
-    });
   });
 
   it('should return 404 for non-existent card', async () => {
@@ -936,7 +944,7 @@ describe('POST /api/cards/reprice-all', () => {
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
 
-  it('should apply floorPriceCents and preserve listed status when repricing all cards', async () => {
+  it('preserves listing prices for listed cards when repricing all cards', async () => {
     const mockCards = [
       {
         id: 1,
@@ -1001,13 +1009,13 @@ describe('POST /api/cards/reprice-all', () => {
     });
     expect(updateCalls).toEqual([
       expect.objectContaining({
-        listingPrice: '2',
+        listingPrice: '1.4',
         status: 'listed',
         updatedAt: expect.any(Date),
       }),
       expect.objectContaining({
-        listingPrice: null,
-        status: 'gift',
+        listingPrice: '0.09',
+        status: 'needs_attention',
         updatedAt: expect.any(Date),
       }),
     ]);
@@ -2038,6 +2046,7 @@ describe('GET /api/cards/price-check-status', () => {
     expect(body).toHaveProperty('enabled');
     expect(body).toHaveProperty('intervalHours');
     expect(body).toHaveProperty('thresholdPercent');
+    expect(body).toHaveProperty('listedPriceAttentionThresholdPercent');
     expect(body).toHaveProperty('running');
     expect(body).toHaveProperty('lastRun');
   });
@@ -2052,10 +2061,14 @@ describe('POST /api/cards/price-check-settings', () => {
       enabled: true,
       intervalHours: 6,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 5,
       running: false,
       lastRun: null,
     });
     priceCheckMocks.updatePriceCheckIntervalHours.mockResolvedValue(undefined);
+    priceCheckMocks.updateListedPriceAttentionThresholdPercent.mockResolvedValue(
+      undefined,
+    );
     app = Fastify();
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
@@ -2072,16 +2085,51 @@ describe('POST /api/cards/price-check-settings', () => {
       6,
       expect.any(Object),
     );
+    expect(
+      priceCheckMocks.updateListedPriceAttentionThresholdPercent,
+    ).not.toHaveBeenCalled();
     expect(JSON.parse(response.body)).toEqual({
       enabled: true,
       intervalHours: 6,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 5,
       running: false,
       lastRun: null,
     });
   });
 
-  it('returns 400 for invalid payloads', async () => {
+  it('updates the listed price attention threshold and returns scheduler status', async () => {
+    priceCheckMocks.getPriceCheckSchedulerStatus.mockReturnValue({
+      enabled: true,
+      intervalHours: 6,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 7.5,
+      running: false,
+      lastRun: null,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: { listedPriceAttentionThresholdPercent: 7.5 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      priceCheckMocks.updateListedPriceAttentionThresholdPercent,
+    ).toHaveBeenCalledWith(7.5, expect.any(Object));
+    expect(priceCheckMocks.updatePriceCheckIntervalHours).not.toHaveBeenCalled();
+    expect(JSON.parse(response.body)).toEqual({
+      enabled: true,
+      intervalHours: 6,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 7.5,
+      running: false,
+      lastRun: null,
+    });
+  });
+
+  it('returns 400 for invalid interval payloads', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/cards/price-check-settings',
@@ -2095,6 +2143,35 @@ describe('POST /api/cards/price-check-settings', () => {
     expect(
       priceCheckMocks.updatePriceCheckIntervalHours,
     ).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for invalid listed price attention threshold payloads', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: { listedPriceAttentionThresholdPercent: -1 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'listedPriceAttentionThresholdPercent must be a non-negative number',
+    });
+    expect(
+      priceCheckMocks.updateListedPriceAttentionThresholdPercent,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when no price check settings are provided', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'At least one price check setting must be provided',
+    });
   });
 });
 

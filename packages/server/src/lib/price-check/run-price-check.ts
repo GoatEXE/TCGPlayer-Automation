@@ -16,6 +16,7 @@ import {
 import { capDownwardListingPriceChange } from './max-price-drop-safeguard.js';
 import { TCGTrackingClient } from '../tcgtracking/client.js';
 import type { TCGTrackingProductPrice } from '../tcgtracking/types.js';
+import { getRuntimeListedPriceAttentionThresholdPercent } from './settings.js';
 
 type PriceCheckSource = 'manual' | 'scheduled';
 
@@ -161,6 +162,7 @@ function getCsvDiffAction(params: {
 
   if (
     previousStatus !== 'listed' &&
+    previousStatus !== 'matched' &&
     newStatus === 'matched' &&
     newListingPrice !== null
   ) {
@@ -250,13 +252,17 @@ export async function runPriceCheck(
       const previousMarketPrice = parseDecimal(card.marketPrice);
       const previousListingPrice = parseDecimal(card.listingPrice);
       const previousStatus = card.status;
+      const persistedListedListingPrice =
+        previousStatus === 'listed' ? card.listingPrice : null;
+      const historyListingPrice =
+        previousStatus === 'listed' ? previousListingPrice : null;
 
       await db
         .update(cards)
         .set({
           tcgProductId: resolvedProductId,
           marketPrice: null,
-          listingPrice: null,
+          listingPrice: persistedListedListingPrice,
           status: 'needs_attention',
           updatedAt: new Date(),
         })
@@ -268,7 +274,7 @@ export async function runPriceCheck(
         previousMarketPrice: previousMarketPrice?.toString() ?? null,
         newMarketPrice: null,
         previousListingPrice: previousListingPrice?.toString() ?? null,
-        newListingPrice: null,
+        newListingPrice: historyListingPrice?.toString() ?? null,
         adjustedToPrice: null,
         previousStatus,
         newStatus: 'needs_attention',
@@ -289,7 +295,7 @@ export async function runPriceCheck(
         previousStatus,
         newStatus: 'needs_attention',
         previousListingPrice,
-        newListingPrice: null,
+        newListingPrice: historyListingPrice,
         isThresholdDrift: false,
       });
 
@@ -301,7 +307,7 @@ export async function runPriceCheck(
           previousStatus,
           newStatus: 'needs_attention',
           previousListingPrice,
-          newListingPrice: null,
+          newListingPrice: historyListingPrice,
           driftPercent: null,
         });
       }
@@ -334,13 +340,17 @@ export async function runPriceCheck(
       const previousMarketPrice = parseDecimal(card.marketPrice);
       const previousListingPrice = parseDecimal(card.listingPrice);
       const previousStatus = card.status;
+      const persistedListedListingPrice =
+        previousStatus === 'listed' ? card.listingPrice : null;
+      const historyListingPrice =
+        previousStatus === 'listed' ? previousListingPrice : null;
 
       await db
         .update(cards)
         .set({
           tcgProductId: resolvedProductId,
           marketPrice: null,
-          listingPrice: null,
+          listingPrice: persistedListedListingPrice,
           status: 'needs_attention',
           updatedAt: new Date(),
         })
@@ -352,7 +362,7 @@ export async function runPriceCheck(
         previousMarketPrice: previousMarketPrice?.toString() ?? null,
         newMarketPrice: null,
         previousListingPrice: previousListingPrice?.toString() ?? null,
-        newListingPrice: null,
+        newListingPrice: historyListingPrice?.toString() ?? null,
         adjustedToPrice: null,
         previousStatus,
         newStatus: 'needs_attention',
@@ -373,7 +383,7 @@ export async function runPriceCheck(
         previousStatus,
         newStatus: 'needs_attention',
         previousListingPrice,
-        newListingPrice: null,
+        newListingPrice: historyListingPrice,
         isThresholdDrift: false,
       });
 
@@ -385,7 +395,7 @@ export async function runPriceCheck(
           previousStatus,
           newStatus: 'needs_attention',
           previousListingPrice,
-          newListingPrice: null,
+          newListingPrice: historyListingPrice,
           driftPercent: null,
         });
       }
@@ -396,14 +406,10 @@ export async function runPriceCheck(
     const previousMarketPrice = parseDecimal(card.marketPrice);
     const previousListingPrice = parseDecimal(card.listingPrice);
     const previousStatus = card.status;
+    const wasListed = previousStatus === 'listed';
 
     const newMarketPrice = conditionPricing.market;
     const pricingResult = calculatePrice({ marketPrice: newMarketPrice });
-
-    const newStatus =
-      card.status === 'listed' && pricingResult.status === 'matched'
-        ? 'listed'
-        : pricingResult.status;
 
     let notesValue = card.notes || '';
     if (isFoilFallback) {
@@ -419,56 +425,61 @@ export async function runPriceCheck(
         .join('\n');
     }
 
-    const flooredListingPrice = applyFloorPriceCents({
+    const recommendedListingPrice = applyFloorPriceCents({
       listingPrice: pricingResult.listingPrice ?? null,
       floorPriceCents: card.floorPriceCents,
     });
-
-    const candidateListingPrice = capDownwardListingPriceChange({
+    const cappedListingPrice = wasListed
+      ? recommendedListingPrice
+      : capDownwardListingPriceChange({
+          previousListingPrice,
+          nextListingPrice: recommendedListingPrice,
+          maxPriceDropPercent: env.MAX_PRICE_DROP_PERCENT,
+        });
+    const recommendedDriftPercent = calculateDriftPercent(
       previousListingPrice,
-      nextListingPrice: flooredListingPrice,
-      maxPriceDropPercent: env.MAX_PRICE_DROP_PERCENT,
-    });
-    const candidateDriftPercent = calculateDriftPercent(
-      previousListingPrice,
-      candidateListingPrice,
+      recommendedListingPrice,
     );
     const isThresholdDrift =
-      candidateDriftPercent !== null &&
-      Math.abs(candidateDriftPercent) >= env.PRICE_DRIFT_THRESHOLD_PERCENT;
+      wasListed &&
+      recommendedDriftPercent !== null &&
+      Math.abs(recommendedDriftPercent) >=
+        getRuntimeListedPriceAttentionThresholdPercent();
 
-    const holdListedPriceBecauseBelowThreshold =
-      previousStatus === 'listed' &&
-      newStatus === 'listed' &&
-      previousListingPrice !== null &&
-      candidateListingPrice !== null &&
-      !isThresholdDrift;
+    const listedNeedsAttention =
+      wasListed &&
+      (pricingResult.status !== 'matched' ||
+        recommendedListingPrice === null ||
+        previousListingPrice === null ||
+        isThresholdDrift);
 
-    const newListingPrice = holdListedPriceBecauseBelowThreshold
-      ? previousListingPrice
-      : candidateListingPrice;
-
-    const driftPercent = calculateDriftPercent(
-      previousListingPrice,
-      newListingPrice,
-    );
+    const newStatus = wasListed
+      ? listedNeedsAttention
+        ? 'needs_attention'
+        : 'listed'
+      : pricingResult.status;
+    const newListingPrice = wasListed ? previousListingPrice : cappedListingPrice;
+    const persistedListingPrice = wasListed
+      ? card.listingPrice
+      : newListingPrice?.toString() ?? null;
+    const driftPercent = wasListed
+      ? recommendedDriftPercent
+      : calculateDriftPercent(previousListingPrice, newListingPrice);
 
     if (isThresholdDrift) {
       drifted++;
 
-      const driftForAlert = candidateDriftPercent ?? driftPercent;
-
       if (
         previousListingPrice !== null &&
-        newListingPrice !== null &&
-        driftForAlert !== null
+        recommendedListingPrice !== null &&
+        recommendedDriftPercent !== null
       ) {
         driftedCards.push({
           cardId: card.id,
           productName: card.productName,
           previousListingPrice,
-          newListingPrice,
-          driftPercent: driftForAlert,
+          newListingPrice: recommendedListingPrice,
+          driftPercent: recommendedDriftPercent,
         });
       }
     }
@@ -478,7 +489,7 @@ export async function runPriceCheck(
       .set({
         tcgProductId: resolvedProductId,
         marketPrice: newMarketPrice.toString(),
-        listingPrice: newListingPrice?.toString() ?? null,
+        listingPrice: persistedListingPrice,
         status: newStatus,
         isFoilPrice: isFoilFallback,
         notes: notesValue || null,
@@ -494,8 +505,7 @@ export async function runPriceCheck(
       isThresholdDrift,
     });
 
-    const adjustedToPrice =
-      csvDiffAction === 'price_change' ? newListingPrice : null;
+    const adjustedToPrice = isThresholdDrift ? recommendedListingPrice : null;
 
     const historyId = await insertPriceHistoryEntry({
       cardId: card.id,

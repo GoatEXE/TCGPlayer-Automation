@@ -1,11 +1,15 @@
 import type { PriceCheckStatus } from '../api/types';
 import { IntervalSettingsControl } from './IntervalSettingsControl';
+import { ListedPriceThresholdControl } from './ListedPriceThresholdControl';
 
 interface PriceCheckStatusCardProps {
   status: PriceCheckStatus | null;
   loading?: boolean;
   error?: boolean;
   onUpdateInterval?: (intervalHours: number) => Promise<void>;
+  onUpdateListedPriceAttentionThreshold?: (
+    thresholdPercent: number,
+  ) => Promise<void>;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -24,6 +28,7 @@ export function PriceCheckStatusCard({
   loading,
   error,
   onUpdateInterval,
+  onUpdateListedPriceAttentionThreshold,
 }: PriceCheckStatusCardProps) {
   if (error) {
     return null; // fail gracefully — don't render anything
@@ -70,9 +75,21 @@ export function PriceCheckStatusCard({
               Every <strong>{status.intervalHours}h</strong>
             </span>
           )}
-          <span className="price-check-meta">
-            Drift ≥ <strong>{status.thresholdPercent}%</strong>
-          </span>
+          {onUpdateListedPriceAttentionThreshold ? (
+            <ListedPriceThresholdControl
+              currentThresholdPercent={
+                status.listedPriceAttentionThresholdPercent
+              }
+              onSaved={onUpdateListedPriceAttentionThreshold}
+            />
+          ) : (
+            <span className="price-check-meta">
+              Listing attention ≥{' '}
+              <strong>
+                {status.listedPriceAttentionThresholdPercent}%
+              </strong>
+            </span>
+          )}
         </div>
 
         {lastRun && (

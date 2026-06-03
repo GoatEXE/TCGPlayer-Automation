@@ -106,6 +106,7 @@ describe('App view tabs', () => {
       enabled: true,
       intervalHours: 12,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
       running: false,
       lastRun: null,
     });
@@ -113,6 +114,7 @@ describe('App view tabs', () => {
       enabled: true,
       intervalHours: 12,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
       running: false,
       lastRun: null,
     });
@@ -403,6 +405,7 @@ describe('App performance view integration', () => {
       enabled: true,
       intervalHours: 12,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
       running: false,
       lastRun: null,
     });
@@ -592,6 +595,7 @@ describe('App record sale + bulk sell integration', () => {
       enabled: true,
       intervalHours: 12,
       thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
       running: false,
       lastRun: null,
     });

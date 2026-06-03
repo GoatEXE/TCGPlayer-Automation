@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { PriceCheckStatusCard } from '../PriceCheckStatusCard';
 import type { PriceCheckStatus } from '../../api/types';
 
@@ -6,6 +8,7 @@ const mockStatus: PriceCheckStatus = {
   enabled: true,
   intervalHours: 6,
   thresholdPercent: 10,
+  listedPriceAttentionThresholdPercent: 12,
   running: false,
   lastRun: {
     startedAt: '2026-03-31T10:00:00.000Z',
@@ -58,16 +61,14 @@ describe('PriceCheckStatusCard', () => {
     expect(badge.props.children).toBe('Running');
   });
 
-  it('renders interval and threshold config', () => {
-    const el = PriceCheckStatusCard({ status: mockStatus });
-    const body = el!.props.children[1]; // price-check-body
-    const config = body.props.children[0]; // price-check-config
-    const intervalMeta = config.props.children[0];
-    const thresholdMeta = config.props.children[1];
-    // interval: "Every <strong>6h</strong>"
-    expect(intervalMeta.props.children[1].props.children).toEqual([6, 'h']);
-    // threshold: "Drift ≥ <strong>10%</strong>"
-    expect(thresholdMeta.props.children[1].props.children).toEqual([10, '%']);
+  it('renders interval and listing attention config without market drift copy', () => {
+    render(<PriceCheckStatusCard status={mockStatus} />);
+
+    expect(screen.getByText('Every')).toBeTruthy();
+    expect(screen.getByText('6h')).toBeTruthy();
+    expect(screen.getByText(/Listing attention ≥/i)).toBeTruthy();
+    expect(screen.getByText('12%')).toBeTruthy();
+    expect(screen.queryByText(/Market drift/i)).toBeNull();
   });
 
   it('renders last run results when available', () => {
@@ -97,6 +98,36 @@ describe('PriceCheckStatusCard', () => {
     const results = lastRunSection.props.children[1];
     const errChip = results.props.children[3];
     expect(errChip.props.children).toEqual(['⚠️ ', 2, ' errors']);
+  });
+
+  it('renders listed price attention threshold control and saves changes', async () => {
+    const user = userEvent.setup();
+    const onUpdateListedPriceAttentionThreshold = vi
+      .fn()
+      .mockResolvedValue(undefined);
+
+    render(
+      <PriceCheckStatusCard
+        status={mockStatus}
+        onUpdateListedPriceAttentionThreshold={
+          onUpdateListedPriceAttentionThreshold
+        }
+      />,
+    );
+
+    const input = screen.getByLabelText('Listing attention threshold (%)');
+    expect((input as HTMLInputElement).value).toBe('12');
+    expect(
+      screen.getByText(/does not change tcgplayer listing prices/i),
+    ).toBeTruthy();
+
+    await user.clear(input);
+    await user.type(input, '15');
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(onUpdateListedPriceAttentionThreshold).toHaveBeenCalledWith(15);
+    });
   });
 
   it('renders "No runs yet" when lastRun is null', () => {

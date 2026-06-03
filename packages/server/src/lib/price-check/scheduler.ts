@@ -9,6 +9,12 @@ import {
 } from '../notifications/telegram.js';
 import type { RunPriceCheckResult } from './run-price-check.js';
 import { runPriceCheck } from './run-price-check.js';
+import {
+  getRuntimeListedPriceAttentionThresholdPercent,
+  getRuntimePriceCheckIntervalHours,
+  setRuntimeListedPriceAttentionThresholdPercent,
+  setRuntimePriceCheckIntervalHours,
+} from './settings.js';
 
 interface LoggerLike {
   info: (msg: string) => void;
@@ -34,7 +40,6 @@ let queue: Queue | null = null;
 let worker: Worker | null = null;
 let running = false;
 let lastRun: PriceCheckLastRun | null = null;
-let runtimeIntervalHours = env.PRICE_CHECK_INTERVAL_HOURS;
 
 function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -147,7 +152,7 @@ async function executeScheduledRun(logger: LoggerLike) {
     if (result.drifted > 0 || result.errors.length > 0) {
       const message = buildScheduledPriceCheckMessage(
         result,
-        env.PRICE_DRIFT_THRESHOLD_PERCENT,
+        getRuntimeListedPriceAttentionThresholdPercent(),
       );
 
       try {
@@ -213,10 +218,12 @@ export async function updatePriceCheckIntervalHours(
   intervalHours: number,
   logger: LoggerLike,
 ): Promise<void> {
-  runtimeIntervalHours = intervalHours;
+  setRuntimePriceCheckIntervalHours(intervalHours);
 
   if (!queue || !worker || env.NODE_ENV === 'test') {
-    logger.info(`[price-check] updated intervalHours=${runtimeIntervalHours}`);
+    logger.info(
+      `[price-check] updated intervalHours=${getRuntimePriceCheckIntervalHours()}`,
+    );
     return;
   }
 
@@ -230,7 +237,10 @@ export async function updatePriceCheckIntervalHours(
     await queue.removeRepeatableByKey(job.key);
   }
 
-  const intervalMs = Math.max(1000, runtimeIntervalHours * 60 * 60 * 1000);
+  const intervalMs = Math.max(
+    1000,
+    getRuntimePriceCheckIntervalHours() * 60 * 60 * 1000,
+  );
 
   await queue.add(
     PRICE_CHECK_JOB,
@@ -242,7 +252,17 @@ export async function updatePriceCheckIntervalHours(
   );
 
   logger.info(
-    `[price-check] updated intervalHours=${runtimeIntervalHours}, re-registeredRepeatJobs=${repeatJobsToRemove.length}`,
+    `[price-check] updated intervalHours=${getRuntimePriceCheckIntervalHours()}, re-registeredRepeatJobs=${repeatJobsToRemove.length}`,
+  );
+}
+
+export async function updateListedPriceAttentionThresholdPercent(
+  thresholdPercent: number,
+  logger: LoggerLike,
+): Promise<void> {
+  setRuntimeListedPriceAttentionThresholdPercent(thresholdPercent);
+  logger.info(
+    `[price-check] updated listedPriceAttentionThresholdPercent=${getRuntimeListedPriceAttentionThresholdPercent()}`,
   );
 }
 
@@ -285,7 +305,10 @@ export async function startPriceCheckScheduler(logger: LoggerLike) {
       logger.error(`[price-check] worker error: ${error}`);
     });
 
-    const intervalMs = Math.max(1000, runtimeIntervalHours * 60 * 60 * 1000);
+    const intervalMs = Math.max(
+      1000,
+      getRuntimePriceCheckIntervalHours() * 60 * 60 * 1000,
+    );
 
     const existingRepeatJobs = await queue.getRepeatableJobs();
     const repeatJobsToRemove = existingRepeatJobs.filter(
@@ -309,7 +332,7 @@ export async function startPriceCheckScheduler(logger: LoggerLike) {
     );
 
     logger.info(
-      `[price-check] bullmq scheduler enabled, interval=${runtimeIntervalHours}h, clearedExistingRepeatJobs=${repeatJobsToRemove.length}`,
+      `[price-check] bullmq scheduler enabled, interval=${getRuntimePriceCheckIntervalHours()}h, clearedExistingRepeatJobs=${repeatJobsToRemove.length}`,
     );
   } catch (error) {
     logger.error(
@@ -344,8 +367,10 @@ export async function stopPriceCheckScheduler() {
 export function getPriceCheckSchedulerStatus() {
   return {
     enabled: queue !== null && worker !== null && env.NODE_ENV !== 'test',
-    intervalHours: runtimeIntervalHours,
+    intervalHours: getRuntimePriceCheckIntervalHours(),
     thresholdPercent: env.PRICE_DRIFT_THRESHOLD_PERCENT,
+    listedPriceAttentionThresholdPercent:
+      getRuntimeListedPriceAttentionThresholdPercent(),
     running,
     lastRun,
   };

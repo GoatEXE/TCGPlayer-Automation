@@ -720,7 +720,48 @@ describe('CardTable inline listing price editing', () => {
     expect(onUpdateCard).not.toHaveBeenCalled();
   });
 
-  it('non-listed cards show non-editable listing price', () => {
+  it('needs_attention cards can edit and save listing price', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(
+      makeCard({ id: 1, status: 'needs_attention', listingPrice: '2.00' }),
+    );
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            listingPrice: '1.50',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row');
+    const cells = rows[1].querySelectorAll('td');
+    const listingCell = cells[10];
+    await user.click(listingCell.querySelector('button')!);
+
+    const inputs = screen.getAllByRole('spinbutton');
+    const listingInput = inputs.find(
+      (input) => (input as HTMLInputElement).value === '1.50',
+    )!;
+    await user.clear(listingInput);
+    await user.type(listingInput, '2.00');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.0 });
+    });
+  });
+
+  it('non-listed and non-attention cards show non-editable listing price', () => {
     render(
       <CardTable
         cards={[makeCard({ id: 1, status: 'matched', listingPrice: '0.20' })]}

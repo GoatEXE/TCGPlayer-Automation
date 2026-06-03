@@ -90,6 +90,7 @@ export interface PriceCheckStatus {
   enabled: boolean;
   intervalHours: number;
   thresholdPercent: number;
+  listedPriceAttentionThresholdPercent: number;
   running: boolean;
   lastRun: PriceCheckLastRun | null;
 }
@@ -113,7 +114,8 @@ export interface GetPriceHistoryResponse {
 }
 
 export interface UpdatePriceCheckSettingsRequest {
-  intervalHours: number;
+  intervalHours?: number;
+  listedPriceAttentionThresholdPercent?: number;
 }
 
 export type OrderStatus =

@@ -18,6 +18,7 @@ const {
   env: {
     MAX_PRICE_DROP_PERCENT: 20,
     PRICE_DRIFT_THRESHOLD_PERCENT: 2,
+    LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT: 5,
   },
   dbSelect: vi.fn(),
   dbFrom: vi.fn(),
@@ -66,6 +67,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
 
     env.MAX_PRICE_DROP_PERCENT = 20;
     env.PRICE_DRIFT_THRESHOLD_PERCENT = 2;
+    env.LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT = 5;
 
     dbSelect.mockReturnValue({ from: dbFrom });
     dbFrom.mockResolvedValue([]);
@@ -115,7 +117,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     expect(dbSet).toHaveBeenCalledWith(
       expect.objectContaining({
         marketPrice: null,
-        listingPrice: null,
+        listingPrice: '1.00',
         status: 'needs_attention',
         updatedAt: expect.any(Date),
       }),
@@ -127,7 +129,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         previousMarketPrice: '1.25',
         newMarketPrice: null,
         previousListingPrice: '1',
-        newListingPrice: null,
+        newListingPrice: '1',
         adjustedToPrice: null,
         previousStatus: 'listed',
         newStatus: 'needs_attention',
@@ -156,6 +158,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
             cardId: 10,
             previousStatus: 'listed',
             newStatus: 'needs_attention',
+            newListingPrice: 1,
           }),
         ],
       },
@@ -230,13 +233,20 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       expect.objectContaining({
         tcgProductId: 123,
         marketPrice: '0.51',
-        listingPrice: '0.8',
-        status: 'listed',
+        listingPrice: '1.00',
+        status: 'needs_attention',
       }),
     );
     expect(result).toMatchObject({
       updated: 1,
       notFound: 0,
+      drifted: 1,
+      needsAttentionCards: [
+        {
+          cardId: 12,
+          productName: 'Unleashed',
+        },
+      ],
     });
   });
 
@@ -272,7 +282,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
-  it('caps a listed card downward reprice to the configured max drop percent', async () => {
+  it('marks listed cards as needs_attention when listing price drift exceeds threshold', async () => {
     dbFrom.mockResolvedValueOnce([
       {
         id: 1,
@@ -297,8 +307,8 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     expect(dbSet).toHaveBeenCalledWith(
       expect.objectContaining({
         marketPrice: '0.51',
-        listingPrice: '0.8',
-        status: 'listed',
+        listingPrice: '1.00',
+        status: 'needs_attention',
         isFoilPrice: false,
         notes: null,
         updatedAt: expect.any(Date),
@@ -309,11 +319,11 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         cardId: 1,
         source: 'manual',
         previousListingPrice: '1',
-        newListingPrice: '0.8',
-        adjustedToPrice: '0.8',
+        newListingPrice: '1',
+        adjustedToPrice: '0.5',
         previousStatus: 'listed',
-        newStatus: 'listed',
-        driftPercent: '-20',
+        newStatus: 'needs_attention',
+        driftPercent: '-50',
         checkedAt: expect.any(Date),
       }),
     );
@@ -326,30 +336,35 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
           cardId: 1,
           productName: 'Jinx',
           previousListingPrice: 1,
-          newListingPrice: 0.8,
-          driftPercent: -20,
+          newListingPrice: 0.5,
+          driftPercent: -50,
         },
       ],
       driftedHistoryIds: [601],
-      needsAttentionCards: [],
-      needsAttentionHistoryIds: [],
+      needsAttentionCards: [
+        {
+          cardId: 1,
+          productName: 'Jinx',
+        },
+      ],
+      needsAttentionHistoryIds: [601],
       csvDiff: {
         rows: [
           expect.objectContaining({
-            action: 'price_change',
+            action: 'remove_listing',
             cardId: 1,
             previousStatus: 'listed',
-            newStatus: 'listed',
+            newStatus: 'needs_attention',
             previousListingPrice: 1,
-            newListingPrice: 0.8,
-            driftPercent: -20,
+            newListingPrice: 1,
+            driftPercent: -50,
           }),
         ],
       },
     });
   });
 
-  it('leaves adjustedToPrice null when listed price change is below drift threshold', async () => {
+  it('keeps listed cards listed when listing price drift stays below threshold', async () => {
     dbFrom.mockResolvedValueOnce([
       {
         id: 7,
@@ -373,7 +388,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
 
     expect(dbSet).toHaveBeenCalledWith(
       expect.objectContaining({
-        listingPrice: '1',
+        listingPrice: '1.00',
         status: 'listed',
       }),
     );
@@ -384,20 +399,22 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         adjustedToPrice: null,
         previousStatus: 'listed',
         newStatus: 'listed',
-        driftPercent: '0',
+        newListingPrice: '1',
+        driftPercent: '1',
       }),
     );
 
     expect(result).toMatchObject({
       drifted: 0,
       driftedHistoryIds: [],
+      needsAttentionCards: [],
       csvDiff: {
         rows: [],
       },
     });
   });
 
-  it('applies a card floor price when calculated listing price remains non-null', async () => {
+  it('applies a card floor price for non-listed cards when calculated listing price remains non-null', async () => {
     dbFrom.mockResolvedValueOnce([
       {
         id: 2,
@@ -407,7 +424,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         marketPrice: '0.60',
         listingPrice: '0.55',
         floorPriceCents: 60,
-        status: 'listed',
+        status: 'matched',
         notes: null,
       },
     ]);
@@ -424,7 +441,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       expect.objectContaining({
         marketPrice: '0.51',
         listingPrice: '0.6',
-        status: 'listed',
+        status: 'matched',
         isFoilPrice: false,
         notes: null,
         updatedAt: expect.any(Date),
@@ -436,9 +453,9 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
         source: 'manual',
         previousListingPrice: '0.55',
         newListingPrice: '0.6',
-        adjustedToPrice: '0.6',
-        previousStatus: 'listed',
-        newStatus: 'listed',
+        adjustedToPrice: null,
+        previousStatus: 'matched',
+        newStatus: 'matched',
         driftPercent: '9.09',
         checkedAt: expect.any(Date),
       }),
@@ -446,31 +463,13 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     expect(result).toMatchObject({
       updated: 1,
       notFound: 0,
-      drifted: 1,
-      driftedCards: [
-        {
-          cardId: 2,
-          productName: 'Vi',
-          previousListingPrice: 0.55,
-          newListingPrice: 0.6,
-          driftPercent: 9.09,
-        },
-      ],
-      driftedHistoryIds: [602],
+      drifted: 0,
+      driftedCards: [],
+      driftedHistoryIds: [],
       needsAttentionCards: [],
       needsAttentionHistoryIds: [],
       csvDiff: {
-        rows: [
-          expect.objectContaining({
-            action: 'price_change',
-            cardId: 2,
-            previousStatus: 'listed',
-            newStatus: 'listed',
-            previousListingPrice: 0.55,
-            newListingPrice: 0.6,
-            driftPercent: 9.09,
-          }),
-        ],
+        rows: [],
       },
     });
   });
@@ -516,77 +515,70 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     ]);
   });
 
-  it.each(['gift', 'needs_attention'] as const)(
-    'does not block %s transitions when pricing logic returns no listing price',
-    async (nextStatus) => {
-      dbFrom.mockResolvedValueOnce([
+  it('marks listed cards as needs_attention when current recommendation falls below the gift threshold', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 2,
+        tcgProductId: 123,
+        productName: 'Yasuo',
+        condition: 'Near Mint',
+        marketPrice: '1.25',
+        listingPrice: '1.00',
+        status: 'listed',
+        notes: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: null,
+      status: 'gift',
+      reason: 'no listing price',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 702 }]);
+
+    const result = await runPriceCheck({ source: 'scheduled' });
+
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketPrice: '0.51',
+        listingPrice: '1.00',
+        status: 'needs_attention',
+      }),
+    );
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 2,
+        source: 'scheduled',
+        newListingPrice: '1',
+        adjustedToPrice: null,
+        previousStatus: 'listed',
+        newStatus: 'needs_attention',
+        driftPercent: null,
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 1,
+      notFound: 0,
+      drifted: 0,
+      driftedCards: [],
+      driftedHistoryIds: [],
+      needsAttentionCards: [
         {
-          id: 2,
-          tcgProductId: 123,
-          productName: 'Yasuo',
-          condition: 'Near Mint',
-          marketPrice: '1.25',
-          listingPrice: '1.00',
-          status: 'listed',
-          notes: null,
-        },
-      ]);
-      calculatePrice.mockReturnValue({
-        listingPrice: null,
-        status: nextStatus,
-        reason: 'no listing price',
-      });
-      dbReturning.mockResolvedValueOnce([
-        { id: nextStatus === 'needs_attention' ? 701 : 702 },
-      ]);
-
-      const result = await runPriceCheck({ source: 'scheduled' });
-
-      expect(dbSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          marketPrice: '0.51',
-          listingPrice: null,
-          status: nextStatus,
-        }),
-      );
-      expect(dbValues).toHaveBeenCalledWith(
-        expect.objectContaining({
           cardId: 2,
-          source: 'scheduled',
-          newListingPrice: null,
-          adjustedToPrice: null,
-          previousStatus: 'listed',
-          newStatus: nextStatus,
-          driftPercent: null,
-        }),
-      );
-      expect(result).toMatchObject({
-        updated: 1,
-        notFound: 0,
-        drifted: 0,
-        driftedCards: [],
-        driftedHistoryIds: [],
-        needsAttentionCards:
-          nextStatus === 'needs_attention'
-            ? [
-                {
-                  cardId: 2,
-                  productName: 'Yasuo',
-                },
-              ]
-            : [],
-        needsAttentionHistoryIds: nextStatus === 'needs_attention' ? [701] : [],
-        csvDiff: {
-          rows: [
-            expect.objectContaining({
-              action: 'remove_listing',
-              cardId: 2,
-              previousStatus: 'listed',
-              newStatus: nextStatus,
-            }),
-          ],
+          productName: 'Yasuo',
         },
-      });
-    },
-  );
+      ],
+      needsAttentionHistoryIds: [702],
+      csvDiff: {
+        rows: [
+          expect.objectContaining({
+            action: 'remove_listing',
+            cardId: 2,
+            previousStatus: 'listed',
+            newStatus: 'needs_attention',
+            newListingPrice: 1,
+          }),
+        ],
+      },
+    });
+  });
 });

@@ -229,7 +229,8 @@ body {
 
 .price-check-config {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
   font-size: 0.85rem;
   color: var(--color-text-muted);
 }
@@ -327,6 +328,13 @@ body {
 .interval-error {
   font-size: 0.75rem;
   color: var(--color-error);
+}
+
+.price-check-help {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 768px) {

@@ -20,6 +20,7 @@ import {
   runPriceCheck,
   getPriceCheckSchedulerStatus,
   updatePriceCheckIntervalHours,
+  updateListedPriceAttentionThresholdPercent,
 } from '../lib/price-check/index.js';
 import type { ImportedCard } from '../lib/importers/index.js';
 import type { Card } from '../db/schema/cards.js';
@@ -88,6 +89,7 @@ interface PriceCheckStatusResponse {
   enabled: boolean;
   intervalHours: number;
   thresholdPercent: number;
+  listedPriceAttentionThresholdPercent: number;
   running: boolean;
   lastRun: {
     startedAt: string;
@@ -472,22 +474,27 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         : null;
       const pricingResult = calculatePrice({ marketPrice });
 
-      // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
-      const newStatus =
-        card.status === 'listed' && pricingResult.status === 'matched'
-          ? 'listed'
-          : pricingResult.status;
-
       const listingPrice = applyFloorPriceCents({
         listingPrice: pricingResult.listingPrice,
         floorPriceCents: card.floorPriceCents,
       });
+      const normalizedExistingListingPrice = card.listingPrice
+        ? parseFloat(card.listingPrice).toString()
+        : null;
+      const isListedCard = card.status === 'listed';
+      const newStatus = isListedCard
+        ? pricingResult.status === 'matched'
+          ? 'listed'
+          : 'needs_attention'
+        : pricingResult.status;
 
       // Update card with new pricing
       const [updatedCard] = await db
         .update(cards)
         .set({
-          listingPrice: listingPrice?.toString() ?? null,
+          listingPrice: isListedCard
+            ? normalizedExistingListingPrice
+            : listingPrice?.toString() ?? null,
           status: newStatus,
           updatedAt: new Date(),
         })
@@ -517,21 +524,26 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         const marketPrice = parseFloat(card.marketPrice!);
         const pricingResult = calculatePrice({ marketPrice });
 
-        // Preserve 'listed' status — only override if pricing engine says gift/needs_attention
-        const newStatus =
-          card.status === 'listed' && pricingResult.status === 'matched'
-            ? 'listed'
-            : pricingResult.status;
-
         const listingPrice = applyFloorPriceCents({
           listingPrice: pricingResult.listingPrice,
           floorPriceCents: card.floorPriceCents,
         });
+        const normalizedExistingListingPrice = card.listingPrice
+          ? parseFloat(card.listingPrice).toString()
+          : null;
+        const isListedCard = card.status === 'listed';
+        const newStatus = isListedCard
+          ? pricingResult.status === 'matched'
+            ? 'listed'
+            : 'needs_attention'
+          : pricingResult.status;
 
         await db
           .update(cards)
           .set({
-            listingPrice: listingPrice?.toString() ?? null,
+            listingPrice: isListedCard
+              ? normalizedExistingListingPrice
+              : listingPrice?.toString() ?? null,
             status: newStatus,
             updatedAt: new Date(),
           })
@@ -563,24 +575,58 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /price-check-settings - Update scheduler interval
-  fastify.post<{ Body: { intervalHours: number } }>(
+  // POST /price-check-settings - Update scheduler runtime settings
+  fastify.post<{
+    Body: {
+      intervalHours?: number;
+      listedPriceAttentionThresholdPercent?: number;
+    };
+  }>(
     '/price-check-settings',
     async (request, reply) => {
-      const { intervalHours } = request.body;
+      const { intervalHours, listedPriceAttentionThresholdPercent } =
+        request.body ?? {};
 
       if (
-        !Number.isInteger(intervalHours) ||
-        intervalHours < 1 ||
-        intervalHours > 168
+        intervalHours === undefined &&
+        listedPriceAttentionThresholdPercent === undefined
+      ) {
+        return reply.code(400).send({
+          error: 'At least one price check setting must be provided',
+        });
+      }
+
+      if (
+        intervalHours !== undefined &&
+        (!Number.isInteger(intervalHours) || intervalHours < 1 || intervalHours > 168)
       ) {
         return reply.code(400).send({
           error: 'intervalHours must be an integer between 1 and 168',
         });
       }
 
+      if (
+        listedPriceAttentionThresholdPercent !== undefined &&
+        (!Number.isFinite(listedPriceAttentionThresholdPercent) ||
+          listedPriceAttentionThresholdPercent < 0)
+      ) {
+        return reply.code(400).send({
+          error: 'listedPriceAttentionThresholdPercent must be a non-negative number',
+        });
+      }
+
       try {
-        await updatePriceCheckIntervalHours(intervalHours, fastify.log);
+        if (intervalHours !== undefined) {
+          await updatePriceCheckIntervalHours(intervalHours, fastify.log);
+        }
+
+        if (listedPriceAttentionThresholdPercent !== undefined) {
+          await updateListedPriceAttentionThresholdPercent(
+            listedPriceAttentionThresholdPercent,
+            fastify.log,
+          );
+        }
+
         return reply.send(getPriceCheckSchedulerStatus());
       } catch (error) {
         fastify.log.error(error);
