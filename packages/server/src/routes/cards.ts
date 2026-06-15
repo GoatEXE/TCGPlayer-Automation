@@ -12,7 +12,7 @@ import {
   getTableColumns,
 } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { cards } from '../db/schema/cards.js';
+import { cards, isListedOriginAttentionReason } from '../db/schema/cards.js';
 import { priceHistory } from '../db/schema/price-history.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
 import { applyFloorPriceCents, calculatePrice } from '../lib/pricing/index.js';
@@ -378,9 +378,25 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   }>('/:id', async (request, reply) => {
     const { id } = request.params;
     const updates = request.body;
+    const cardId = parseInt(id, 10);
 
     try {
       const updateData: any = { ...updates, updatedAt: new Date() };
+      let existingCard: Card | undefined;
+
+      if (
+        updates.listingPrice !== undefined ||
+        updates.status !== undefined
+      ) {
+        [existingCard] = await db
+          .select()
+          .from(cards)
+          .where(eq(cards.id, cardId));
+
+        if (!existingCard) {
+          return reply.code(404).send({ error: 'Card not found' });
+        }
+      }
 
       // Convert listingPrice to string if provided
       if (updates.listingPrice !== undefined) {
@@ -411,10 +427,24 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         }
       }
 
+      if (updates.status !== undefined && updates.status !== 'needs_attention') {
+        updateData.attentionReason = null;
+      }
+
+      if (
+        updates.status === undefined &&
+        updates.listingPrice !== undefined &&
+        existingCard?.status === 'needs_attention' &&
+        isListedOriginAttentionReason(existingCard.attentionReason)
+      ) {
+        updateData.status = 'listed';
+        updateData.attentionReason = null;
+      }
+
       const [updatedCard] = await db
         .update(cards)
         .set(updateData)
-        .where(eq(cards.id, parseInt(id, 10)))
+        .where(eq(cards.id, cardId))
         .returning();
 
       if (!updatedCard) {

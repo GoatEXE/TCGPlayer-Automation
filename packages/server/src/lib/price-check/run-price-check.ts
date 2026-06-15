@@ -1,7 +1,11 @@
 import { eq } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
-import { cards, type Card } from '../../db/schema/cards.js';
+import {
+  cards,
+  isListedOriginAttentionReason,
+  type Card,
+} from '../../db/schema/cards.js';
 import {
   priceHistory,
   type NewPriceHistory,
@@ -141,6 +145,42 @@ function hasListingPriceChanged(
   return previousListingPrice !== newListingPrice;
 }
 
+function isListedLikeCard(card: Pick<Card, 'status' | 'attentionReason'>) {
+  return (
+    card.status === 'listed' ||
+    (card.status === 'needs_attention' &&
+      isListedOriginAttentionReason(card.attentionReason))
+  );
+}
+
+function getListedAttentionReason(params: {
+  isThresholdDrift: boolean;
+  pricingStatus: ReturnType<typeof calculatePrice>['status'];
+  recommendedListingPrice: number | null;
+  previousListingPrice: number | null;
+}): Card['attentionReason'] {
+  const {
+    isThresholdDrift,
+    pricingStatus,
+    recommendedListingPrice,
+    previousListingPrice,
+  } = params;
+
+  if (isThresholdDrift) {
+    return 'listed_price_drift';
+  }
+
+  if (pricingStatus !== 'matched' || recommendedListingPrice === null) {
+    return 'listed_below_threshold';
+  }
+
+  if (previousListingPrice === null) {
+    return 'listed_price_drift';
+  }
+
+  return null;
+}
+
 function getCsvDiffAction(params: {
   previousStatus: PriceCheckCsvDiffRow['previousStatus'];
   newStatus: PriceCheckCsvDiffRow['newStatus'];
@@ -252,10 +292,11 @@ export async function runPriceCheck(
       const previousMarketPrice = parseDecimal(card.marketPrice);
       const previousListingPrice = parseDecimal(card.listingPrice);
       const previousStatus = card.status;
-      const persistedListedListingPrice =
-        previousStatus === 'listed' ? card.listingPrice : null;
-      const historyListingPrice =
-        previousStatus === 'listed' ? previousListingPrice : null;
+      const wasListedLike = isListedLikeCard(card);
+      const persistedListedListingPrice = wasListedLike
+        ? card.listingPrice
+        : null;
+      const historyListingPrice = wasListedLike ? previousListingPrice : null;
 
       await db
         .update(cards)
@@ -264,6 +305,7 @@ export async function runPriceCheck(
           marketPrice: null,
           listingPrice: persistedListedListingPrice,
           status: 'needs_attention',
+          attentionReason: wasListedLike ? 'listed_missing_price' : null,
           updatedAt: new Date(),
         })
         .where(eq(cards.id, card.id));
@@ -340,10 +382,11 @@ export async function runPriceCheck(
       const previousMarketPrice = parseDecimal(card.marketPrice);
       const previousListingPrice = parseDecimal(card.listingPrice);
       const previousStatus = card.status;
-      const persistedListedListingPrice =
-        previousStatus === 'listed' ? card.listingPrice : null;
-      const historyListingPrice =
-        previousStatus === 'listed' ? previousListingPrice : null;
+      const wasListedLike = isListedLikeCard(card);
+      const persistedListedListingPrice = wasListedLike
+        ? card.listingPrice
+        : null;
+      const historyListingPrice = wasListedLike ? previousListingPrice : null;
 
       await db
         .update(cards)
@@ -352,6 +395,7 @@ export async function runPriceCheck(
           marketPrice: null,
           listingPrice: persistedListedListingPrice,
           status: 'needs_attention',
+          attentionReason: wasListedLike ? 'listed_missing_price' : null,
           updatedAt: new Date(),
         })
         .where(eq(cards.id, card.id));
@@ -406,7 +450,7 @@ export async function runPriceCheck(
     const previousMarketPrice = parseDecimal(card.marketPrice);
     const previousListingPrice = parseDecimal(card.listingPrice);
     const previousStatus = card.status;
-    const wasListed = previousStatus === 'listed';
+    const wasListedLike = isListedLikeCard(card);
 
     const newMarketPrice = conditionPricing.market;
     const pricingResult = calculatePrice({ marketPrice: newMarketPrice });
@@ -429,7 +473,7 @@ export async function runPriceCheck(
       listingPrice: pricingResult.listingPrice ?? null,
       floorPriceCents: card.floorPriceCents,
     });
-    const cappedListingPrice = wasListed
+    const cappedListingPrice = wasListedLike
       ? recommendedListingPrice
       : capDownwardListingPriceChange({
           previousListingPrice,
@@ -441,28 +485,39 @@ export async function runPriceCheck(
       recommendedListingPrice,
     );
     const isThresholdDrift =
-      wasListed &&
+      wasListedLike &&
       recommendedDriftPercent !== null &&
       Math.abs(recommendedDriftPercent) >=
         getRuntimeListedPriceAttentionThresholdPercent();
 
     const listedNeedsAttention =
-      wasListed &&
+      wasListedLike &&
       (pricingResult.status !== 'matched' ||
         recommendedListingPrice === null ||
         previousListingPrice === null ||
         isThresholdDrift);
 
-    const newStatus = wasListed
+    const newStatus = wasListedLike
       ? listedNeedsAttention
         ? 'needs_attention'
         : 'listed'
       : pricingResult.status;
-    const newListingPrice = wasListed ? previousListingPrice : cappedListingPrice;
-    const persistedListingPrice = wasListed
+    const newListingPrice = wasListedLike
+      ? previousListingPrice
+      : cappedListingPrice;
+    const persistedListingPrice = wasListedLike
       ? card.listingPrice
       : newListingPrice?.toString() ?? null;
-    const driftPercent = wasListed
+    const attentionReason =
+      newStatus === 'needs_attention' && wasListedLike
+        ? getListedAttentionReason({
+            isThresholdDrift,
+            pricingStatus: pricingResult.status,
+            recommendedListingPrice,
+            previousListingPrice,
+          })
+        : null;
+    const driftPercent = wasListedLike
       ? recommendedDriftPercent
       : calculateDriftPercent(previousListingPrice, newListingPrice);
 
@@ -491,6 +546,7 @@ export async function runPriceCheck(
         marketPrice: newMarketPrice.toString(),
         listingPrice: persistedListingPrice,
         status: newStatus,
+        attentionReason,
         isFoilPrice: isFoilFallback,
         notes: notesValue || null,
         updatedAt: new Date(),

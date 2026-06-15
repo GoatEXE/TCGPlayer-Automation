@@ -732,6 +732,114 @@ describe('PATCH /api/cards/:id', () => {
     expect(body.quantity).toBe(5);
   });
 
+  it('restores listed-origin needs_attention cards to listed when listing price is edited', async () => {
+    const existingCard = {
+      id: 1,
+      productName: 'Attention Card',
+      status: 'needs_attention' as const,
+      attentionReason: 'listed_price_drift',
+      listingPrice: '1.00',
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const updatedCard = {
+      ...existingCard,
+      status: 'listed' as const,
+      attentionReason: null,
+      listingPrice: '1.25',
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([existingCard]),
+      }),
+    } as any);
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([updatedCard]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        listingPrice: 1.25,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        listingPrice: '1.25',
+        status: 'listed',
+        attentionReason: null,
+        updatedAt: expect.any(Date),
+      }),
+    );
+  });
+
+  it('does not auto-restore generic needs_attention cards to listed when only listing price is edited', async () => {
+    const existingCard = {
+      id: 2,
+      productName: 'Generic Attention Card',
+      status: 'needs_attention' as const,
+      attentionReason: null,
+      listingPrice: null,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const updatedCard = {
+      ...existingCard,
+      listingPrice: '0.50',
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([existingCard]),
+      }),
+    } as any);
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([updatedCard]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/2',
+      payload: {
+        listingPrice: 0.5,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        listingPrice: '0.5',
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(updateArgs.status).toBeUndefined();
+    expect(updateArgs.attentionReason).toBeUndefined();
+  });
+
   it('should return 404 for non-existent card', async () => {
     vi.mocked(db.update).mockReturnValue({
       set: vi.fn().mockReturnValue({

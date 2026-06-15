@@ -19,6 +19,29 @@ export const cardStatusEnum = pgEnum('card_status', [
   'sold',
 ]);
 
+export const cardAttentionReasonValues = [
+  'listed_price_drift',
+  'listed_missing_price',
+  'listed_below_threshold',
+] as const;
+
+export type CardAttentionReason = (typeof cardAttentionReasonValues)[number];
+
+export const cardAttentionReasonEnum = pgEnum(
+  'card_attention_reason',
+  cardAttentionReasonValues,
+);
+
+export function isListedOriginAttentionReason(
+  value: string | null | undefined,
+): value is CardAttentionReason {
+  return (
+    value !== null &&
+    value !== undefined &&
+    (cardAttentionReasonValues as readonly string[]).includes(value)
+  );
+}
+
 export const cards = pgTable('cards', {
   id: serial('id').primaryKey(),
   tcgplayerId: integer('tcgplayer_id'),
@@ -32,6 +55,7 @@ export const cards = pgTable('cards', {
   condition: text('condition').notNull().default('Near Mint'),
   quantity: integer('quantity').notNull().default(1),
   status: cardStatusEnum('status').notNull().default('pending'),
+  attentionReason: cardAttentionReasonEnum('attention_reason'),
   marketPrice: numeric('market_price', { precision: 10, scale: 2 }),
   listingPrice: numeric('listing_price', { precision: 10, scale: 2 }),
   floorPriceCents: integer('floor_price_cents'),
