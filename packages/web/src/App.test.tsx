@@ -362,6 +362,66 @@ describe('App view tabs', () => {
     });
   });
 
+  it('resets to page 1 when search filter changes after pagination', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Against the Odds',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'matched',
+          marketPrice: '1.00',
+          listingPrice: '0.98',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 51,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1 }),
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      );
+    });
+
+    await user.type(
+      screen.getByPlaceholderText(/search by card name/i),
+      'Abandoned',
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, search: 'Abandoned' }),
+      );
+    });
+  });
+
   it('renders Sold filter pill and clicking it fetches cards with status=sold', async () => {
     const user = userEvent.setup();
 

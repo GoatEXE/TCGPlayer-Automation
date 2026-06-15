@@ -643,6 +643,11 @@ export function App() {
     setCurrentPage(1);
   };
 
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
+
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setCurrentPage(1);
@@ -1013,7 +1018,7 @@ export function App() {
                   type="text"
                   placeholder="Search by card name..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchQueryChange(e.target.value)}
                   className="search-input"
                 />
                 <button type="submit" className="search-button">
