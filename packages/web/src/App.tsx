@@ -30,6 +30,7 @@ import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
 import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
 import { NotificationHistoryPanel } from './components/NotificationHistoryPanel';
 import { CardTable } from './components/CardTable';
+import type { SortDirection, SortField } from './components/CardTable';
 import { Pagination } from './components/Pagination';
 import { PerformanceSummaryCard } from './components/PerformanceSummaryCard';
 import { ExpenseSettingsCard } from './components/ExpenseSettingsCard';
@@ -58,6 +59,9 @@ export function App() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [cardSortField, setCardSortField] = useState<SortField>('updatedAt');
+  const [cardSortDirection, setCardSortDirection] =
+    useState<SortDirection>('desc');
   const [totalItems, setTotalItems] = useState(0);
   const [repricingAll, setRepricingAll] = useState(false);
   const [fetchingPrices, setFetchingPrices] = useState(false);
@@ -122,6 +126,8 @@ export function App() {
         search: searchQuery || undefined,
         page: currentPage,
         limit: itemsPerPage,
+        sortField: cardSortField ?? undefined,
+        sortDirection: cardSortDirection,
       });
       setCards(response.cards);
       setTotalItems(response.total);
@@ -267,7 +273,7 @@ export function App() {
     if (activeView === 'inventory' || activeView === 'active-listings') {
       fetchCards();
     }
-  }, [activeView, statusFilter, searchQuery, currentPage]);
+  }, [activeView, statusFilter, searchQuery, currentPage, cardSortField, cardSortDirection]);
 
   useEffect(() => {
     if (activeView !== 'sales-history') return;
@@ -621,6 +627,15 @@ export function App() {
     setCurrentPage(1);
     setIsExpenseModalOpen(false);
     setSelectedExpenseForEdit(null);
+  };
+
+  const handleCardSortChange = (
+    field: SortField,
+    direction: SortDirection,
+  ) => {
+    setCardSortField(field);
+    setCardSortDirection(direction);
+    setCurrentPage(1);
   };
 
   const handleStatusFilter = (status: StatusFilter) => {
@@ -1021,6 +1036,9 @@ export function App() {
               defaultApplyExpenses={
                 expenseSettings?.autoRecordSaleExpenses ?? false
               }
+              sortField={cardSortField}
+              sortDirection={cardSortDirection}
+              onSortChange={handleCardSortChange}
             />
 
             <Pagination

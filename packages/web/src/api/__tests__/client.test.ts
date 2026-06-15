@@ -53,10 +53,12 @@ describe('ApiClient', () => {
         page: 2,
         limit: 25,
         search: 'test',
+        sortField: 'productName',
+        sortDirection: 'asc',
       });
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/cards?status=listed&page=2&limit=25&search=test',
+        '/api/cards?status=listed&page=2&limit=25&search=test&sortField=productName&sortDirection=asc',
         expect.any(Object),
       );
     });

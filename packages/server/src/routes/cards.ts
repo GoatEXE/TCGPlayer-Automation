@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   eq,
+  asc,
   desc,
   isNotNull,
   sql,
@@ -279,9 +280,18 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       page?: string;
       limit?: string;
       search?: string;
+      sortField?: string;
+      sortDirection?: 'asc' | 'desc';
     };
   }>('/', async (request, reply) => {
-    const { status, page = '1', limit = '50', search } = request.query;
+    const {
+      status,
+      page = '1',
+      limit = '50',
+      search,
+      sortField = 'updatedAt',
+      sortDirection = 'desc',
+    } = request.query;
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
     const offset = (pageNum - 1) * limitNum;
@@ -306,21 +316,41 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       const [{ count: total }] = await countQuery;
 
       // Get cards
+      const lastCheckedAtSql = sql<Date | null>`(
+        select max(${priceHistory.checkedAt})
+        from ${priceHistory}
+        where ${priceHistory.cardId} = ${cards.id}
+      )`;
       let query: any = db
         .select({
           ...getTableColumns(cards),
-          lastCheckedAt: sql<Date | null>`(
-          select max(${priceHistory.checkedAt})
-          from ${priceHistory}
-          where ${priceHistory.cardId} = ${cards.id}
-        )`,
+          lastCheckedAt: lastCheckedAtSql,
         })
         .from(cards);
       if (conditions.length > 0) {
         query = query.where(sql`${sql.join(conditions, sql` AND `)}`);
       }
+      const sortColumns = {
+        status: cards.status,
+        productName: sql`coalesce(${cards.title}, ${cards.productName})`,
+        setName: cards.setName,
+        number: cards.number,
+        rarity: cards.rarity,
+        condition: cards.condition,
+        quantity: cards.quantity,
+        marketPrice: cards.marketPrice,
+        listingPrice: cards.listingPrice,
+        floorPriceCents: cards.floorPriceCents,
+        lastCheckedAt: lastCheckedAtSql,
+        updatedAt: cards.updatedAt,
+        importedAt: cards.importedAt,
+      } as const;
+      const sortColumn =
+        sortColumns[sortField as keyof typeof sortColumns] ?? cards.updatedAt;
+      const sortOrder = sortDirection === 'asc' ? asc(sortColumn) : desc(sortColumn);
+
       const cardsResult = await query
-        .orderBy(desc(cards.importedAt))
+        .orderBy(sortOrder, desc(cards.importedAt))
         .limit(limitNum)
         .offset(offset);
 

@@ -44,6 +44,8 @@ export interface GetCardsParams {
   page?: number;
   limit?: number;
   search?: string;
+  sortField?: string;
+  sortDirection?: 'asc' | 'desc';
 }
 
 export interface GetCardsResponse {

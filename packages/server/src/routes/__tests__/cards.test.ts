@@ -385,6 +385,40 @@ describe('GET /api/cards', () => {
     expect(body.cards[1].floorPriceCents).toBeNull();
   });
 
+  it('should apply requested sort before pagination', async () => {
+    const mockOffset = vi.fn().mockResolvedValue([]);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockResolvedValue([{ count: 0 }]),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({
+          orderBy: mockOrderBy,
+        }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards?sortField=productName&sortDirection=asc&page=2&limit=50',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockOrderBy.mock.invocationCallOrder[0]).toBeLessThan(
+      mockLimit.mock.invocationCallOrder[0],
+    );
+    expect(mockLimit).toHaveBeenCalledWith(50);
+    expect(mockOffset).toHaveBeenCalledWith(50);
+  });
+
   it('should serialize invalid numeric price strings as null instead of NaN', async () => {
     const mockCards = [
       {

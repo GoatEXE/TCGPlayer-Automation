@@ -18,10 +18,13 @@ interface CardTableProps {
   onBulkSell?: (sales: CreateSaleRequest[]) => Promise<void>;
   enableSellFlow?: boolean;
   defaultApplyExpenses?: boolean;
+  sortField?: SortField;
+  sortDirection?: SortDirection;
+  onSortChange?: (field: SortField, direction: SortDirection) => void;
 }
 
-type SortField = keyof Card | null;
-type SortDirection = 'asc' | 'desc';
+export type SortField = keyof Card | null;
+export type SortDirection = 'asc' | 'desc';
 
 function isValidPhotoUrl(photoUrl: string | null | undefined) {
   if (!photoUrl) return false;
@@ -49,9 +52,15 @@ export function CardTable({
   onBulkSell,
   enableSellFlow,
   defaultApplyExpenses = false,
+  sortField: controlledSortField,
+  sortDirection: controlledSortDirection,
+  onSortChange,
 }: CardTableProps) {
-  const [sortField, setSortField] = useState<SortField>('updatedAt');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [localSortField, setLocalSortField] = useState<SortField>('updatedAt');
+  const [localSortDirection, setLocalSortDirection] =
+    useState<SortDirection>('desc');
+  const sortField = controlledSortField ?? localSortField;
+  const sortDirection = controlledSortDirection ?? localSortDirection;
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [repricingId, setRepricingId] = useState<number | null>(null);
   const [unlistingId, setUnlistingId] = useState<number | null>(null);
@@ -98,19 +107,29 @@ export function CardTable({
   }, [openActionMenuId]);
 
   const handleSort = (field: SortField) => {
+    const nextDirection =
+      sortField === field && sortDirection === 'asc' ? 'desc' : 'asc';
+
+    if (onSortChange) {
+      onSortChange(field, nextDirection);
+      return;
+    }
+
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      setLocalSortDirection(nextDirection);
     } else {
-      setSortField(field);
-      setSortDirection('asc');
+      setLocalSortField(field);
+      setLocalSortDirection('asc');
     }
   };
 
-  const sortedCards = [...cards].sort((a, b) => {
+  const sortedCards = onSortChange ? cards : [...cards].sort((a, b) => {
     if (!sortField) return 0;
 
-    const aVal = a[sortField];
-    const bVal = b[sortField];
+    const aVal =
+      sortField === 'productName' ? a.title || a.productName : a[sortField];
+    const bVal =
+      sortField === 'productName' ? b.title || b.productName : b[sortField];
 
     if (aVal === null || aVal === undefined) return 1;
     if (bVal === null || bVal === undefined) return -1;
