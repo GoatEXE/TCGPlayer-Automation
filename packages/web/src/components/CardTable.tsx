@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Card, CreateSaleRequest } from '../api/types';
+import type { Card, CreateBulkOrderRequest, CreateSaleRequest } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 import { ReviewListModal } from './ReviewListModal';
 import { PriceHistoryModal } from './PriceHistoryModal';
@@ -15,7 +15,10 @@ interface CardTableProps {
   onUnlist: (id: number) => void;
   onUpdateCard: (id: number, data: Partial<Card>) => Promise<Card>;
   onRecordSale?: (data: CreateSaleRequest) => Promise<void>;
-  onBulkSell?: (sales: CreateSaleRequest[]) => Promise<void>;
+  onBulkSell?: (order: CreateBulkOrderRequest) => Promise<void>;
+  giftCards?: Card[];
+  onPrepareBulkSell?: () => Promise<void>;
+  bulkMode?: 'list' | 'sell';
   enableSellFlow?: boolean;
   defaultApplyExpenses?: boolean;
   sortField?: SortField;
@@ -63,6 +66,9 @@ export function CardTable({
   onUpdateCard,
   onRecordSale,
   onBulkSell,
+  giftCards = [],
+  onPrepareBulkSell,
+  bulkMode,
   enableSellFlow,
   defaultApplyExpenses = false,
   sortField: controlledSortField,
@@ -91,6 +97,7 @@ export function CardTable({
   const [editDetailsSaving, setEditDetailsSaving] = useState(false);
   const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
+  const [preparingBulkSell, setPreparingBulkSell] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{
@@ -265,11 +272,29 @@ export function CardTable({
     }
   };
 
+  const handleOpenBulkSell = async () => {
+    setPreparingBulkSell(true);
+    try {
+      await onPrepareBulkSell?.();
+      setShowBulkSellModal(true);
+    } finally {
+      setPreparingBulkSell(false);
+    }
+  };
+
+  const effectiveBulkMode = bulkMode ?? (enableSellFlow ? 'sell' : 'list');
+  const isListedOriginAttention = (card: Card) =>
+    card.attentionReason === 'listed_price_drift' ||
+    card.attentionReason === 'listed_missing_price' ||
+    card.attentionReason === 'listed_below_threshold';
+  const isSellEligible = (card: Card) =>
+    card.status === 'listed' ||
+    (card.status === 'needs_attention' && isListedOriginAttention(card));
+
   // Filter cards that can be selected
   const matchedCards = sortedCards.filter((card) => card.status === 'matched');
-  const selectableCards = enableSellFlow
-    ? sortedCards.filter((card) => card.status === 'listed')
-    : matchedCards;
+  const sellableCards = sortedCards.filter(isSellEligible);
+  const selectableCards = effectiveBulkMode === 'sell' ? sellableCards : matchedCards;
 
   const parsePriceValue = (price: string | null | undefined) => {
     if (!price) return null;
@@ -375,12 +400,15 @@ export function CardTable({
     <div className="table-container">
       {selectedIds.size > 0 && (
         <div className="selection-actions">
-          {enableSellFlow ? (
+          {effectiveBulkMode === 'sell' ? (
             <button
-              onClick={() => setShowBulkSellModal(true)}
+              onClick={handleOpenBulkSell}
+              disabled={preparingBulkSell}
               className="button-primary"
             >
-              💰 Attach {selectedIds.size} to Order
+              {preparingBulkSell
+                ? '⏳ Loading gifts…'
+                : `💰 Attach ${selectedIds.size} to Order`}
             </button>
           ) : (
             <button
@@ -413,7 +441,7 @@ export function CardTable({
                 }
                 onChange={handleSelectAll}
                 disabled={selectableCards.length === 0}
-                title={enableSellFlow ? 'Select all listed cards' : 'Select all matched cards'}
+                title={effectiveBulkMode === 'sell' ? 'Select all order-eligible cards' : 'Select all matched cards'}
               />
             </th>
             <SortableHeader field="status">Status</SortableHeader>
@@ -449,12 +477,12 @@ export function CardTable({
                     onChange={(e) =>
                       handleSelectCard(card.id, e.target.checked)
                     }
-                    disabled={enableSellFlow ? !isListed : !isMatched}
+                    disabled={effectiveBulkMode === 'sell' ? !isSellEligible(card) : !isMatched}
                     title={
-                      enableSellFlow
-                        ? isListed
-                          ? 'Select for bulk sell'
-                          : 'Only listed cards can be selected'
+                      effectiveBulkMode === 'sell'
+                        ? isSellEligible(card)
+                          ? 'Select for attach to order'
+                          : 'Only listed or listed-origin attention cards can be selected'
                         : isMatched
                           ? 'Select for bulk listing'
                           : 'Only matched cards can be selected'
@@ -784,8 +812,9 @@ export function CardTable({
       {showBulkSellModal && onBulkSell && (
         <BulkSellModal
           cards={cards.filter((c) => selectedIds.has(c.id))}
-          onSubmit={async (sales) => {
-            await onBulkSell(sales);
+          giftCards={giftCards}
+          onSubmit={async (order) => {
+            await onBulkSell(order);
             setShowBulkSellModal(false);
             setSelectedIds(new Set());
           }}

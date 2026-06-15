@@ -2,6 +2,8 @@
 
 Date: 2026-04-01
 
+> Superseded: the dedicated **Active Listings** tab has been removed from dashboard navigation. Listed-card order actions now live in **Inventory**, and notification history has its own **Notifications** tab. This document is retained as historical implementation context.
+
 ## Summary
 Implemented the first Phase 3.1 dashboard slice by adding a dedicated **Active Listings** view preset in the web app.
 

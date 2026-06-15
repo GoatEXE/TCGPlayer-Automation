@@ -67,12 +67,12 @@ Defaults to empty strings. The template conditionally hides the seller block whe
 
 ### Multi-card order grouping
 
-Multiple `sales` rows can share the same `tcgplayerOrderId`. The invoice endpoint supports:
+Multiple `sales` rows can share the same `tcgplayerOrderId`. Bulk order recording uses `POST /api/sales/bulk` with a required TCGPlayer Order ID and `lines` entries for paid sales and gifts.
 
-- **Single-sale invoice:** `GET /api/sales/:id/invoice` — one sale line-item
-- **Order-grouped invoice:** `GET /api/sales/:id/invoice` — when the sale has a `tcgplayerOrderId`, the template includes ALL sales with that same order ID as line items. This gives a proper multi-line invoice for bundled orders.
+- **Single-sale invoice:** `GET /api/sales/:id/invoice` — one paid sale line-item when no order group is available.
+- **Order-grouped invoice:** `GET /api/sales/:id/invoice` — when the sale has a `tcgplayerOrderId`, the template includes all rows with that same order ID, including gift/freebie lines.
 
-The packing slip uses the same grouping logic.
+Gift lines have `lineItemType: 'gift'`, zero revenue, and are included on invoices and packing slips even though sales, stats, and performance views exclude them by default. The packing slip uses the same grouping logic.
 
 ---
 
@@ -116,7 +116,7 @@ The packing slip uses the same grouping logic.
 - `packages/server/src/lib/invoices/render-packing-slip.ts` — **new file**
   - `renderPackingSlipHtml(data: PackingSlipData): string`
   - Simplified variant: card name, set, condition, qty only (no prices)
-  - Includes: order ID, buyer name, shipping info, gift-pool items note if applicable
+  - Includes: order ID, buyer name, shipping info, and gift/freebie line items when present
   - Compact layout designed for folding into a PWE or small package
 - `packages/server/src/lib/invoices/types.ts` — **new file**
   - `InvoiceData`, `PackingSlipData`, `InvoiceLineItem`, `InvoiceShipment`, `InvoiceSellerInfo` interfaces

@@ -125,7 +125,7 @@ Cards with market prices under $0.05 (literally pennies) are set aside as **free
 
 - **Why it works:** Including an unexpected free card in a shipment creates goodwill and encourages positive reviews
 - **Cost:** Effectively zero — these cards have negligible market value and would lose money to list
-- **Implementation:** When preparing shipments, automatically include 1-2 cards from the gift pool
+- **Implementation:** When recording a bulk order, add gift-pool cards as `gift` lines with zero revenue. Gift lines decrement inventory and move depleted cards to `gifted` while preserving order history.
 - **Seller rating boost:** Positive reviews improve TCGPlayer seller metrics and cart ranking
 
 ### Profitability Tiers

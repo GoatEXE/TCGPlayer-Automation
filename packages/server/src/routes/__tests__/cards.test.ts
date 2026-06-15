@@ -332,6 +332,7 @@ describe('GET /api/cards', () => {
         productName: 'Card 1',
         quantity: 1,
         status: 'listed' as const,
+        attentionReason: null,
         floorPriceCents: 150,
         importedAt: new Date('2026-03-30T10:00:00.000Z'),
         lastCheckedAt: new Date('2026-03-31T09:00:00.000Z'),
@@ -341,6 +342,7 @@ describe('GET /api/cards', () => {
         productName: 'Card 2',
         quantity: 2,
         status: 'gift' as const,
+        attentionReason: 'listed_price_drift',
         floorPriceCents: null,
         importedAt: new Date('2026-03-29T10:00:00.000Z'),
         lastCheckedAt: null,
@@ -381,8 +383,10 @@ describe('GET /api/cards', () => {
     expect(body.cards[0]).toHaveProperty('lastCheckedAt');
     expect(body.cards[0].lastCheckedAt).toBe('2026-03-31T09:00:00.000Z');
     expect(body.cards[0].floorPriceCents).toBe(150);
+    expect(body.cards[0].attentionReason).toBeNull();
     expect(body.cards[1].lastCheckedAt).toBeNull();
     expect(body.cards[1].floorPriceCents).toBeNull();
+    expect(body.cards[1].attentionReason).toBe('listed_price_drift');
   });
 
   it('should apply requested sort before pagination', async () => {

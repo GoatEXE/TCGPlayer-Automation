@@ -3,17 +3,15 @@
 Date: 2026-04-01
 Status: ✅ COMPLETE (implemented 2026-04-01)
 
-**Sell Workflow Extension:** ✅ COMPLETE (2026-04-08)
-- Single-card sale recording via RecordSaleModal
-- Bulk sale recording via BulkSellModal
-- Inline listing price editing
-- See [docs/plans/sell-workflow.md](../plans/sell-workflow.md) for full implementation details
+**Current behavior update:** Sales History is sales-focused only. It no longer fetches or renders notification history; notification events live in the Notifications tab. Multi-line order recording now starts from Inventory and uses `POST /api/sales/bulk` for paid and gift lines. The original sell workflow extension is superseded; see [docs/plans/sell-workflow.md](../plans/sell-workflow.md).
 
 ---
 
-## 1. Current-State Assessment
+## 1. Historical Current-State Assessment
 
-### What exists today for sales/order data: **Nothing.**
+The assessment below describes the pre-implementation state from 2026-04-01 and is retained for context.
+
+### What existed then for sales/order data: **Nothing.**
 
 The DB has two tables: `cards` and `price_history`. There is no `sales`, `orders`, or `shipments` table. The `PROJECT_PLAN.md` data model section designs `Sale` and `Shipment` entities, but they were never implemented — they were deferred to Phase 3.
 
@@ -38,9 +36,9 @@ Let Dustin record a sale against one or more listed cards, then view a paginated
 
 ### What's in scope
 1. **`sales` DB table** — records a completed sale line-item (card, quantity sold, sale price, buyer name, TCGPlayer order number, order status, sold date).
-2. **`sold` card status** — new enum value; card transitions `listed → sold` when a sale is recorded (or quantity is decremented if partially sold).
+2. **`sold` and `gifted` card statuses** — paid sale depletion transitions listed cards to `sold`; gift depletion transitions gift-pool cards to `gifted`.
 3. **Backend CRUD** — `POST /api/sales` (record sale), `GET /api/sales` (list with pagination/filtering), `GET /api/sales/:id` (detail), `PATCH /api/sales/:id` (update order status).
-4. **Frontend** — new "Sales History" tab, `SalesTable` component, "Record Sale" modal triggered from listed cards, summary stats for sales.
+4. **Frontend** — Sales History tab, `SalesTable` component, and sales summary stats. Order attachment actions live in Inventory.
 5. **Manual entry only** — no API sync. Fields are designed so future API sync can write the same table.
 
 ### What's explicitly out of scope for this slice
@@ -49,7 +47,7 @@ Let Dustin record a sale against one or more listed cards, then view a paginated
 - Telegram sale notifications (Phase 3.4) — **✅ COMPLETE (2026-04-03)**
 - Automated order import from TCGPlayer API — blocked on API credentials
 - Revenue/profit analytics beyond basic count/sum stats
-- ~~Bulk sale recording (one sale at a time for now)~~ — **✅ COMPLETE (2026-04-08)** via BulkSellModal
+- ~~Bulk sale recording (one sale at a time for now)~~ — **✅ COMPLETE**, now via `POST /api/sales/bulk` from Inventory with paid and gift line support
 
 ---
 
@@ -61,7 +59,7 @@ Extend `cardStatusEnum` to include `'sold'`:
 
 ```
 pgEnum('card_status', [
-  'pending', 'matched', 'listed', 'needs_attention', 'gift', 'error', 'sold'
+  'pending', 'matched', 'listed', 'needs_attention', 'gift', 'gifted', 'error', 'sold'
 ])
 ```
 

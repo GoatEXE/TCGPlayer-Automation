@@ -93,7 +93,7 @@ Represents a physical card you own and want to sell.
 | `condition`      | enum       | NM, LP, MP, HP, DMG                               |
 | `quantity`       | int        | How many duplicates of this specific card          |
 | `source`         | enum       | `csv_import` / `manual_entry`                     |
-| `status`         | enum       | `pending` / `matched` / `listed` / `needs_attention` / `gift` / `error` |
+| `status`         | enum       | `pending` / `matched` / `listed` / `needs_attention` / `gift` / `gifted` / `sold` / `error` |
 | `rawCsvData`     | jsonb?     | Original CSV row for debugging                    |
 | `createdAt`      | timestamp  |                                                   |
 | `updatedAt`      | timestamp  |                                                   |
@@ -102,8 +102,10 @@ Represents a physical card you own and want to sell.
 - `pending` → Card imported but not yet priced
 - `matched` → Card has market price, calculated listing price, ready to list
 - `listed` → Card is actually listed for sale on TCGPlayer (manual workflow at Level 1)
-- `gift` → Market price < $0.05, marked for inclusion as freebie in orders
-- `needs_attention` → No market price found, requires manual review or retry
+- `gift` → Market price < $0.05, available as a freebie in bulk order recording
+- `gifted` → Gift-pool quantity has been depleted through an order; removed from active inventory while preserving history
+- `needs_attention` → No market price found, requires manual review or retry. Listed-origin needs-attention cards remain eligible for paid order attachment.
+- `sold` → Listed quantity has been depleted through paid sales
 - `error` → Processing error occurred
 
 ### Listing
@@ -491,19 +493,21 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 **Status:** ✅ COMPLETE (including sell workflow)
 
 **Completed:**
-- [x] Active listings view — sortable/filterable table with current price, market price, quantity, status
-- [x] Sales history view — completed sales with date, card, price, buyer, order status
-- [x] Summary stats cards: total listed, total sales revenue, active listing count, average sale price
+- [x] Inventory workflow — listed and listed-origin needs-attention cards can be attached to a TCGPlayer order; the matched filter still exposes the Ready to List bulk-listing action
+- [x] Sales history view — completed paid sales with date, card, price, buyer, and order status
+- [x] Notifications view — dashboard notification history is shown in its own tab, not in Sales History
+- [x] Summary stats cards: total listed, paid sales revenue, active listing count, average paid sale price
 - [x] Order status tracking — local-first pipeline, inline status updates, batch status changes, status history timeline
   - `sale_status_history` audit table + transition state machine + cancellation quantity-restore
   - Pipeline widget, inline OrderStatusSelect, batch actions, per-row history expansion
   - API sync scheduler blocked on TCGPlayer credentials
-- [x] **Sell workflow (2026-04-08)** — Single-card and bulk sale recording directly from Active Listings and Inventory views
-  - RecordSaleModal for individual card sales
-  - BulkSellModal for attaching multiple cards to an order
-  - Inline listing price editing on active listings
-  - "Rec'd" column showing recommended price (98% of market)
-  - Full integration with checkbox selection and bulk actions
+- [x] **Order recording workflow** — Inventory attaches paid-eligible cards and gift-pool freebies to an order
+  - Single-card `POST /api/sales` remains available for paid sales and returns `lineItemType: 'sale'`
+  - Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, default `orderStatus: 'confirmed'`, optional buyer/date/notes/estimated-expense flag, and `lines`
+  - `lines` entries use `{ cardId, quantitySold, salePriceCents, lineItemType: 'sale' | 'gift' }`
+  - Paid lines require listed or listed-origin `needs_attention` cards and a positive price
+  - Gift lines require gift-pool cards and a zero price; gift depletion moves cards to `gifted`
+  - Sales stats and performance exclude gift rows by default; invoices and packing slips include gift lines grouped by TCGPlayer Order ID
   - See [docs/plans/sell-workflow.md](./plans/sell-workflow.md) for implementation details
 
 ### 6.2 Shipment Tracking
@@ -538,7 +542,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Finish richer message format/details (card name/order link in every path where available)
 - [x] Extend coverage for primary confirmed/shipped notification paths and graceful optional-field fallbacks
 - [x] Add persistent notification event logging + backend read API foundation for dashboard-visible history
-- [x] Add dashboard-visible notification history panel in the web UI (Sales History view — shows recent events with type, success/failure, message, timestamp)
+- [x] Add dashboard-visible notification history in the web UI Notifications tab, with recent events, type, success/failure, message, and timestamp
 
 ### 6.5 Additional API Endpoints (Phase 3)
 
@@ -547,6 +551,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 | GET    | `/api/sales`                    | List sales (paginated, filterable)       |
 | GET    | `/api/sales/:id`                | Sale detail with shipment info           |
 | POST   | `/api/sales/:id/ship`           | Record shipment + push to TCGPlayer      |
+| POST   | `/api/sales/bulk`               | Record multi-line paid/gift order        |
 | GET    | `/api/sales/:id/invoice`        | Generate invoice HTML/PDF                |
 | GET    | `/api/sales/:id/packing-slip`   | Generate packing slip HTML/PDF           |
 | GET    | `/api/dashboard/stats`          | Aggregate stats for dashboard            |

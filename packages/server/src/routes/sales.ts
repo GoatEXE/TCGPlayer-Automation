@@ -11,7 +11,11 @@ import {
 } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
-import { cards } from '../db/schema/cards.js';
+import {
+  cards,
+  isListedOriginAttentionReason,
+  type Card,
+} from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
 import { createSaleAutoEstimates, getOrCreateExpenseSettings } from '../lib/expenses/index.js';
@@ -26,12 +30,31 @@ type OrderStatus =
   | 'delivered'
   | 'cancelled';
 
+type SaleLineItemType = 'sale' | 'gift';
+
 interface RecordSaleBody {
   cardId: number;
   quantitySold: number;
   salePriceCents: number;
   buyerName?: string | null;
   tcgplayerOrderId?: string | null;
+  orderStatus?: OrderStatus;
+  soldAt?: string;
+  notes?: string | null;
+  applyEstimatedExpenses?: boolean;
+}
+
+interface BulkSaleLineBody {
+  cardId: number;
+  quantitySold: number;
+  salePriceCents: number;
+  lineItemType: SaleLineItemType;
+}
+
+interface BulkRecordSaleBody {
+  tcgplayerOrderId: string;
+  lines: BulkSaleLineBody[];
+  buyerName?: string | null;
   orderStatus?: OrderStatus;
   soldAt?: string;
   notes?: string | null;
@@ -60,6 +83,17 @@ const validOrderStatuses: OrderStatus[] = [
   'cancelled',
 ];
 
+const validSaleLineItemTypes: SaleLineItemType[] = ['sale', 'gift'];
+
+class SalesRouteError extends Error {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
 function parseDate(value: string): Date | null {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -69,8 +103,85 @@ function parseDate(value: string): Date | null {
   return date;
 }
 
+function isSaleLineItemType(value: unknown): value is SaleLineItemType {
+  return validSaleLineItemTypes.includes(value as SaleLineItemType);
+}
+
+function canRecordPaidSaleForCard(card: {
+  status: string;
+  attentionReason: string | null;
+}) {
+  return (
+    card.status === 'listed' ||
+    (card.status === 'needs_attention' &&
+      isListedOriginAttentionReason(card.attentionReason))
+  );
+}
+
+function getNextPaidCardStatus(card: {
+  status: Card['status'];
+  quantity: number;
+  attentionReason: Card['attentionReason'];
+}): {
+  status: Card['status'];
+  attentionReason: Card['attentionReason'];
+} {
+  if (card.quantity === 0) {
+    return { status: 'sold', attentionReason: null };
+  }
+
+  if (
+    card.status === 'needs_attention' &&
+    isListedOriginAttentionReason(card.attentionReason)
+  ) {
+    return { status: 'needs_attention', attentionReason: card.attentionReason };
+  }
+
+  return { status: 'listed', attentionReason: null };
+}
+
+function getNextGiftCardStatus(remainingQuantity: number) {
+  return remainingQuantity === 0 ? 'gifted' : 'gift';
+}
+
+function getRestoredCardStateForCancelledLine(params: {
+  lineItemType: SaleLineItemType;
+  linkedCardStatus: Card['status'];
+  restoredQuantity: number;
+  linkedCardAttentionReason: Card['attentionReason'];
+}): {
+  status: Card['status'];
+  attentionReason: Card['attentionReason'];
+} {
+  const {
+    lineItemType,
+    linkedCardStatus,
+    restoredQuantity,
+    linkedCardAttentionReason,
+  } = params;
+
+  if (lineItemType === 'gift') {
+    return {
+      status: restoredQuantity > 0 ? 'gift' : linkedCardStatus,
+      attentionReason: null,
+    };
+  }
+
+  if (linkedCardStatus === 'sold' && restoredQuantity > 0) {
+    return {
+      status: 'listed',
+      attentionReason: null,
+    };
+  }
+
+  return {
+    status: linkedCardStatus,
+    attentionReason: linkedCardAttentionReason,
+  };
+}
+
 export async function salesRoutes(fastify: FastifyInstance) {
-  async function getCardProductName(cardId: number | null | undefined) {
+  async function getCardById(cardId: number | null | undefined) {
     if (cardId === null || cardId === undefined) {
       return null;
     }
@@ -81,7 +192,37 @@ export async function salesRoutes(fastify: FastifyInstance) {
       .where(eq(cards.id, cardId))
       .limit(1);
 
+    return card ?? null;
+  }
+
+  async function getCardProductName(cardId: number | null | undefined) {
+    const card = await getCardById(cardId);
     return card?.productName ?? null;
+  }
+
+  function serializeSaleResponse(
+    sale: {
+      id: number;
+      cardId: number | null;
+      tcgplayerOrderId: string | null;
+      quantitySold: number;
+      lineItemType?: SaleLineItemType | null;
+      salePriceCents: number;
+      buyerName: string | null;
+      orderStatus: OrderStatus;
+      soldAt: Date;
+      notes: string | null;
+      createdAt?: Date;
+      updatedAt: Date;
+    },
+    card: Pick<Card, 'productName' | 'setName'> | null,
+  ) {
+    return {
+      ...sale,
+      lineItemType: sale.lineItemType ?? 'sale',
+      cardProductName: card?.productName ?? null,
+      cardSetName: card?.setName ?? null,
+    };
   }
 
   function buildOrderLinkText(tcgplayerOrderId: string | null) {
@@ -120,6 +261,260 @@ export async function salesRoutes(fastify: FastifyInstance) {
       );
     }
   }
+
+  // POST /bulk - Record a multi-line TCGplayer order atomically
+  fastify.post<{ Body: BulkRecordSaleBody }>('/bulk', async (request, reply) => {
+    const {
+      tcgplayerOrderId,
+      lines,
+      buyerName,
+      orderStatus = 'confirmed',
+      soldAt,
+      notes,
+      applyEstimatedExpenses,
+    } = request.body;
+
+    if (typeof tcgplayerOrderId !== 'string' || tcgplayerOrderId.trim() === '') {
+      return reply.code(400).send({
+        error: 'tcgplayerOrderId is required for bulk order recording',
+      });
+    }
+
+    if (!Array.isArray(lines) || lines.length === 0) {
+      return reply.code(400).send({
+        error: 'lines must be a non-empty array',
+      });
+    }
+
+    if (!validOrderStatuses.includes(orderStatus)) {
+      return reply.code(400).send({ error: 'Invalid orderStatus' });
+    }
+
+    if (
+      applyEstimatedExpenses !== undefined &&
+      typeof applyEstimatedExpenses !== 'boolean'
+    ) {
+      return reply
+        .code(400)
+        .send({ error: 'applyEstimatedExpenses must be a boolean' });
+    }
+
+    const soldAtDate = soldAt ? parseDate(soldAt) : new Date();
+    if (!soldAtDate) {
+      return reply.code(400).send({ error: 'Invalid soldAt date' });
+    }
+
+    try {
+      const insertedSales: Array<{
+        id: number;
+        cardId: number | null;
+        tcgplayerOrderId: string | null;
+        quantitySold: number;
+        lineItemType: SaleLineItemType;
+        salePriceCents: number;
+        buyerName: string | null;
+        orderStatus: OrderStatus;
+        soldAt: Date;
+        notes: string | null;
+        createdAt?: Date;
+        updatedAt: Date;
+        cardProductName: string | null;
+        cardSetName: string | null;
+      }> = [];
+
+      await db.transaction(async (tx) => {
+        for (const line of lines) {
+          if (!isSaleLineItemType(line?.lineItemType)) {
+            throw new SalesRouteError(
+              400,
+              'lineItemType must be either "sale" or "gift"',
+            );
+          }
+
+          if (!Number.isInteger(line.cardId) || line.cardId <= 0) {
+            throw new SalesRouteError(400, 'cardId must be a positive integer');
+          }
+
+          if (!Number.isInteger(line.quantitySold) || line.quantitySold <= 0) {
+            throw new SalesRouteError(
+              400,
+              'quantitySold must be a positive integer',
+            );
+          }
+
+          if (!Number.isInteger(line.salePriceCents) || line.salePriceCents < 0) {
+            throw new SalesRouteError(
+              400,
+              'salePriceCents must be a non-negative integer',
+            );
+          }
+
+          const [card] = await tx
+            .select()
+            .from(cards)
+            .where(eq(cards.id, line.cardId))
+            .limit(1);
+
+          if (!card) {
+            throw new SalesRouteError(404, `Card ${line.cardId} not found`);
+          }
+
+          if (line.quantitySold > card.quantity) {
+            throw new SalesRouteError(
+              400,
+              'quantitySold cannot exceed available card quantity',
+            );
+          }
+
+          if (line.lineItemType === 'gift') {
+            if (card.status !== 'gift') {
+              throw new SalesRouteError(
+                400,
+                'Gift lines require cards with status gift',
+              );
+            }
+
+            if (line.salePriceCents !== 0) {
+              throw new SalesRouteError(
+                400,
+                'Gift lines must have salePriceCents of 0',
+              );
+            }
+          }
+
+          if (line.lineItemType === 'sale') {
+            if (!canRecordPaidSaleForCard(card)) {
+              throw new SalesRouteError(
+                400,
+                'Paid lines require cards with status listed or listed-origin needs_attention',
+              );
+            }
+
+            if (line.salePriceCents <= 0) {
+              throw new SalesRouteError(
+                400,
+                'Paid lines must have salePriceCents greater than 0',
+              );
+            }
+          }
+
+          const remainingQuantity = card.quantity - line.quantitySold;
+          const nextCardState =
+            line.lineItemType === 'gift'
+              ? {
+                  status: getNextGiftCardStatus(remainingQuantity),
+                  attentionReason: null,
+                }
+              : getNextPaidCardStatus({
+                  status: card.status,
+                  quantity: remainingQuantity,
+                  attentionReason: card.attentionReason,
+                });
+
+          await tx
+            .update(cards)
+            .set({
+              quantity: remainingQuantity,
+              status: nextCardState.status as any,
+              attentionReason: nextCardState.attentionReason,
+              updatedAt: new Date(),
+            })
+            .where(eq(cards.id, card.id));
+
+          const [sale] = await tx
+            .insert(sales)
+            .values({
+              cardId: line.cardId,
+              quantitySold: line.quantitySold,
+              lineItemType: line.lineItemType,
+              salePriceCents: line.salePriceCents,
+              buyerName: buyerName ?? null,
+              tcgplayerOrderId: tcgplayerOrderId.trim(),
+              orderStatus,
+              soldAt: soldAtDate,
+              notes: notes ?? null,
+              updatedAt: new Date(),
+            })
+            .returning();
+
+          await tx.insert(saleStatusHistory).values({
+            saleId: sale.id,
+            previousStatus: null,
+            newStatus: orderStatus,
+            source: 'manual',
+          });
+
+          if (orderStatus === 'confirmed') {
+            await createShipmentOnConfirm(tx as any, sale.id);
+          }
+
+          insertedSales.push(
+            serializeSaleResponse(
+              {
+                ...sale,
+                orderStatus,
+                lineItemType: line.lineItemType,
+                soldAt: soldAtDate,
+              },
+              card,
+            ),
+          );
+        }
+      });
+
+      const expenseSettings =
+        applyEstimatedExpenses === false
+          ? null
+          : await getOrCreateExpenseSettings(db);
+      const shouldApplyEstimatedExpenses =
+        applyEstimatedExpenses ?? expenseSettings?.autoRecordSaleExpenses ?? false;
+
+      if (shouldApplyEstimatedExpenses && expenseSettings) {
+        for (const sale of insertedSales) {
+          if (sale.lineItemType !== 'sale') {
+            continue;
+          }
+
+          await createSaleAutoEstimates(db, {
+            saleId: sale.id,
+            salePriceCents: sale.salePriceCents,
+            soldAt: sale.soldAt,
+            tcgplayerOrderId: sale.tcgplayerOrderId,
+            settings: expenseSettings,
+          });
+        }
+      }
+
+      if (orderStatus === 'confirmed') {
+        for (const sale of insertedSales) {
+          if (sale.lineItemType !== 'sale') {
+            continue;
+          }
+
+          await sendSaleConfirmedAlertBestEffort(
+            {
+              id: sale.id,
+              cardId: sale.cardId,
+              quantitySold: sale.quantitySold,
+              salePriceCents: sale.salePriceCents,
+              buyerName: sale.buyerName,
+              tcgplayerOrderId: sale.tcgplayerOrderId,
+            },
+            sale.cardProductName,
+          );
+        }
+      }
+
+      return reply.code(201).send({ sales: insertedSales });
+    } catch (error) {
+      if (error instanceof SalesRouteError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({ error: 'Failed to record bulk sale order' });
+    }
+  });
 
   // POST / - Record a sale
   fastify.post<{ Body: RecordSaleBody }>('/', async (request, reply) => {
@@ -182,8 +577,11 @@ export async function salesRoutes(fastify: FastifyInstance) {
         return reply.code(404).send({ error: 'Card not found' });
       }
 
-      if (card.status !== 'listed') {
-        return reply.code(400).send({ error: 'Only listed cards can be sold' });
+      if (!canRecordPaidSaleForCard(card)) {
+        return reply.code(400).send({
+          error:
+            'Only listed or listed-origin needs_attention cards can be sold',
+        });
       }
 
       if (quantitySold > card.quantity) {
@@ -193,13 +591,18 @@ export async function salesRoutes(fastify: FastifyInstance) {
       }
 
       const remainingQuantity = card.quantity - quantitySold;
-      const nextCardStatus = remainingQuantity === 0 ? 'sold' : 'listed';
+      const nextCardState = getNextPaidCardStatus({
+        status: card.status,
+        quantity: remainingQuantity,
+        attentionReason: card.attentionReason,
+      });
 
       await db
         .update(cards)
         .set({
           quantity: remainingQuantity,
-          status: nextCardStatus,
+          status: nextCardState.status as any,
+          attentionReason: nextCardState.attentionReason,
           updatedAt: new Date(),
         })
         .where(eq(cards.id, card.id));
@@ -209,6 +612,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
         .values({
           cardId,
           quantitySold,
+          lineItemType: 'sale',
           salePriceCents,
           buyerName: buyerName ?? null,
           tcgplayerOrderId: tcgplayerOrderId ?? null,
@@ -258,7 +662,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
         );
       }
 
-      return reply.code(201).send(sale);
+      return reply
+        .code(201)
+        .send(serializeSaleResponse(sale, card));
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to record sale' });
@@ -299,7 +705,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'Invalid orderStatus' });
     }
 
-    const conditions = [];
+    const conditions: any[] = [eq(sales.lineItemType, 'sale')];
 
     if (orderStatus) {
       conditions.push(eq(sales.orderStatus, orderStatus as OrderStatus));
@@ -382,7 +788,8 @@ export async function salesRoutes(fastify: FastifyInstance) {
           totalRevenueCents: sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
           averageSaleCents: sql<number>`coalesce(round(avg(${sales.salePriceCents})), 0)::int`,
         })
-        .from(sales);
+        .from(sales)
+        .where(eq(sales.lineItemType, 'sale'));
 
       const [listedSummary] = await db
         .select({
@@ -421,6 +828,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
           totalCents: sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
         })
         .from(sales)
+        .where(eq(sales.lineItemType, 'sale'))
         .groupBy(sales.orderStatus);
 
       pipeline.sort(
@@ -528,15 +936,21 @@ export async function salesRoutes(fastify: FastifyInstance) {
             if (linkedCard) {
               const restoredQuantity =
                 linkedCard.quantity + existingSale.quantitySold;
+              const restoredCardState = getRestoredCardStateForCancelledLine({
+                lineItemType:
+                  (existingSale.lineItemType as SaleLineItemType | undefined) ??
+                  'sale',
+                linkedCardStatus: linkedCard.status,
+                restoredQuantity,
+                linkedCardAttentionReason: linkedCard.attentionReason,
+              });
 
               await db
                 .update(cards)
                 .set({
                   quantity: restoredQuantity,
-                  status:
-                    linkedCard.status === 'sold' && restoredQuantity > 0
-                      ? 'listed'
-                      : linkedCard.status,
+                  status: restoredCardState.status as any,
+                  attentionReason: restoredCardState.attentionReason,
                   updatedAt: new Date(),
                 })
                 .where(eq(cards.id, linkedCard.id));
@@ -735,14 +1149,20 @@ export async function salesRoutes(fastify: FastifyInstance) {
             if (linkedCard) {
               const restoredQuantity =
                 linkedCard.quantity + existingSale.quantitySold;
+              const restoredCardState = getRestoredCardStateForCancelledLine({
+                lineItemType:
+                  (existingSale.lineItemType as SaleLineItemType | undefined) ??
+                  'sale',
+                linkedCardStatus: linkedCard.status,
+                restoredQuantity,
+                linkedCardAttentionReason: linkedCard.attentionReason,
+              });
               await db
                 .update(cards)
                 .set({
                   quantity: restoredQuantity,
-                  status:
-                    linkedCard.status === 'sold' && restoredQuantity > 0
-                      ? 'listed'
-                      : linkedCard.status,
+                  status: restoredCardState.status as any,
+                  attentionReason: restoredCardState.attentionReason,
                   updatedAt: new Date(),
                 })
                 .where(eq(cards.id, linkedCard.id));
@@ -750,7 +1170,11 @@ export async function salesRoutes(fastify: FastifyInstance) {
           }
         }
 
-        return reply.send(updatedSale);
+        const linkedCard = await getCardById(
+          updatedSale.cardId ?? existingSale.cardId,
+        );
+
+        return reply.send(serializeSaleResponse(updatedSale, linkedCard));
       } catch (error) {
         fastify.log.error(error);
         return reply.code(500).send({ error: 'Failed to update sale' });

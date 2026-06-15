@@ -15,8 +15,14 @@ export interface Card {
     | 'listed'
     | 'needs_attention'
     | 'gift'
+    | 'gifted'
     | 'sold'
     | 'error';
+  attentionReason?:
+    | 'listed_price_drift'
+    | 'listed_missing_price'
+    | 'listed_below_threshold'
+    | null;
   marketPrice: string | null;
   listingPrice: string | null;
   floorPriceCents: number | null;
@@ -235,11 +241,14 @@ export interface UpdateExpenseSettingsRequest {
   transactionFlatFeeCents?: number;
 }
 
+export type SaleLineItemType = 'sale' | 'gift';
+
 export interface Sale {
   id: number;
   cardId: number | null;
   tcgplayerOrderId: string | null;
   quantitySold: number;
+  lineItemType: SaleLineItemType;
   salePriceCents: number;
   buyerName: string | null;
   orderStatus: OrderStatus;
@@ -247,8 +256,8 @@ export interface Sale {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
-  cardProductName: string | null;
-  cardSetName: string | null;
+  cardProductName?: string | null;
+  cardSetName?: string | null;
 }
 
 export interface GetSalesParams {
@@ -271,6 +280,7 @@ export interface CreateSaleRequest {
   cardId: number;
   quantitySold: number;
   salePriceCents: number;
+  lineItemType?: SaleLineItemType;
   buyerName?: string | null;
   tcgplayerOrderId?: string | null;
   orderStatus?: OrderStatus;
@@ -280,6 +290,27 @@ export interface CreateSaleRequest {
 }
 
 export type CreateSaleResponse = Sale;
+
+export interface BulkOrderLineRequest {
+  cardId: number;
+  quantitySold: number;
+  salePriceCents: number;
+  lineItemType: SaleLineItemType;
+}
+
+export interface CreateBulkOrderRequest {
+  buyerName?: string | null;
+  tcgplayerOrderId: string;
+  orderStatus?: OrderStatus;
+  soldAt?: string;
+  notes?: string | null;
+  applyEstimatedExpenses?: boolean;
+  lines: BulkOrderLineRequest[];
+}
+
+export interface CreateBulkOrderResponse {
+  sales: Sale[];
+}
 
 export interface UpdateSaleRequest {
   buyerName?: string | null;

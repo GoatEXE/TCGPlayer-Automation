@@ -20,6 +20,7 @@ const apiMocks = vi.hoisted(() => ({
   updateShipment: vi.fn(),
   getNotificationEvents: vi.fn(),
   createSale: vi.fn(),
+  createBulkOrder: vi.fn(),
   getExpenses: vi.fn(),
   getPerformanceSummary: vi.fn(),
   getExpenseSettings: vi.fn(),
@@ -155,6 +156,7 @@ describe('App view tabs', () => {
       events: [],
       limit: 20,
     });
+    apiMocks.createBulkOrder.mockResolvedValue({ sales: [] });
     apiMocks.getExpenses.mockResolvedValue({
       expenses: [expenseFixture],
       total: 1,
@@ -169,29 +171,22 @@ describe('App view tabs', () => {
     apiMocks.updateExpenseSettings.mockResolvedValue(expenseSettingsFixture);
   });
 
-  it('switches to Active Listings mode and requests listed cards', async () => {
+  it('switches to Notifications mode and requests notification history', async () => {
     const user = userEvent.setup();
 
     render(<App />);
 
-    await waitFor(() => {
-      expect(apiMocks.getCards).toHaveBeenCalledWith(
-        expect.objectContaining({ status: undefined }),
-      );
-    });
+    expect(apiMocks.getNotificationEvents).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('tab', { name: /active listings/i }));
+    await user.click(screen.getByRole('tab', { name: /notifications/i }));
 
     await waitFor(() => {
-      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
-        expect.objectContaining({ status: 'listed' }),
-      );
+      expect(apiMocks.getNotificationEvents).toHaveBeenCalledWith(20);
     });
 
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Active Listings' }),
+      screen.getByRole('heading', { level: 2, name: 'Notifications' }),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'All' })).toBeNull();
   });
 
   it('requests globally sorted cards and resets to page 1 when Name sort is clicked', async () => {
@@ -272,6 +267,8 @@ describe('App view tabs', () => {
       );
       expect(apiMocks.getSalesStats).toHaveBeenCalled();
     });
+
+    expect(apiMocks.getNotificationEvents).not.toHaveBeenCalled();
 
     expect(
       screen.getByRole('heading', { level: 2, name: 'Sales History' }),
@@ -865,7 +862,7 @@ describe('App record sale + bulk sell integration', () => {
       expect(apiMocks.getExpenseSettings).toHaveBeenCalled();
     });
 
-    await user.click(screen.getByRole('tab', { name: /active listings/i }));
+    await user.click(screen.getByRole('tab', { name: /inventory/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Test Card')).toBeTruthy();
@@ -892,7 +889,7 @@ describe('App record sale + bulk sell integration', () => {
     });
   });
 
-  it('bulk sell handler calls createSale for each card', async () => {
+  it('bulk sell handler calls createBulkOrder with paid lines', async () => {
     const user = userEvent.setup();
     apiMocks.getCards.mockResolvedValue({
       cards: [
@@ -947,9 +944,6 @@ describe('App record sale + bulk sell integration', () => {
     });
 
     render(<App />);
-
-    // Switch to Active Listings to enable sell flow
-    await user.click(screen.getByRole('tab', { name: /active listings/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Card A')).toBeTruthy();
@@ -962,19 +956,97 @@ describe('App record sale + bulk sell integration', () => {
     await user.click(screen.getByText(/attach 2 to order/i));
 
     const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
+    await user.type(within(dialog).getByLabelText(/tcgplayer order id/i), 'ORD-123');
     await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
 
     await waitFor(() => {
-      expect(apiMocks.createSale).toHaveBeenCalledTimes(2);
+      expect(apiMocks.createBulkOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tcgplayerOrderId: 'ORD-123',
+          orderStatus: 'confirmed',
+          lines: [
+            { cardId: 1, quantitySold: 1, salePriceCents: 98, lineItemType: 'sale' },
+            { cardId: 2, quantitySold: 1, salePriceCents: 196, lineItemType: 'sale' },
+          ],
+        }),
+      );
     });
   });
 
-  it('bulk sell with partial failure throws error with summary message', async () => {
+  it('Attach to Order refreshes gift pool and submits selected gift lines', async () => {
     const user = userEvent.setup();
-    // First call succeeds, second fails
-    apiMocks.createSale
-      .mockResolvedValueOnce({ id: 1 })
-      .mockRejectedValueOnce(new Error('Network error'));
+    const paidCard = {
+      id: 1,
+      tcgplayerId: 100,
+      productLine: 'Riftbound',
+      setName: 'Origins',
+      productName: 'Paid Card',
+      title: null,
+      number: '001',
+      rarity: 'Common',
+      condition: 'Near Mint',
+      quantity: 1,
+      status: 'listed',
+      marketPrice: '1.00',
+      listingPrice: '0.98',
+      floorPriceCents: null,
+      isFoilPrice: false,
+      photoUrl: null,
+      notes: null,
+      lastCheckedAt: null,
+      importedAt: '2026-04-01T00:00:00Z',
+      updatedAt: '2026-04-01T00:00:00Z',
+    };
+    const giftCard = {
+      ...paidCard,
+      id: 50,
+      tcgplayerId: 150,
+      productName: 'Gift Card',
+      quantity: 3,
+      status: 'gift',
+      listingPrice: null,
+    };
+    apiMocks.getCards.mockImplementation((params) => {
+      if (params?.status === 'gift') {
+        return Promise.resolve({ cards: [giftCard], total: 1, page: 1, limit: 200 });
+      }
+      return Promise.resolve({ cards: [paidCard], total: 1, page: 1, limit: 50 });
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paid Card')).toBeTruthy();
+    });
+
+    await user.click(screen.getByTitle('Select for attach to order'));
+    await user.click(screen.getByText(/attach 1 to order/i));
+
+    const dialog = await screen.findByRole('dialog', { name: /bulk sell/i });
+    expect(within(dialog).getAllByText('Gift Card').length).toBeGreaterThan(0);
+
+    await user.click(within(dialog).getByRole('checkbox', { name: /add gift card as gift/i }));
+    await user.clear(within(dialog).getByRole('spinbutton', { name: /gift quantity for gift card/i }));
+    await user.type(within(dialog).getByRole('spinbutton', { name: /gift quantity for gift card/i }), '2');
+    await user.type(within(dialog).getByLabelText(/tcgplayer order id/i), 'ORD-GIFT');
+    await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.createBulkOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tcgplayerOrderId: 'ORD-GIFT',
+          lines: [
+            { cardId: 1, quantitySold: 1, salePriceCents: 98, lineItemType: 'sale' },
+            { cardId: 50, quantitySold: 2, salePriceCents: 0, lineItemType: 'gift' },
+          ],
+        }),
+      );
+    });
+  });
+
+  it('bulk sell failure shows backend error message', async () => {
+    const user = userEvent.setup();
+    apiMocks.createBulkOrder.mockRejectedValueOnce(new Error('Network error'));
 
     apiMocks.getCards.mockResolvedValue({
       cards: [
@@ -1030,9 +1102,6 @@ describe('App record sale + bulk sell integration', () => {
 
     render(<App />);
 
-    // Switch to Active Listings
-    await user.click(screen.getByRole('tab', { name: /active listings/i }));
-
     await waitFor(() => {
       expect(screen.getByText('Card A')).toBeTruthy();
     });
@@ -1044,16 +1113,15 @@ describe('App record sale + bulk sell integration', () => {
     await user.click(screen.getByText(/attach 2 to order/i));
 
     const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
+    await user.type(within(dialog).getByLabelText(/tcgplayer order id/i), 'ORD-123');
     await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
 
-    // The error message should appear in the modal since BulkSellModal catches errors
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/1 of 2 sales recorded.*1 failed/i);
+      expect(screen.getByRole('alert')).toHaveTextContent(/network error/i);
     });
   });
 
-  it('enableSellFlow is true when active-listings view is active', async () => {
-    const user = userEvent.setup();
+  it('Inventory enables listed rows for attach-to-order selection', async () => {
     apiMocks.getCards.mockResolvedValue({
       cards: [
         {
@@ -1086,25 +1154,12 @@ describe('App record sale + bulk sell integration', () => {
 
     render(<App />);
 
-    // In inventory view (default), listed card checkbox should be disabled
     await waitFor(() => {
       expect(screen.getByText('Listed Card')).toBeTruthy();
     });
 
-    const rows1 = screen.getAllByRole('row');
-    const listedRow1 = rows1[1];
-    expect(within(listedRow1).getByRole('checkbox')).toBeDisabled();
-
-    // Switch to Active Listings
-    await user.click(screen.getByRole('tab', { name: /active listings/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Listed Card')).toBeTruthy();
-    });
-
-    // Now listed card checkbox should be enabled
-    const rows2 = screen.getAllByRole('row');
-    const listedRow2 = rows2[1];
-    expect(within(listedRow2).getByRole('checkbox')).not.toBeDisabled();
+    const rows = screen.getAllByRole('row');
+    const listedRow = rows[1];
+    expect(within(listedRow).getByRole('checkbox')).not.toBeDisabled();
   });
 });

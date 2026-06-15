@@ -6,6 +6,7 @@ import type {
   ImportResult,
   Sale,
   CreateSaleRequest,
+  CreateBulkOrderRequest,
   Expense,
   CreateExpenseRequest,
   UpdateExpenseRequest,
@@ -970,6 +971,36 @@ describe('ApiClient', () => {
       await expect(
         api.createSale({ cardId: 999, quantitySold: 1, salePriceCents: 100 }),
       ).rejects.toThrow('Card not found');
+    });
+  });
+
+  describe('createBulkOrder', () => {
+    it('sends POST to /api/sales/bulk with paid and gift lines', async () => {
+      const mockResponse = { sales: [] };
+      mockFetch(mockResponse);
+
+      const request: CreateBulkOrderRequest = {
+        tcgplayerOrderId: 'ORD-100',
+        orderStatus: 'confirmed',
+        buyerName: 'Jane Doe',
+        applyEstimatedExpenses: true,
+        lines: [
+          { cardId: 1, quantitySold: 1, salePriceCents: 245, lineItemType: 'sale' },
+          { cardId: 2, quantitySold: 1, salePriceCents: 0, lineItemType: 'gift' },
+        ],
+      };
+
+      const result = await api.createBulkOrder(request);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sales/bulk',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(result).toEqual(mockResponse);
     });
   });
 

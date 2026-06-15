@@ -300,7 +300,10 @@ export async function expensesRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { dateFrom, dateTo } = request.query;
 
-      const salesConditions = [ne(sales.orderStatus, 'cancelled')];
+      const salesConditions = [
+        ne(sales.orderStatus, 'cancelled'),
+        eq(sales.lineItemType, 'sale'),
+      ];
       const expenseConditions = [];
 
       if (dateFrom) {

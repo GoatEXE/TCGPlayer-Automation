@@ -131,6 +131,28 @@ describe('invoice routes', () => {
       expect(response.body).toContain('Vi - Piltover Enforcer');
     });
 
+    it('includes gift line items grouped under the same order id', async () => {
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'ORDER-123' }]);
+      mockDocumentRows([
+        makeDocumentRow(),
+        makeDocumentRow({
+          saleId: 12,
+          quantitySold: 1,
+          salePriceCents: 0,
+          cardProductName: 'Bonus Gift Card',
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('Bonus Gift Card');
+      expect(response.body).toContain('$0.00');
+    });
+
     it('uses sale fallback order id when tcgplayerOrderId is null', async () => {
       mockBaseSale([{ id: 10, tcgplayerOrderId: null }]);
       mockDocumentRows([

@@ -15,6 +15,7 @@ export const cardStatusEnum = pgEnum('card_status', [
   'listed',
   'needs_attention',
   'gift',
+  'gifted',
   'error',
   'sold',
 ]);

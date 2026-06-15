@@ -964,13 +964,27 @@ describe('CardTable sell flow (enableSellFlow)', () => {
       />,
     );
 
-    const checkboxes = screen.getAllByRole('checkbox');
-    // header + 2 rows = 3 checkboxes
-    // Listed card checkbox (row 1) should be enabled
-    const rows = screen.getAllByRole('row');
-    const listedRow = rows[1]; // first data row (sorted, listed should appear)
-    const listedCheckbox = within(listedRow).getByRole('checkbox');
+    const listedCheckbox = screen.getByTitle('Select for attach to order');
     expect(listedCheckbox).not.toBeDisabled();
+  });
+
+  it('when enableSellFlow=true, listed-origin needs_attention cards can be selected for attach to order', () => {
+    render(
+      <CardTable
+        {...defaultTableProps}
+        enableSellFlow
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            attentionReason: 'listed_price_drift',
+            productName: 'Attention Listed Card',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByTitle('Select for attach to order')).not.toBeDisabled();
   });
 
   it('when enableSellFlow=true and listed cards selected, shows Attach to Order button', async () => {
@@ -1044,12 +1058,12 @@ describe('CardTable sell flow (enableSellFlow)', () => {
     expect(checkbox.checked).toBe(true);
   });
 
-  it('when enableSellFlow=false, matched cards are selectable and Mark as Listed is shown', async () => {
+  it('when bulkMode=list, matched cards are selectable and Mark as Listed is shown', async () => {
     const user = userEvent.setup();
     render(
       <CardTable
         {...defaultTableProps}
-        enableSellFlow={false}
+        bulkMode="list"
         cards={[
           makeCard({ id: 1, status: 'matched', productName: 'Matched Card' }),
           makeCard({ id: 2, status: 'listed', productName: 'Listed Card' }),
@@ -1068,11 +1082,11 @@ describe('CardTable sell flow (enableSellFlow)', () => {
     expect(screen.queryByText(/attach.*to order/i)).not.toBeInTheDocument();
   });
 
-  it('when enableSellFlow=false, listed card checkboxes are disabled', () => {
+  it('when bulkMode=list, listed card checkboxes are disabled', () => {
     render(
       <CardTable
         {...defaultTableProps}
-        enableSellFlow={false}
+        bulkMode="list"
         cards={[
           makeCard({ id: 1, status: 'listed', productName: 'Listed Card' }),
         ]}

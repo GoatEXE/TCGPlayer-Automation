@@ -90,7 +90,7 @@ This ensures:
 Accepts optional `floorPriceCents` in the request body:
 ```typescript
 interface UpdateCardBody {
-  status?: 'pending' | 'matched' | 'listed' | 'needs_attention' | 'gift' | 'error';
+  status?: 'pending' | 'matched' | 'listed' | 'needs_attention' | 'gift' | 'gifted' | 'sold' | 'error';
   quantity?: number;
   listingPrice?: number;
   floorPriceCents?: number | null;  // NEW

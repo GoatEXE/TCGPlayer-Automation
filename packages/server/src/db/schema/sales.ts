@@ -16,6 +16,8 @@ export const orderStatusEnum = pgEnum('order_status', [
   'cancelled',
 ]);
 
+export const lineItemTypeEnum = pgEnum('sale_line_type', ['sale', 'gift']);
+
 export const sales = pgTable('sales', {
   id: serial('id').primaryKey(),
   cardId: integer('card_id').references(() => cards.id, {
@@ -23,6 +25,7 @@ export const sales = pgTable('sales', {
   }),
   tcgplayerOrderId: text('tcgplayer_order_id'),
   quantitySold: integer('quantity_sold').notNull(),
+  lineItemType: lineItemTypeEnum('sale_line_type').notNull().default('sale'),
   salePriceCents: integer('sale_price_cents').notNull(),
   buyerName: text('buyer_name'),
   orderStatus: orderStatusEnum('order_status').notNull().default('pending'),

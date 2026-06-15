@@ -7,11 +7,11 @@ import type { ViewMode } from '../ViewTabs';
 describe('ViewTabs', () => {
   const onChangeView = vi.fn();
 
-  it('renders Inventory, Active Listings, Sales History, and Performance tabs', () => {
+  it('renders Inventory, Notifications, Sales History, and Performance tabs', () => {
     render(<ViewTabs activeView="inventory" onChangeView={onChangeView} />);
 
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /active listings/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /notifications/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /sales history/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /performance/i })).toBeTruthy();
   });
@@ -22,31 +22,31 @@ describe('ViewTabs', () => {
     const tab = screen.getByRole('tab', { name: /inventory/i });
     expect(tab.getAttribute('aria-selected')).toBe('true');
 
-    const listingsTab = screen.getByRole('tab', { name: /active listings/i });
-    expect(listingsTab.getAttribute('aria-selected')).toBe('false');
+    const notificationsTab = screen.getByRole('tab', { name: /notifications/i });
+    expect(notificationsTab.getAttribute('aria-selected')).toBe('false');
   });
 
-  it('marks Active Listings tab as selected when activeView is active-listings', () => {
+  it('marks Notifications tab as selected when activeView is notifications', () => {
     render(
-      <ViewTabs activeView="active-listings" onChangeView={onChangeView} />,
+      <ViewTabs activeView="notifications" onChangeView={onChangeView} />,
     );
 
-    const tab = screen.getByRole('tab', { name: /active listings/i });
+    const tab = screen.getByRole('tab', { name: /notifications/i });
     expect(tab.getAttribute('aria-selected')).toBe('true');
   });
 
-  it('calls onChangeView with active-listings when that tab is clicked', async () => {
+  it('calls onChangeView with notifications when that tab is clicked', async () => {
     const user = userEvent.setup();
     render(<ViewTabs activeView="inventory" onChangeView={onChangeView} />);
 
-    await user.click(screen.getByRole('tab', { name: /active listings/i }));
-    expect(onChangeView).toHaveBeenCalledWith('active-listings');
+    await user.click(screen.getByRole('tab', { name: /notifications/i }));
+    expect(onChangeView).toHaveBeenCalledWith('notifications');
   });
 
   it('calls onChangeView with inventory when that tab is clicked', async () => {
     const user = userEvent.setup();
     render(
-      <ViewTabs activeView="active-listings" onChangeView={onChangeView} />,
+      <ViewTabs activeView="notifications" onChangeView={onChangeView} />,
     );
 
     await user.click(screen.getByRole('tab', { name: /inventory/i }));

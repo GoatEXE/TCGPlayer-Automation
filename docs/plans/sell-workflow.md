@@ -1,5 +1,23 @@
 # Sell Workflow — Implementation Plan
 
+**Status:** Superseded by Inventory order/gift workflow
+
+The original sell workflow below is retained as historical context for the first sales UI. Current behavior differs in these important ways:
+
+- The **Active Listings** tab has been removed from web navigation.
+- **Inventory** is now the place to attach paid-eligible rows to an order. It still preserves the Ready to List bulk-listing action when the matched filter is active.
+- A **Notifications** tab owns notification history. Sales History no longer fetches or renders notifications.
+- Bulk order recording uses `POST /api/sales/bulk`, not parallel single-sale requests.
+- `tcgplayerOrderId` is required for bulk order recording. `orderStatus` defaults to `confirmed`.
+- Bulk payloads accept optional `buyerName`, `soldAt`, `notes`, and `applyEstimatedExpenses`, plus a `lines` array.
+- Each line is `{ cardId, quantitySold, salePriceCents, lineItemType: 'sale' | 'gift' }`.
+- Paid sale lines require listed or listed-origin `needs_attention` cards and `salePriceCents > 0`.
+- Gift lines require gift-pool cards and `salePriceCents === 0`; they decrement inventory and move cards to `gifted` when quantity reaches 0.
+- Sales, stats, and performance exclude gift rows by default. Invoices and packing slips include gift lines grouped by TCGPlayer Order ID.
+- Existing single-card `POST /api/sales` still works for paid sales and returns `lineItemType: 'sale'`.
+
+## Original implementation record
+
 **Status:** ✅ COMPLETE (2026-04-08)
 - **Commit:** `707afe5`
 - **Tests:** 270 passing, 0 failures

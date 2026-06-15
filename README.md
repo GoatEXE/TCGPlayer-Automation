@@ -7,8 +7,8 @@ Self-hosted dashboard for managing duplicate **Riftbound: League of Legends Trad
 - Imports duplicate cards from TCGPlayer mobile app CSV/TXT exports.
 - Fetches Riftbound market prices from the TCGTracking API.
 - Calculates recommended listing prices and flags cards that need attention.
-- Tracks inventory, active listings, sales, shipments, invoices, and packing slips.
-- Sends optional Telegram notifications for pricing and order events.
+- Tracks inventory, order recording, sales, shipments, invoices, and packing slips.
+- Sends optional Telegram notifications for pricing and order events, with notification history in the dashboard.
 
 ## Runs on
 

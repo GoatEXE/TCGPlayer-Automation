@@ -23,6 +23,8 @@ import type {
   GetSalesResponse,
   SalesStats,
   CreateSaleRequest,
+  CreateBulkOrderRequest,
+  CreateBulkOrderResponse,
   UpdateSaleRequest,
   GetSaleHistoryResponse,
   BatchStatusUpdateRequest,
@@ -238,6 +240,15 @@ class ApiClient {
 
   async createSale(data: CreateSaleRequest): Promise<Sale> {
     return this.request<Sale>('/sales', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createBulkOrder(
+    data: CreateBulkOrderRequest,
+  ): Promise<CreateBulkOrderResponse> {
+    return this.request<CreateBulkOrderResponse>('/sales/bulk', {
       method: 'POST',
       body: JSON.stringify(data),
     });

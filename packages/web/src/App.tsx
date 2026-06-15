@@ -3,6 +3,7 @@ import { api } from './api/client';
 import type {
   Card,
   CardStats,
+  CreateBulkOrderRequest,
   CreateExpenseRequest,
   CreateSaleRequest,
   Expense,
@@ -52,6 +53,7 @@ interface ExpenseFilters {
 
 export function App() {
   const [cards, setCards] = useState<Card[]>([]);
+  const [giftCards, setGiftCards] = useState<Card[]>([]);
   const [stats, setStats] = useState<CardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -136,6 +138,21 @@ export function App() {
       alert(err instanceof Error ? err.message : 'Failed to load cards');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchGiftCards = async () => {
+    try {
+      const response = await api.getCards({
+        status: 'gift',
+        page: 1,
+        limit: 200,
+        sortField: 'productName',
+        sortDirection: 'asc',
+      });
+      setGiftCards(response.cards);
+    } catch (err) {
+      console.error('Failed to fetch gift cards:', err);
     }
   };
 
@@ -270,18 +287,28 @@ export function App() {
   };
 
   useEffect(() => {
-    if (activeView === 'inventory' || activeView === 'active-listings') {
+    if (activeView === 'inventory') {
       fetchCards();
     }
   }, [activeView, statusFilter, searchQuery, currentPage, cardSortField, cardSortDirection]);
+
+  useEffect(() => {
+    if (activeView === 'inventory') {
+      fetchGiftCards();
+    }
+  }, [activeView]);
 
   useEffect(() => {
     if (activeView !== 'sales-history') return;
     fetchSales();
     fetchSalesStats();
     fetchPipeline();
-    fetchNotifications();
   }, [activeView, salesPage, salesSearch, salesStatusFilter]);
+
+  useEffect(() => {
+    if (activeView !== 'notifications') return;
+    fetchNotifications();
+  }, [activeView]);
 
   useEffect(() => {
     if (activeView !== 'performance') return;
@@ -332,6 +359,7 @@ export function App() {
   const handleImportComplete = () => {
     fetchStats();
     fetchCards();
+    fetchGiftCards();
   };
 
   const handleReprice = async (id: number) => {
@@ -459,18 +487,11 @@ export function App() {
     fetchStats();
   };
 
-  const handleBulkSell = async (salesData: CreateSaleRequest[]) => {
-    const results = await Promise.allSettled(
-      salesData.map((data) => api.createSale(data)),
-    );
-    const failures = results.filter((r) => r.status === 'rejected');
-    if (failures.length > 0) {
-      throw new Error(
-        `${results.length - failures.length} of ${results.length} sales recorded. ${failures.length} failed.`,
-      );
-    }
+  const handleBulkSell = async (order: CreateBulkOrderRequest) => {
+    await api.createBulkOrder(order);
     fetchCards();
     fetchStats();
+    fetchGiftCards();
   };
 
   const handleCreateExpense = async (data: CreateExpenseRequest) => {
@@ -615,6 +636,12 @@ export function App() {
       return;
     }
 
+    if (view === 'notifications') {
+      setIsExpenseModalOpen(false);
+      setSelectedExpenseForEdit(null);
+      return;
+    }
+
     if (view === 'performance') {
       setExpensePage(1);
       setIsExpenseModalOpen(false);
@@ -622,7 +649,7 @@ export function App() {
       return;
     }
 
-    setStatusFilter(view === 'active-listings' ? 'listed' : 'all');
+    setStatusFilter('all');
     setSearchQuery('');
     setCurrentPage(1);
     setIsExpenseModalOpen(false);
@@ -725,12 +752,6 @@ export function App() {
               onSelectStatus={handlePipelineSelect}
             />
 
-            <NotificationHistoryPanel
-              events={notificationEvents}
-              loading={notificationsLoading}
-              error={notificationsError}
-            />
-
             {selectedSaleIds.size > 0 && (
               <div className="selection-actions">
                 <span>
@@ -809,6 +830,17 @@ export function App() {
               totalItems={salesTotalItems}
               itemsPerPage={itemsPerPage}
               onPageChange={setSalesPage}
+            />
+          </section>
+        ) : activeView === 'notifications' ? (
+          <section className="cards-section">
+            <div className="section-header">
+              <h2>Notifications</h2>
+            </div>
+            <NotificationHistoryPanel
+              events={notificationEvents}
+              loading={notificationsLoading}
+              error={notificationsError}
             />
           </section>
         ) : activeView === 'performance' ? (
@@ -974,11 +1006,7 @@ export function App() {
         ) : (
           <section className="cards-section">
             <div className="section-header">
-              <h2>
-                {activeView === 'active-listings'
-                  ? 'Active Listings'
-                  : 'Card Inventory'}
-              </h2>
+              <h2>Card Inventory</h2>
               <div className="button-group">
                 <button
                   onClick={handleFetchPrices}
@@ -1037,7 +1065,10 @@ export function App() {
               onUpdateCard={handleUpdateCard}
               onRecordSale={handleRecordSale}
               onBulkSell={handleBulkSell}
-              enableSellFlow={activeView === 'active-listings'}
+              giftCards={giftCards}
+              onPrepareBulkSell={fetchGiftCards}
+              bulkMode={statusFilter === 'matched' ? 'list' : 'sell'}
+              enableSellFlow
               defaultApplyExpenses={
                 expenseSettings?.autoRecordSaleExpenses ?? false
               }

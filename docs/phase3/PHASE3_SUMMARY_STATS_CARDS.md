@@ -13,9 +13,9 @@ Add dashboard summary cards for:
 Added `GET /api/sales/stats` in `packages/server/src/routes/sales.ts`.
 
 Response fields:
-- `totalSales` — total number of sales rows
-- `totalRevenueCents` — sum of `sale_price_cents`
-- `averageSaleCents` — rounded average of `sale_price_cents`
+- `totalSales` — total number of paid sale rows; gift rows are excluded by default
+- `totalRevenueCents` — sum of paid sale `sale_price_cents`; gift rows have zero revenue and are excluded by default
+- `averageSaleCents` — rounded average of paid sale `sale_price_cents`
 - `activeListingCount` — sum of `cards.quantity` where card status is `listed`
 - `totalListedCount` — currently same quantity semantics as `activeListingCount`
 

@@ -1,6 +1,6 @@
 export type ViewMode =
   | 'inventory'
-  | 'active-listings'
+  | 'notifications'
   | 'sales-history'
   | 'performance';
 
@@ -11,7 +11,7 @@ interface ViewTabsProps {
 
 const tabs: { value: ViewMode; label: string }[] = [
   { value: 'inventory', label: '📦 Inventory' },
-  { value: 'active-listings', label: '🏷️ Active Listings' },
+  { value: 'notifications', label: '🔔 Notifications' },
   { value: 'sales-history', label: '💰 Sales History' },
   { value: 'performance', label: '📊 Performance' },
 ];

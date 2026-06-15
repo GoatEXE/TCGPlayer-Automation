@@ -2,6 +2,9 @@
 
 Date: 2026-04-01
 
+## Current behavior
+Sales History is sales-focused only. Notification history is no longer fetched or rendered here; it lives in the Notifications tab. Bulk order recording is initiated from Inventory and uses `POST /api/sales/bulk` when an order contains multiple paid or gift lines.
+
 ## Summary
 Implemented an end-to-end Sales History slice with backend sales APIs and a new dashboard view for browsing completed sales.
 
@@ -11,7 +14,8 @@ Implemented an end-to-end Sales History slice with backend sales APIs and a new 
 - Added `sales` table and `order_status` enum.
 - Extended `card_status` enum with `sold`.
 - Added routes under `/api/sales`:
-  - `POST /api/sales` — record sale, decrement card quantity, set `sold` when quantity reaches 0.
+  - `POST /api/sales` — record a single paid sale, decrement card quantity, set `sold` when quantity reaches 0, and return `lineItemType: 'sale'`.
+  - `POST /api/sales/bulk` — record a TCGPlayer order with paid and gift lines; gift lines decrement gift-pool inventory and move depleted cards to `gifted`.
   - `GET /api/sales` — paginated sales list with filters and card display fields.
   - `GET /api/sales/:id` — sale detail.
   - `PATCH /api/sales/:id` — update sale metadata/status.

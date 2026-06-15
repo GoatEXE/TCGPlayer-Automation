@@ -256,27 +256,24 @@ Update settings with integer validation (`>= 0`, bps ranges, etc.).
 
 ## Sales-Flow Integration Design
 
-Update `POST /api/sales` in `packages/server/src/routes/sales.ts`:
+`POST /api/sales` supports the single paid-sale path and accepts optional `applyEstimatedExpenses?: boolean`.
 
-- Add optional body field: `applyEstimatedExpenses?: boolean`
-- Determine effective behavior:
-  - If field provided, it overrides global setting for that request
-  - Else fallback to `expense_settings.autoRecordSaleExpenses`
-- If enabled, call helper in `lib/expenses` to create estimate entries:
-  - shipping (order-level fixed)
-  - supplies (order-level fixed)
-  - marketplace fee % (line-level)
-  - transaction fee % (line-level)
-  - transaction flat fee (order-level fixed)
+Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, optional `applyEstimatedExpenses`, and `lines` entries. Paid lines use `lineItemType: 'sale'` and positive revenue. Gift lines use `lineItemType: 'gift'` and zero revenue.
+
+When estimated expenses are enabled:
+
+- shipping, supplies, and flat transaction fees are order-level fixed expenses
+- marketplace and transaction percentage fees are line-level estimates for paid sale lines
+- gift lines are excluded from sales, stats, and performance by default, so they should not create revenue-based percentage fee estimates
 
 ### Dedupe behavior for bulk sale flow
 
-Bulk sell currently sends multiple `POST /api/sales` in parallel. Order-level fixed estimates must be deduped by DB unique index + `onConflictDoNothing`.
+Bulk order recording is a single backend request. Order-level fixed estimates are tied to the TCGPlayer Order ID and must still be deduped by DB unique index + `onConflictDoNothing` to protect retries.
 
 ### Practical limitations (documented)
 
-- If no `tcgplayerOrderId` is provided, order-level fixed costs are applied per sale line (conservative over-estimate).
-- Transaction % is estimated against sale subtotal (shipping/tax unknown).
+- Single-sale requests without `tcgplayerOrderId` cannot dedupe order-level fixed costs across an order.
+- Transaction % is estimated against paid sale subtotal only (shipping/tax unknown).
 
 ---
 
