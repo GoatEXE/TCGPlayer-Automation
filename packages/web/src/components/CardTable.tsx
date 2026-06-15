@@ -26,6 +26,19 @@ interface CardTableProps {
 export type SortField = keyof Card | null;
 export type SortDirection = 'asc' | 'desc';
 
+const CONDITION_OPTIONS = [
+  'Near Mint',
+  'Lightly Played',
+  'Moderately Played',
+  'Heavily Played',
+  'Damaged',
+  'Near Mint Foil',
+  'Lightly Played Foil',
+  'Moderately Played Foil',
+  'Heavily Played Foil',
+  'Damaged Foil',
+];
+
 function isValidPhotoUrl(photoUrl: string | null | undefined) {
   if (!photoUrl) return false;
 
@@ -72,6 +85,11 @@ export function CardTable({
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listingEditValue, setListingEditValue] = useState<string>('');
   const [recordSaleCardId, setRecordSaleCardId] = useState<number | null>(null);
+  const [editDetailsCardId, setEditDetailsCardId] = useState<number | null>(null);
+  const [editDetailsQuantity, setEditDetailsQuantity] = useState<string>('');
+  const [editDetailsCondition, setEditDetailsCondition] = useState<string>('');
+  const [editDetailsSaving, setEditDetailsSaving] = useState(false);
+  const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
@@ -163,6 +181,44 @@ export function CardTable({
       await onUnlist(id);
     } finally {
       setUnlistingId(null);
+    }
+  };
+
+  const handleOpenEditDetails = (card: Card) => {
+    setEditDetailsCardId(card.id);
+    setEditDetailsQuantity(String(card.quantity));
+    setEditDetailsCondition(card.condition);
+    setEditDetailsError(null);
+  };
+
+  const handleCloseEditDetails = () => {
+    if (editDetailsSaving) return;
+    setEditDetailsCardId(null);
+    setEditDetailsError(null);
+  };
+
+  const handleSaveEditDetails = async (id: number) => {
+    setEditDetailsError(null);
+    const quantity = Number(editDetailsQuantity);
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      setEditDetailsError('Quantity must be a non-negative whole number');
+      return;
+    }
+
+    const condition = editDetailsCondition.trim();
+    if (!condition) {
+      setEditDetailsError('Condition is required');
+      return;
+    }
+
+    setEditDetailsSaving(true);
+    try {
+      await onUpdateCard(id, { quantity, condition } as Partial<Card>);
+      setEditDetailsCardId(null);
+    } catch (err) {
+      setEditDetailsError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setEditDetailsSaving(false);
     }
   };
 
@@ -491,6 +547,16 @@ export function CardTable({
                     </button>
                     {openActionMenuId === card.id && (
                       <div className="action-menu" role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setOpenActionMenuId(null);
+                            handleOpenEditDetails(card);
+                          }}
+                        >
+                          Edit details
+                        </button>
                         {isListed ? (
                           <>
                             <button
@@ -590,6 +656,101 @@ export function CardTable({
           </div>
         </div>
       )}
+      {editDetailsCardId !== null && (() => {
+        const card = cards.find((c) => c.id === editDetailsCardId);
+        if (!card) return null;
+        const conditionOptions = CONDITION_OPTIONS.includes(card.condition)
+          ? CONDITION_OPTIONS
+          : [card.condition, ...CONDITION_OPTIONS];
+        return (
+          <div
+            className="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Edit details for ${card.title || card.productName}`}
+            onClick={handleCloseEditDetails}
+          >
+            <form
+              className="modal-content edit-details-modal"
+              onClick={(event) => event.stopPropagation()}
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveEditDetails(card.id);
+              }}
+            >
+              <div className="modal-header">
+                <h2>Edit details</h2>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={handleCloseEditDetails}
+                  aria-label="Close"
+                  disabled={editDetailsSaving}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="edit-details-body">
+                <p className="edit-details-card-name">
+                  {card.title || card.productName}
+                </p>
+                <label className="edit-details-field">
+                  <span>Quantity</span>
+                  <input
+                    type="number"
+                    value={editDetailsQuantity}
+                    onChange={(event) => {
+                      setEditDetailsQuantity(event.target.value);
+                      setEditDetailsError(null);
+                    }}
+                    step="1"
+                    disabled={editDetailsSaving}
+                  />
+                </label>
+                <label className="edit-details-field">
+                  <span>Condition</span>
+                  <select
+                    value={editDetailsCondition}
+                    onChange={(event) => {
+                      setEditDetailsCondition(event.target.value);
+                      setEditDetailsError(null);
+                    }}
+                    disabled={editDetailsSaving}
+                  >
+                    {conditionOptions.map((condition) => (
+                      <option key={condition} value={condition}>
+                        {condition}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {editDetailsError && (
+                  <div className="edit-details-error" role="alert">
+                    {editDetailsError}
+                  </div>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={handleCloseEditDetails}
+                  disabled={editDetailsSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button-primary"
+                  disabled={editDetailsSaving}
+                >
+                  {editDetailsSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
       {showReviewModal && (
         <ReviewListModal
           cards={sortedCards.filter((card) => selectedIds.has(card.id))}

@@ -428,6 +428,29 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         }
       }
 
+      if (updates.quantity !== undefined) {
+        if (
+          !Number.isFinite(updates.quantity) ||
+          !Number.isInteger(updates.quantity) ||
+          updates.quantity < 0
+        ) {
+          return reply.code(400).send({
+            error: 'quantity must be a non-negative integer',
+          });
+        }
+      }
+
+      if (updates.condition !== undefined) {
+        const trimmedCondition = updates.condition.trim();
+        if (trimmedCondition === '') {
+          return reply.code(400).send({
+            error: 'condition must be a non-empty string',
+          });
+        }
+
+        updateData.condition = trimmedCondition;
+      }
+
       // Convert listingPrice to string if provided
       if (updates.listingPrice !== undefined) {
         if (

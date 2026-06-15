@@ -610,6 +610,97 @@ describe('PATCH /api/cards/:id', () => {
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
 
+  it('should persist quantity when set', async () => {
+    const mockUpdatedCard = {
+      id: 1,
+      productName: 'Quantity Card',
+      quantity: 7,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([mockUpdatedCard]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        quantity: 7,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        quantity: 7,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: 1,
+      quantity: 7,
+    });
+  });
+
+  it('should persist trimmed condition updates for foil corrections', async () => {
+    const mockUpdatedCard = {
+      id: 1,
+      productName: 'Foil Card',
+      tcgplayerId: 12345,
+      condition: 'Near Mint Foil',
+      listingPrice: '2.00',
+      status: 'listed' as const,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([mockUpdatedCard]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        condition: '  Near Mint Foil  ',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        condition: 'Near Mint Foil',
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(updateArgs.quantity).toBeUndefined();
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: 1,
+      tcgplayerId: 12345,
+      condition: 'Near Mint Foil',
+      listingPrice: '2.00',
+      status: 'listed',
+    });
+  });
+
   it('should persist floorPriceCents when set', async () => {
     const mockUpdatedCard = {
       id: 1,
@@ -692,6 +783,60 @@ describe('PATCH /api/cards/:id', () => {
       id: 1,
       floorPriceCents: null,
     });
+  });
+
+  it('should return 400 for negative quantity', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        quantity: -1,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual(
+      expect.objectContaining({
+        error: 'quantity must be a non-negative integer',
+      }),
+    );
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 for non-integer quantity', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        quantity: 1.5,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual(
+      expect.objectContaining({
+        error: 'quantity must be a non-negative integer',
+      }),
+    );
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 for blank condition', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: {
+        condition: '   ',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual(
+      expect.objectContaining({
+        error: 'condition must be a non-empty string',
+      }),
+    );
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it('should return 400 for negative floorPriceCents', async () => {

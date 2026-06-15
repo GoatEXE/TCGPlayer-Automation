@@ -375,6 +375,72 @@ describe('CardTable price history button', () => {
 });
 
 describe('CardTable row actions menu', () => {
+  it('opens Edit details and submits quantity and condition updates', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(
+      makeCard({ id: 1, quantity: 4, condition: 'Near Mint Foil' }),
+    );
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, productName: 'Editable Card' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for editable card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /edit details/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /edit details for editable card/i });
+    await user.clear(within(dialog).getByLabelText(/quantity/i));
+    await user.type(within(dialog).getByLabelText(/quantity/i), '4');
+    await user.selectOptions(
+      within(dialog).getByLabelText(/condition/i),
+      'Near Mint Foil',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, {
+        quantity: 4,
+        condition: 'Near Mint Foil',
+      });
+    });
+  });
+
+  it('blocks invalid quantity in Edit details', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, productName: 'Editable Card' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for editable card/i }));
+    await user.click(screen.getByRole('menuitem', { name: /edit details/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /edit details for editable card/i });
+    await user.clear(within(dialog).getByLabelText(/quantity/i));
+    await user.type(within(dialog).getByLabelText(/quantity/i), '-1');
+    await user.click(within(dialog).getByRole('button', { name: /save/i }));
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      /quantity must be a non-negative whole number/i,
+    );
+    expect(onUpdateCard).not.toHaveBeenCalled();
+  });
+
   it('triggers Re-price from the row actions menu', async () => {
     const user = userEvent.setup();
     const onReprice = vi.fn().mockResolvedValue(undefined);

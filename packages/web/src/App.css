@@ -1419,6 +1419,54 @@ body {
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
 }
 
+.edit-details-modal {
+  max-width: 420px;
+}
+
+.edit-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+}
+
+.edit-details-card-name {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.edit-details-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.edit-details-field input,
+.edit-details-field select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.edit-details-field input:focus,
+.edit-details-field select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
+
+.edit-details-error {
+  color: var(--color-error);
+  font-size: 0.85rem;
+}
+
 /* ───── Notification History Panel ───── */
 .notification-history-panel {
   background: var(--color-bg);

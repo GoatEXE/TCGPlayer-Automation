@@ -566,6 +566,50 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     ]);
   });
 
+  it('uses foil pricing on the next price check when condition includes foil', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 17,
+        tcgProductId: 123,
+        productName: 'Foil Correction Card',
+        condition: 'Near Mint Foil',
+        marketPrice: '0.60',
+        listingPrice: '0.55',
+        floorPriceCents: null,
+        status: 'matched',
+        attentionReason: null,
+        notes: null,
+      },
+    ]);
+    mockGetPricing.mockResolvedValueOnce({
+      prices: {
+        '123': {
+          tcg: {
+            Normal: { market: 0.51 },
+            Foil: { market: 1.25 },
+          },
+        },
+      },
+    });
+    calculatePrice.mockReturnValue({
+      listingPrice: 1.23,
+      status: 'matched',
+      reason: 'foil pricing',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 602 }]);
+
+    await runPriceCheck({ source: 'manual' });
+
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 1.25 });
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketPrice: '1.25',
+        listingPrice: '1.23',
+        status: 'matched',
+      }),
+    );
+  });
+
   it('applies a card floor price for non-listed cards when calculated listing price remains non-null', async () => {
     dbFrom.mockResolvedValueOnce([
       {
