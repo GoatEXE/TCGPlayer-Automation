@@ -1,4 +1,4 @@
-import type { ImportResult, ImportedCard } from './types';
+import type { ImportResult, ImportedCard } from './types.js';
 
 function normalizeHeader(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');

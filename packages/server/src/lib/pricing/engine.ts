@@ -1,4 +1,4 @@
-import type { PricingInput, PricingResult } from './types';
+import type { PricingInput, PricingResult } from './types.js';
 
 const DEFAULT_MIN_LISTING_PRICE_CENTS = 5;
 const DEFAULT_PRICE_MULTIPLIER = 0.98;

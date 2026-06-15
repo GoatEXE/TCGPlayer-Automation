@@ -1,4 +1,4 @@
-import type { ImportResult, ImportedCard } from './types';
+import type { ImportResult, ImportedCard } from './types.js';
 
 /**
  * Parse TCGPlayer mobile app TXT export format
