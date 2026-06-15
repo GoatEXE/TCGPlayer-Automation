@@ -2,7 +2,7 @@ import type {
   TCGTrackingSet,
   TCGTrackingSetsResponse,
   TCGTrackingPriceResponse,
-} from './types';
+} from './types.js';
 
 const DEFAULT_BASE_URL = 'https://tcgtracking.com/tcgapi/v1';
 const RIFTBOUND_CATEGORY_ID = 89;
