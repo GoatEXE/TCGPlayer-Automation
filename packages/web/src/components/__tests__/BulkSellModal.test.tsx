@@ -60,58 +60,23 @@ describe('BulkSellModal', () => {
     expect(screen.getByLabelText(/Notes/i)).toBeTruthy();
   });
 
-  it('renders apply estimated expenses checkbox defaulting to true', () => {
+  it('shows shipping collected and hides deprecated estimated-expenses checkbox', () => {
     render(
       <BulkSellModal
         cards={mockCards}
         onSubmit={onSubmit}
         onClose={onClose}
-        defaultApplyExpenses
+        defaultShippingCollectedCents={149}
       />,
     );
 
-    const checkbox = screen.getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
-  });
-
-  it('renders apply estimated expenses checkbox defaulting to false', () => {
-    render(
-      <BulkSellModal
-        cards={mockCards}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses={false}
-      />,
-    );
-
-    const checkbox = screen.getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
-  });
-
-  it('allows user to toggle apply estimated expenses checkbox', async () => {
-    const user = userEvent.setup();
-    render(
-      <BulkSellModal
-        cards={mockCards}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses
-      />,
-    );
-
-    const checkbox = screen.getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-
-    expect(checkbox.checked).toBe(true);
-    await user.click(checkbox);
-    expect(checkbox.checked).toBe(false);
-    await user.click(checkbox);
-    expect(checkbox.checked).toBe(true);
+    const shippingInput = screen.getByLabelText(
+      /shipping collected/i,
+    ) as HTMLInputElement;
+    expect(shippingInput.value).toBe('1.49');
+    expect(
+      screen.queryByRole('checkbox', { name: /apply estimated expenses/i }),
+    ).toBeNull();
   });
 
   it('defaults per-card quantity to card.quantity', () => {
@@ -236,7 +201,7 @@ describe('BulkSellModal', () => {
         cards={mockCards}
         onSubmit={onSubmit}
         onClose={onClose}
-        defaultApplyExpenses
+        defaultShippingCollectedCents={149}
       />,
     );
 
@@ -254,7 +219,7 @@ describe('BulkSellModal', () => {
         buyerName: 'Alice',
         tcgplayerOrderId: 'ORD-99',
         notes: 'Bulk order',
-        applyEstimatedExpenses: true,
+        shippingCollectedCents: 149,
         orderStatus: 'confirmed',
       });
       expect(order.lines).toEqual([
@@ -265,30 +230,35 @@ describe('BulkSellModal', () => {
     });
   });
 
-  it('submits applyEstimatedExpenses=false for each sale when unchecked', async () => {
+  it('submits edited shipping collected cents', async () => {
     const user = userEvent.setup();
     onSubmit.mockResolvedValueOnce(undefined);
 
     render(
-      <BulkSellModal
-        cards={mockCards}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses
-      />,
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
     );
 
-    await user.click(
-      screen.getByRole('checkbox', { name: /apply estimated expenses/i }),
-    );
+    await user.clear(screen.getByLabelText(/shipping collected/i));
+    await user.type(screen.getByLabelText(/shipping collected/i), '2.49');
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
     await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledTimes(1);
-      const order = onSubmit.mock.calls[0][0];
-      expect(order.applyEstimatedExpenses).toBe(false);
+      expect(onSubmit.mock.calls[0][0].shippingCollectedCents).toBe(249);
     });
+  });
+
+  it('validates shipping collected as non-negative dollars', async () => {
+    const user = userEvent.setup();
+    render(<BulkSellModal cards={[mockCards[0]]} onSubmit={onSubmit} onClose={onClose} />);
+
+    await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
+    await user.clear(screen.getByLabelText(/shipping collected/i));
+    await user.type(screen.getByLabelText(/shipping collected/i), '-1');
+    await user.click(screen.getByRole('button', { name: /attach to order/i }));
+
+    expect(screen.getByRole('alert').textContent).toMatch(/shipping collected/i);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('requires order ID for all bulk orders', async () => {

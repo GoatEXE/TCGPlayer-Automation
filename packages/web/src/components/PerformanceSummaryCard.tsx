@@ -44,13 +44,13 @@ export function PerformanceSummaryCard({ summary }: PerformanceSummaryCardProps)
 
       <div className="price-check-body performance-summary-grid">
         <span className="stat-item">
-          <strong>{formatCents(summary.revenueCents)}</strong> Revenue
+          <strong>{formatCents(summary.revenueCents)}</strong> Revenue (product + shipping collected)
         </span>
         <span className="stat-item">
           <strong>{formatCents(summary.expensesCents)}</strong> Expenses
         </span>
         <span className="stat-item">
-          <strong>{formatCents(summary.netProfitCents)}</strong> Net Profit
+          <strong>{formatCents(summary.netProfitCents)}</strong> Net Profit after fees + manual expenses
         </span>
         <span className="stat-item">
           Margin <strong>{formatMargin(summary.marginPercent)}</strong>
@@ -64,6 +64,9 @@ export function PerformanceSummaryCard({ summary }: PerformanceSummaryCardProps)
       </div>
 
       <div className="price-check-body performance-summary-split">
+        <span className="stat-item">
+          Estimated TCGplayer Fees <strong>{formatCents(summary.estimatedTcgplayerFeesCents ?? 0)}</strong>
+        </span>
         <span className="stat-item">
           Estimated Expenses <strong>{formatCents(summary.estimatedExpensesCents)}</strong>
         </span>

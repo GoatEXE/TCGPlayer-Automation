@@ -18,7 +18,7 @@ import {
 } from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
-import { createSaleAutoEstimates, getOrCreateExpenseSettings } from '../lib/expenses/index.js';
+import { getOrCreateExpenseSettings } from '../lib/expenses/index.js';
 import { sendSaleConfirmedAlert } from '../lib/notifications/telegram.js';
 import { isValidTransition } from '../lib/sales/status-machine.js';
 import { createShipmentOnConfirm } from '../lib/shipments/index.js';
@@ -36,6 +36,7 @@ interface RecordSaleBody {
   cardId: number;
   quantitySold: number;
   salePriceCents: number;
+  shippingCollectedCents?: number;
   buyerName?: string | null;
   tcgplayerOrderId?: string | null;
   orderStatus?: OrderStatus;
@@ -54,6 +55,7 @@ interface BulkSaleLineBody {
 interface BulkRecordSaleBody {
   tcgplayerOrderId: string;
   lines: BulkSaleLineBody[];
+  shippingCollectedCents?: number;
   buyerName?: string | null;
   orderStatus?: OrderStatus;
   soldAt?: string;
@@ -67,6 +69,7 @@ interface UpdateSaleBody {
   orderStatus?: OrderStatus;
   soldAt?: string;
   notes?: string | null;
+  shippingCollectedCents?: number;
 }
 
 interface BatchUpdateStatusBody {
@@ -107,6 +110,19 @@ function isSaleLineItemType(value: unknown): value is SaleLineItemType {
   return validSaleLineItemTypes.includes(value as SaleLineItemType);
 }
 
+function isNonNegativeInteger(value: unknown) {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function normalizeOptionalOrderId(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 function canRecordPaidSaleForCard(card: {
   status: string;
   attentionReason: string | null;
@@ -142,6 +158,44 @@ function getNextPaidCardStatus(card: {
 
 function getNextGiftCardStatus(remainingQuantity: number) {
   return remainingQuantity === 0 ? 'gifted' : 'gift';
+}
+
+function buildPaidOrderSummaries(
+  saleRows: Array<{
+    id: number;
+    tcgplayerOrderId: string | null;
+    salePriceCents: number;
+    shippingCollectedCents: number;
+  }>,
+) {
+  const orders = new Map<
+    string,
+    {
+      productRevenueCents: number;
+      shippingCollectedCents: number;
+    }
+  >();
+
+  for (const sale of saleRows) {
+    const key = sale.tcgplayerOrderId ?? `sale:${sale.id}`;
+    const existing = orders.get(key);
+
+    if (existing) {
+      existing.productRevenueCents += sale.salePriceCents;
+      existing.shippingCollectedCents = Math.max(
+        existing.shippingCollectedCents,
+        sale.shippingCollectedCents,
+      );
+      continue;
+    }
+
+    orders.set(key, {
+      productRevenueCents: sale.salePriceCents,
+      shippingCollectedCents: sale.shippingCollectedCents,
+    });
+  }
+
+  return [...orders.values()];
 }
 
 function getRestoredCardStateForCancelledLine(params: {
@@ -200,6 +254,11 @@ export async function salesRoutes(fastify: FastifyInstance) {
     return card?.productName ?? null;
   }
 
+  async function getDefaultShippingCollectedCents() {
+    const settings = await getOrCreateExpenseSettings(db);
+    return settings.defaultShippingCollectedCents;
+  }
+
   function serializeSaleResponse(
     sale: {
       id: number;
@@ -208,6 +267,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
       quantitySold: number;
       lineItemType?: SaleLineItemType | null;
       salePriceCents: number;
+      shippingCollectedCents?: number | null;
       buyerName: string | null;
       orderStatus: OrderStatus;
       soldAt: Date;
@@ -220,6 +280,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
     return {
       ...sale,
       lineItemType: sale.lineItemType ?? 'sale',
+      shippingCollectedCents: sale.shippingCollectedCents ?? 0,
       cardProductName: card?.productName ?? null,
       cardSetName: card?.setName ?? null,
     };
@@ -267,6 +328,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
     const {
       tcgplayerOrderId,
       lines,
+      shippingCollectedCents,
       buyerName,
       orderStatus = 'confirmed',
       soldAt,
@@ -274,7 +336,8 @@ export async function salesRoutes(fastify: FastifyInstance) {
       applyEstimatedExpenses,
     } = request.body;
 
-    if (typeof tcgplayerOrderId !== 'string' || tcgplayerOrderId.trim() === '') {
+    const normalizedOrderId = normalizeOptionalOrderId(tcgplayerOrderId);
+    if (!normalizedOrderId) {
       return reply.code(400).send({
         error: 'tcgplayerOrderId is required for bulk order recording',
       });
@@ -299,12 +362,23 @@ export async function salesRoutes(fastify: FastifyInstance) {
         .send({ error: 'applyEstimatedExpenses must be a boolean' });
     }
 
+    if (
+      shippingCollectedCents !== undefined &&
+      !isNonNegativeInteger(shippingCollectedCents)
+    ) {
+      return reply.code(400).send({
+        error: 'shippingCollectedCents must be a non-negative integer',
+      });
+    }
+
     const soldAtDate = soldAt ? parseDate(soldAt) : new Date();
     if (!soldAtDate) {
       return reply.code(400).send({ error: 'Invalid soldAt date' });
     }
 
     try {
+      const resolvedShippingCollectedCents =
+        shippingCollectedCents ?? (await getDefaultShippingCollectedCents());
       const insertedSales: Array<{
         id: number;
         cardId: number | null;
@@ -312,6 +386,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
         quantitySold: number;
         lineItemType: SaleLineItemType;
         salePriceCents: number;
+        shippingCollectedCents: number;
         buyerName: string | null;
         orderStatus: OrderStatus;
         soldAt: Date;
@@ -428,8 +503,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
               quantitySold: line.quantitySold,
               lineItemType: line.lineItemType,
               salePriceCents: line.salePriceCents,
+              shippingCollectedCents: resolvedShippingCollectedCents,
               buyerName: buyerName ?? null,
-              tcgplayerOrderId: tcgplayerOrderId.trim(),
+              tcgplayerOrderId: normalizedOrderId,
               orderStatus,
               soldAt: soldAtDate,
               notes: notes ?? null,
@@ -461,29 +537,6 @@ export async function salesRoutes(fastify: FastifyInstance) {
           );
         }
       });
-
-      const expenseSettings =
-        applyEstimatedExpenses === false
-          ? null
-          : await getOrCreateExpenseSettings(db);
-      const shouldApplyEstimatedExpenses =
-        applyEstimatedExpenses ?? expenseSettings?.autoRecordSaleExpenses ?? false;
-
-      if (shouldApplyEstimatedExpenses && expenseSettings) {
-        for (const sale of insertedSales) {
-          if (sale.lineItemType !== 'sale') {
-            continue;
-          }
-
-          await createSaleAutoEstimates(db, {
-            saleId: sale.id,
-            salePriceCents: sale.salePriceCents,
-            soldAt: sale.soldAt,
-            tcgplayerOrderId: sale.tcgplayerOrderId,
-            settings: expenseSettings,
-          });
-        }
-      }
 
       if (orderStatus === 'confirmed') {
         for (const sale of insertedSales) {
@@ -522,6 +575,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
       cardId,
       quantitySold,
       salePriceCents,
+      shippingCollectedCents,
       buyerName,
       tcgplayerOrderId,
       orderStatus = 'pending',
@@ -561,12 +615,26 @@ export async function salesRoutes(fastify: FastifyInstance) {
         .send({ error: 'applyEstimatedExpenses must be a boolean' });
     }
 
+    if (
+      shippingCollectedCents !== undefined &&
+      !isNonNegativeInteger(shippingCollectedCents)
+    ) {
+      return reply.code(400).send({
+        error: 'shippingCollectedCents must be a non-negative integer',
+      });
+    }
+
     const soldAtDate = soldAt ? parseDate(soldAt) : new Date();
     if (!soldAtDate) {
       return reply.code(400).send({ error: 'Invalid soldAt date' });
     }
 
     try {
+      const normalizedOrderId = normalizeOptionalOrderId(tcgplayerOrderId);
+      const resolvedShippingCollectedCents =
+        shippingCollectedCents ??
+        (normalizedOrderId ? await getDefaultShippingCollectedCents() : 0);
+
       const [card] = await db
         .select()
         .from(cards)
@@ -614,8 +682,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
           quantitySold,
           lineItemType: 'sale',
           salePriceCents,
+          shippingCollectedCents: resolvedShippingCollectedCents,
           buyerName: buyerName ?? null,
-          tcgplayerOrderId: tcgplayerOrderId ?? null,
+          tcgplayerOrderId: normalizedOrderId,
           orderStatus,
           soldAt: soldAtDate,
           notes: notes ?? null,
@@ -629,23 +698,6 @@ export async function salesRoutes(fastify: FastifyInstance) {
         newStatus: orderStatus,
         source: 'manual',
       });
-
-      const expenseSettings =
-        applyEstimatedExpenses === false
-          ? null
-          : await getOrCreateExpenseSettings(db);
-      const shouldApplyEstimatedExpenses =
-        applyEstimatedExpenses ?? expenseSettings?.autoRecordSaleExpenses ?? false;
-
-      if (shouldApplyEstimatedExpenses && expenseSettings) {
-        await createSaleAutoEstimates(db, {
-          saleId: sale.id,
-          salePriceCents: sale.salePriceCents,
-          soldAt: sale.soldAt,
-          tcgplayerOrderId: sale.tcgplayerOrderId,
-          settings: expenseSettings,
-        });
-      }
 
       if (orderStatus === 'confirmed') {
         await createShipmentOnConfirm(db, sale.id);
@@ -782,14 +834,25 @@ export async function salesRoutes(fastify: FastifyInstance) {
   // GET /stats - Dashboard summary statistics
   fastify.get('/stats', async (request, reply) => {
     try {
-      const [salesSummary] = await db
+      const saleRows = await db
         .select({
-          totalSales: sql<number>`count(*)::int`,
-          totalRevenueCents: sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
-          averageSaleCents: sql<number>`coalesce(round(avg(${sales.salePriceCents})), 0)::int`,
+          id: sales.id,
+          tcgplayerOrderId: sales.tcgplayerOrderId,
+          salePriceCents: sales.salePriceCents,
+          shippingCollectedCents: sales.shippingCollectedCents,
         })
         .from(sales)
         .where(eq(sales.lineItemType, 'sale'));
+
+      const paidOrders = buildPaidOrderSummaries(saleRows);
+      const totalSales = saleRows.length;
+      const totalRevenueCents = paidOrders.reduce(
+        (sum, order) =>
+          sum + order.productRevenueCents + order.shippingCollectedCents,
+        0,
+      );
+      const averageSaleCents =
+        totalSales > 0 ? Math.round(totalRevenueCents / totalSales) : 0;
 
       const [listedSummary] = await db
         .select({
@@ -801,9 +864,9 @@ export async function salesRoutes(fastify: FastifyInstance) {
       const activeListingCount = listedSummary?.activeListingCount ?? 0;
 
       return reply.send({
-        totalSales: salesSummary?.totalSales ?? 0,
-        totalRevenueCents: salesSummary?.totalRevenueCents ?? 0,
-        averageSaleCents: salesSummary?.averageSaleCents ?? 0,
+        totalSales,
+        totalRevenueCents,
+        averageSaleCents,
         activeListingCount,
         // For now, total listed count uses the same quantity-based semantics as active listings.
         totalListedCount: activeListingCount,
@@ -1043,11 +1106,26 @@ export async function salesRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({ error: 'Invalid sale id' });
       }
 
-      const { buyerName, tcgplayerOrderId, orderStatus, soldAt, notes } =
-        request.body;
+      const {
+        buyerName,
+        tcgplayerOrderId,
+        orderStatus,
+        soldAt,
+        notes,
+        shippingCollectedCents,
+      } = request.body;
 
       if (orderStatus && !validOrderStatuses.includes(orderStatus)) {
         return reply.code(400).send({ error: 'Invalid orderStatus' });
+      }
+
+      if (
+        shippingCollectedCents !== undefined &&
+        !isNonNegativeInteger(shippingCollectedCents)
+      ) {
+        return reply.code(400).send({
+          error: 'shippingCollectedCents must be a non-negative integer',
+        });
       }
 
       try {
@@ -1069,8 +1147,24 @@ export async function salesRoutes(fastify: FastifyInstance) {
           updateData.buyerName = buyerName;
         }
 
+        const normalizedOrderId =
+          tcgplayerOrderId !== undefined
+            ? normalizeOptionalOrderId(tcgplayerOrderId)
+            : undefined;
+
         if (tcgplayerOrderId !== undefined) {
-          updateData.tcgplayerOrderId = tcgplayerOrderId;
+          updateData.tcgplayerOrderId = normalizedOrderId;
+        }
+
+        if (shippingCollectedCents !== undefined) {
+          updateData.shippingCollectedCents = shippingCollectedCents;
+        } else if (
+          normalizedOrderId !== undefined &&
+          normalizedOrderId !== existingSale.tcgplayerOrderId &&
+          normalizedOrderId !== null
+        ) {
+          updateData.shippingCollectedCents =
+            await getDefaultShippingCollectedCents();
         }
 
         if (notes !== undefined) {
@@ -1112,6 +1206,22 @@ export async function salesRoutes(fastify: FastifyInstance) {
 
         if (!updatedSale) {
           return reply.code(404).send({ error: 'Sale not found' });
+        }
+
+        const effectiveOrderId = normalizeOptionalOrderId(
+          updatedSale.tcgplayerOrderId ?? existingSale.tcgplayerOrderId,
+        );
+
+        if (shippingCollectedCents !== undefined && effectiveOrderId) {
+          await db
+            .update(sales)
+            .set({
+              shippingCollectedCents,
+              updatedAt: new Date(),
+            })
+            .where(eq(sales.tcgplayerOrderId, effectiveOrderId));
+
+          updatedSale.shippingCollectedCents = shippingCollectedCents;
         }
 
         if (nextStatus) {

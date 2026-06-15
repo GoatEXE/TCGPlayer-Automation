@@ -9,11 +9,12 @@ The original sell workflow below is retained as historical context for the first
 - A **Notifications** tab owns notification history. Sales History no longer fetches or renders notifications.
 - Bulk order recording uses `POST /api/sales/bulk`, not parallel single-sale requests.
 - `tcgplayerOrderId` is required for bulk order recording. `orderStatus` defaults to `confirmed`.
-- Bulk payloads accept optional `buyerName`, `soldAt`, `notes`, and `applyEstimatedExpenses`, plus a `lines` array.
+- Bulk payloads accept optional `buyerName`, `soldAt`, `notes`, and editable `shippingCollectedCents`, plus a `lines` array.
 - Each line is `{ cardId, quantitySold, salePriceCents, lineItemType: 'sale' | 'gift' }`.
 - Paid sale lines require listed or listed-origin `needs_attention` cards and `salePriceCents > 0`.
 - Gift lines require gift-pool cards and `salePriceCents === 0`; they decrement inventory and move cards to `gifted` when quantity reaches 0.
-- Sales, stats, and performance exclude gift rows by default. Invoices and packing slips include gift lines grouped by TCGPlayer Order ID.
+- Sales and stats exclude gift rows by default. Performance revenue includes paid product totals plus shipping collected once per order, and invoices/packing slips include gift lines grouped by TCGPlayer Order ID.
+- `applyEstimatedExpenses` is deprecated/no-op in the backend and removed from the active sale/order UI. Supplies and postage should be tracked through manual expenses/settings instead.
 - Existing single-card `POST /api/sales` still works for paid sales and returns `lineItemType: 'sale'`.
 
 ## Original implementation record

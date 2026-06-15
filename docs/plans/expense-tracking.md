@@ -1,8 +1,8 @@
 # Expense Tracking + Profitability View — Implementation Plan
 
-**Status:** 📝 Planned
+**Status:** Implemented, with finance semantics updated after the original plan
 **Date:** 2026-04-18
-**Scope:** Add practical expense tracking + P&L summary to the existing TCGPlayer dashboard, with optional sale-flow auto-estimates.
+**Scope:** Practical expense tracking + P&L summary for the TCGPlayer dashboard. The original optional sale-flow auto-estimate design has been superseded: `applyEstimatedExpenses` is now deprecated/no-op, TCGPlayer fees are estimated directly in performance reporting, and postage/supplies are manual expenses/settings.
 
 ---
 
@@ -51,9 +51,11 @@ Based on current project patterns:
    - margin %
    - category breakdown
 
-4. **Sale-flow integration (optional estimates)**
-   - optional auto-create estimated shipping/supplies/fees when recording sales
-   - defaults managed in Expense Settings
+4. **Sale/order finance integration**
+   - sale and order recording captures editable `shippingCollectedCents`
+   - default shipping collected comes from Expense Settings, with backend default 149 cents
+   - performance estimates TCGPlayer fees from product + shipping collected
+   - postage and supplies remain manual expenses/settings
 
 ---
 
@@ -75,7 +77,7 @@ Frontend (web)
       ↓
 Backend (server)
   /api/expenses routes
-  sales route integration (optional estimate hook)
+  sales route integration (shipping collected + fee estimate inputs)
       ↓
 Drizzle/Postgres
   expense tables + settings
@@ -98,7 +100,7 @@ Drizzle/Postgres
 
 - `expense_source`
   - `manual`
-  - `sale_auto_estimate`
+  - `sale_auto_estimate` (historical/compatibility; active sale UI no longer creates postage/supply auto-estimates)
 
 - `auto_expense_kind` (nullable; used for auto-estimate dedupe/reporting)
   - `shipping_order`
@@ -141,12 +143,13 @@ Drizzle/Postgres
 ### Table: `expense_settings` (singleton semantics)
 
 - `id` serial PK
-- `autoRecordSaleExpenses` boolean default false
-- `autoRecordShipping` boolean default true
-- `shippingCostCents` int default 99
-- `autoRecordSupplies` boolean default true
+- `autoRecordSaleExpenses` boolean default false (deprecated/no-op for active sale UI)
+- `defaultShippingCollectedCents` int default 149
+- `autoRecordShipping` boolean default true (historical/compatibility)
+- `shippingCostCents` int default 99 (postage cost setting, not shipping-collected revenue)
+- `autoRecordSupplies` boolean default true (historical/compatibility)
 - `suppliesCostCents` int default 25
-- `autoRecordTcgplayerFees` boolean default true
+- `autoRecordTcgplayerFees` boolean default true (performance fee estimate setting)
 - `marketplaceFeeBps` int default 1075
 - `transactionFeeBps` int default 250
 - `transactionFlatFeeCents` int default 30
@@ -221,6 +224,13 @@ Delete incorrect or obsolete expense entry.
 
 Simple P&L summary endpoint.
 
+Current finance semantics:
+- TCGPlayer shipping collected is revenue, not postage or shipping cost.
+- Revenue includes paid product sale totals plus `shippingCollectedCents` once per order.
+- Existing historical sales default to `shippingCollectedCents = 0` unless edited or backfilled.
+- Estimated TCGPlayer fees are exposed and subtracted from performance using the documented assumption: 10.75% marketplace commission + 2.5% transaction fee + $0.30 per order, computed from product + shipping collected. Tax is deferred and not modeled.
+- Manual expenses continue to subtract normally.
+
 **Query params:** `dateFrom?`, `dateTo?`
 
 **Response:**
@@ -242,7 +252,7 @@ Simple P&L summary endpoint.
 }
 ```
 
-**Revenue rule:** exclude `sales.orderStatus = 'cancelled'`.
+**Revenue rule:** exclude `sales.orderStatus = 'cancelled'` and gift rows. Include shipping collected once per order for non-cancelled paid orders.
 
 ## 6) `GET /api/expenses/settings`
 
@@ -256,24 +266,30 @@ Update settings with integer validation (`>= 0`, bps ranges, etc.).
 
 ## Sales-Flow Integration Design
 
-`POST /api/sales` supports the single paid-sale path and accepts optional `applyEstimatedExpenses?: boolean`.
+`POST /api/sales` supports the single paid-sale path. Existing `applyEstimatedExpenses` input is deprecated and treated as a no-op.
 
-Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, optional `applyEstimatedExpenses`, and `lines` entries. Paid lines use `lineItemType: 'sale'` and positive revenue. Gift lines use `lineItemType: 'gift'` and zero revenue.
+Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, editable `shippingCollectedCents`, and `lines` entries. Paid lines use `lineItemType: 'sale'` and positive product revenue. Gift lines use `lineItemType: 'gift'` and zero product revenue.
 
-When estimated expenses are enabled:
+Shipping collected is modeled separately from expenses:
 
-- shipping, supplies, and flat transaction fees are order-level fixed expenses
-- marketplace and transaction percentage fees are line-level estimates for paid sale lines
-- gift lines are excluded from sales, stats, and performance by default, so they should not create revenue-based percentage fee estimates
+- `shippingCollectedCents` is buyer-paid revenue and is included once per order
+- the default shipping collected value comes from expense settings; backend default is 149 cents
+- postage, envelopes, sleeves, and other supplies remain expenses and should be tracked as manual expenses/settings as applicable
+- `applyEstimatedExpenses` is removed from active sale/order UI
 
-### Dedupe behavior for bulk sale flow
+Estimated TCGPlayer fees are now computed for performance reporting from product totals plus shipping collected:
 
-Bulk order recording is a single backend request. Order-level fixed estimates are tied to the TCGPlayer Order ID and must still be deduped by DB unique index + `onConflictDoNothing` to protect retries.
+- marketplace commission: 10.75%
+- transaction fee: 2.5%
+- flat transaction fee: $0.30 per order
+- tax is not modeled yet
+
+Gift lines are excluded from sales, stats, and performance by default and should not create revenue-based fee estimates.
 
 ### Practical limitations (documented)
 
-- Single-sale requests without `tcgplayerOrderId` cannot dedupe order-level fixed costs across an order.
-- Transaction % is estimated against paid sale subtotal only (shipping/tax unknown).
+- Historical sales default to zero shipping collected unless edited or backfilled.
+- Tax is deferred and not included in fee estimates.
 
 ---
 
@@ -287,7 +303,7 @@ Add:
 - `GetExpensesParams`, `GetExpensesResponse`
 - `PerformanceSummaryResponse`
 - `ExpenseSettings`, `UpdateExpenseSettingsRequest`
-- extend `CreateSaleRequest` with optional `applyEstimatedExpenses?: boolean`
+- sale/order request types include editable `shippingCollectedCents`; `applyEstimatedExpenses` is deprecated/no-op and not part of active UI
 
 ## API client additions in `packages/web/src/api/client.ts`
 
@@ -337,10 +353,10 @@ Behavior:
 
 ## 4) Sale flow UI integration
 
-- `RecordSaleModal` + `BulkSellModal` add checkbox:
-  - “Apply estimated expenses”
-- default checkbox state from `expense_settings.autoRecordSaleExpenses`
-- include `applyEstimatedExpenses` in `createSale` payload
+- Sale/order recording UI includes editable Shipping Collected
+- The value is sent as `shippingCollectedCents`
+- The default comes from expense settings; backend default is 149 cents
+- The old “Apply estimated expenses” checkbox is removed from active UI because `applyEstimatedExpenses` is deprecated/no-op
 
 ---
 
@@ -396,9 +412,9 @@ Each slice is independently verifiable and follows test-first sequencing.
 
 ---
 
-### Slice 3 — Auto-Estimate Helper + Sales Route Hook
+### Slice 3 — Fee Estimate + Sales Route Hook
 
-**Goal:** Optional automatic cost deduction from sale flow.
+**Goal:** Expose estimated TCGPlayer fees in performance without auto-creating postage/supply expenses.
 
 **Files:**
 - `packages/server/src/lib/expenses/auto-estimates.ts` (new)
@@ -408,12 +424,12 @@ Each slice is independently verifiable and follows test-first sequencing.
 - `packages/server/src/routes/__tests__/sales.test.ts`
 
 **Acceptance criteria:**
-- [ ] `POST /api/sales` accepts optional `applyEstimatedExpenses`
-- [ ] Auto-estimates inserted when enabled
-- [ ] Order-level fixed costs dedupe under parallel bulk sell
-- [ ] Existing sales behavior unchanged when disabled
+- [ ] Sale/order records persist `shippingCollectedCents`
+- [ ] Performance includes product revenue + shipping collected once per order
+- [ ] Estimated TCGPlayer fees are calculated from product + shipping using 10.75% + 2.5% + $0.30/order
+- [ ] `applyEstimatedExpenses` remains backend-compatible as a no-op
 
-**Risk:** medium-high (parallel dedupe + regression sensitivity in sales tests)
+**Risk:** medium-high (order-level aggregation + regression sensitivity in sales tests)
 
 ---
 
@@ -474,9 +490,9 @@ Each slice is independently verifiable and follows test-first sequencing.
 
 ---
 
-### Slice 7 — Sale Modal Toggle Wiring (Per-Sale Optionality)
+### Slice 7 — Shipping Collected Wiring
 
-**Goal:** Make auto-deduct explicitly optional at sale time.
+**Goal:** Make buyer-paid shipping explicit at sale/order time.
 
 **Files:**
 - `packages/web/src/components/RecordSaleModal.tsx`
@@ -485,9 +501,9 @@ Each slice is independently verifiable and follows test-first sequencing.
 - related tests (`RecordSaleModal`, `BulkSellModal`, `CardTable`, `App`)
 
 **Acceptance criteria:**
-- [ ] Checkbox defaults from settings
-- [ ] Payload includes `applyEstimatedExpenses`
-- [ ] Works in both single and bulk sell flows
+- [ ] Shipping Collected defaults from settings
+- [ ] Payload includes `shippingCollectedCents`
+- [ ] Works in both single and bulk order flows
 
 **Risk:** medium (touches existing tested sale UX)
 
@@ -507,13 +523,14 @@ Each slice is independently verifiable and follows test-first sequencing.
 - revenue excludes cancelled sales
 
 `packages/server/src/lib/expenses/__tests__/auto-estimates.test.ts`
-- line-level fee calculation
-- fixed-cost dedupe by order id
-- fallback behavior when no order id
+- TCGPlayer fee calculation from product + shipping collected
+- $0.30 flat fee applied once per order
+- tax excluded from estimates
 
 `packages/server/src/routes/__tests__/sales.test.ts` additions
-- `applyEstimatedExpenses=true` path
-- disabled/default path leaves expenses untouched
+- `shippingCollectedCents` persists from sale/order recording
+- default shipping collected comes from settings
+- `applyEstimatedExpenses` compatibility path is a no-op
 
 ## Web (Vitest + RTL)
 
@@ -535,7 +552,7 @@ Each slice is independently verifiable and follows test-first sequencing.
 4. Land frontend client contracts.
 5. Land new performance components.
 6. Wire tab/app integration.
-7. Add sale modal checkbox wiring.
+7. Add Shipping Collected sale/order UI wiring.
 8. Run full suite:
    - `pnpm --filter server test`
    - `pnpm --filter web test`
@@ -545,20 +562,19 @@ Each slice is independently verifiable and follows test-first sequencing.
 
 ## Practical Defaults (recommended for Dustin)
 
-- `autoRecordSaleExpenses`: **off** initially (safer rollout)
-- shipping estimate: `$0.99`
-- supplies estimate: `$0.25`
+- default shipping collected: `$1.49` (149 cents backend default)
+- supplies/postage: record as manual expenses/settings as applicable
 - marketplace fee: `10.75%`
 - transaction fee: `2.5% + $0.30`
 
-Once validated with real order outcomes, enable auto-estimates globally and tune numbers.
+Once validated with real order outcomes, tune the shipping-collected default and manual expense defaults.
 
 ---
 
 ## Known Limitations (explicitly acceptable for MVP)
 
-- Auto fee math is estimated from sale subtotal; true TCGPlayer fees include additional order factors.
-- If no `tcgplayerOrderId` is provided, fixed costs are applied per sale line.
+- Fee math is estimated from product total plus shipping collected; tax is not modeled.
+- Historical sales default to zero shipping collected unless edited or backfilled.
 - Inventory acquisition costs are tracked as cash expenses (not full per-card COGS accounting).
 
 These are acceptable for a lightweight solo-seller profitability dashboard and can be refined later.
@@ -570,5 +586,5 @@ These are acceptable for a lightweight solo-seller profitability dashboard and c
 - [ ] Dustin can record expenses with category/date/amount/description/quantity/unit
 - [ ] Per-unit cost is visible and stored when quantity is entered
 - [ ] Dashboard shows revenue, expenses, net profit, margin, and category breakdown
-- [ ] Sale flow can optionally auto-create estimated shipping/supplies/fees
+- [ ] Performance subtracts estimated TCGPlayer fees while postage/supplies remain manual expenses
 - [ ] Entire feature is covered by route/client/component/integration tests

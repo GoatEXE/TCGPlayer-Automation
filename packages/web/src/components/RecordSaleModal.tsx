@@ -5,14 +5,14 @@ interface RecordSaleModalProps {
   card: Card;
   onSubmit: (data: CreateSaleRequest) => Promise<void>;
   onClose: () => void;
-  defaultApplyExpenses?: boolean;
+  defaultShippingCollectedCents?: number;
 }
 
 export function RecordSaleModal({
   card,
   onSubmit,
   onClose,
-  defaultApplyExpenses = false,
+  defaultShippingCollectedCents = 149,
 }: RecordSaleModalProps) {
   const defaultPrice = card.listingPrice ? parseFloat(card.listingPrice) : 0;
 
@@ -22,8 +22,8 @@ export function RecordSaleModal({
   const [tcgplayerOrderId, setTcgplayerOrderId] = useState('');
   const [soldAt, setSoldAt] = useState(() => toDatetimeLocal(new Date()));
   const [notes, setNotes] = useState('');
-  const [applyEstimatedExpenses, setApplyEstimatedExpenses] = useState(
-    defaultApplyExpenses,
+  const [shippingCollected, setShippingCollected] = useState(
+    (defaultShippingCollectedCents / 100).toFixed(2),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +63,12 @@ export function RecordSaleModal({
       return;
     }
 
+    const shippingCollectedCents = parseDollarsToCents(shippingCollected);
+    if (shippingCollectedCents === null) {
+      setError('Shipping collected must be a valid non-negative dollar amount');
+      return;
+    }
+
     setSaving(true);
 
     const payload: CreateSaleRequest = {
@@ -73,7 +79,7 @@ export function RecordSaleModal({
       tcgplayerOrderId: tcgplayerOrderId || null,
       soldAt: soldAt ? new Date(soldAt).toISOString() : undefined,
       notes: notes || null,
-      applyEstimatedExpenses,
+      shippingCollectedCents,
     };
 
     try {
@@ -209,6 +215,20 @@ export function RecordSaleModal({
           </div>
 
           <div className="sale-field">
+            <label htmlFor="sale-shipping-collected">Shipping Collected ($)</label>
+            <input
+              id="sale-shipping-collected"
+              type="number"
+              min={0}
+              step={0.01}
+              value={shippingCollected}
+              onChange={(e) => setShippingCollected(e.target.value)}
+              disabled={saving}
+              className="sale-input"
+            />
+          </div>
+
+          <div className="sale-field">
             <label htmlFor="sale-notes">Notes</label>
             <textarea
               id="sale-notes"
@@ -219,19 +239,6 @@ export function RecordSaleModal({
               rows={2}
               placeholder="Optional"
             />
-          </div>
-
-          <div className="sale-field">
-            <label htmlFor="sale-apply-estimated-expenses">
-              <input
-                id="sale-apply-estimated-expenses"
-                type="checkbox"
-                checked={applyEstimatedExpenses}
-                onChange={(e) => setApplyEstimatedExpenses(e.target.checked)}
-                disabled={saving}
-              />{' '}
-              Apply estimated expenses
-            </label>
           </div>
 
           {error && (
@@ -260,6 +267,12 @@ export function RecordSaleModal({
 }
 
 /** Convert a Date to `YYYY-MM-DDTHH:mm` for datetime-local input */
+function parseDollarsToCents(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed * 100);
+}
+
 function toDatetimeLocal(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;

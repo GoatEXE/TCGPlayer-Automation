@@ -14,8 +14,8 @@ Added `GET /api/sales/stats` in `packages/server/src/routes/sales.ts`.
 
 Response fields:
 - `totalSales` — total number of paid sale rows; gift rows are excluded by default
-- `totalRevenueCents` — sum of paid sale `sale_price_cents`; gift rows have zero revenue and are excluded by default
-- `averageSaleCents` — rounded average of paid sale `sale_price_cents`
+- `totalRevenueCents` — sum of paid product sales plus shipping collected once per order; gift rows have zero revenue and are excluded by default
+- `averageSaleCents` — rounded average of paid product-plus-shipping revenue divided by paid sale row count
 - `activeListingCount` — sum of `cards.quantity` where card status is `listed`
 - `totalListedCount` — currently same quantity semantics as `activeListingCount`
 

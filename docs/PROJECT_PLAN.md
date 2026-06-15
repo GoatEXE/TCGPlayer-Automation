@@ -503,11 +503,15 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
   - API sync scheduler blocked on TCGPlayer credentials
 - [x] **Order recording workflow** — Inventory attaches paid-eligible cards and gift-pool freebies to an order
   - Single-card `POST /api/sales` remains available for paid sales and returns `lineItemType: 'sale'`
-  - Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, default `orderStatus: 'confirmed'`, optional buyer/date/notes/estimated-expense flag, and `lines`
+  - Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, default `orderStatus: 'confirmed'`, optional buyer/date/notes, editable `shippingCollectedCents`, and `lines`
   - `lines` entries use `{ cardId, quantitySold, salePriceCents, lineItemType: 'sale' | 'gift' }`
   - Paid lines require listed or listed-origin `needs_attention` cards and a positive price
   - Gift lines require gift-pool cards and a zero price; gift depletion moves cards to `gifted`
   - Sales stats and performance exclude gift rows by default; invoices and packing slips include gift lines grouped by TCGPlayer Order ID
+  - Performance revenue includes product sale totals plus shipping collected once per order. TCGPlayer shipping collected is revenue, not postage cost.
+  - Sale/order recording UI sends `shippingCollectedCents`; the default comes from expense settings, with backend default 149 cents.
+  - Estimated TCGPlayer fees are computed from product plus shipping collected using 10.75% marketplace commission + 2.5% transaction fee + $0.30 per order; tax is not modeled.
+  - `applyEstimatedExpenses` is deprecated/no-op; postage and supplies are tracked as manual expenses/settings.
   - See [docs/plans/sell-workflow.md](./plans/sell-workflow.md) for implementation details
 
 ### 6.2 Shipment Tracking

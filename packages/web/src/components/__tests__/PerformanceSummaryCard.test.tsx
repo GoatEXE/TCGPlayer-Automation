@@ -11,6 +11,7 @@ const mockSummary: PerformanceSummaryResponse = {
   salesCount: 12,
   expenseCount: 9,
   estimatedExpensesCents: 3343,
+  estimatedTcgplayerFeesCents: 6600,
   actualExpensesCents: 6500,
   byCategory: [
     { category: 'supplies', totalCents: 1200, count: 3 },
@@ -25,13 +26,13 @@ describe('PerformanceSummaryCard', () => {
   it('renders P&L totals, margin, counts, and estimate split', () => {
     render(<PerformanceSummaryCard summary={mockSummary} />);
 
-    expect(screen.getByText('Revenue')).toBeTruthy();
+    expect(screen.getByText(/Revenue \(product \+ shipping collected\)/i)).toBeTruthy();
     expect(screen.getByText('$250.00')).toBeTruthy();
 
     expect(screen.getByText('Expenses')).toBeTruthy();
     expect(screen.getByText('$98.43')).toBeTruthy();
 
-    expect(screen.getByText('Net Profit')).toBeTruthy();
+    expect(screen.getByText(/Net Profit after fees \+ manual expenses/i)).toBeTruthy();
     expect(screen.getByText('$151.57')).toBeTruthy();
 
     expect(screen.getByText('Margin')).toBeTruthy();
@@ -42,6 +43,9 @@ describe('PerformanceSummaryCard', () => {
 
     expect(screen.getByText(/Expense Count/i)).toBeTruthy();
     expect(screen.getByText('9')).toBeTruthy();
+
+    expect(screen.getByText(/Estimated TCGplayer Fees/i)).toBeTruthy();
+    expect(screen.getByText('$66.00')).toBeTruthy();
 
     expect(screen.getByText(/Estimated Expenses/i)).toBeTruthy();
     expect(screen.getByText('$33.43')).toBeTruthy();

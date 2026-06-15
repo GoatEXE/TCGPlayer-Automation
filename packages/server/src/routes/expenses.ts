@@ -77,6 +77,7 @@ interface UpdateExpenseSettingsBody {
   marketplaceFeeBps?: number;
   transactionFeeBps?: number;
   transactionFlatFeeCents?: number;
+  defaultShippingCollectedCents?: number;
 }
 
 function isExpenseCategory(value: string): value is ExpenseCategory {
@@ -113,6 +114,48 @@ function isNonNegativeInteger(value: unknown) {
 
 function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
+}
+
+function calculateBpsAmount(amountCents: number, bps: number) {
+  return Math.round((amountCents * bps) / 10_000);
+}
+
+function buildPaidOrderSummaries(
+  saleRows: Array<{
+    id: number;
+    tcgplayerOrderId: string | null;
+    salePriceCents: number;
+    shippingCollectedCents: number;
+  }>,
+) {
+  const orders = new Map<
+    string,
+    {
+      productRevenueCents: number;
+      shippingCollectedCents: number;
+    }
+  >();
+
+  for (const sale of saleRows) {
+    const key = sale.tcgplayerOrderId ?? `sale:${sale.id}`;
+    const existing = orders.get(key);
+
+    if (existing) {
+      existing.productRevenueCents += sale.salePriceCents;
+      existing.shippingCollectedCents = Math.max(
+        existing.shippingCollectedCents,
+        sale.shippingCollectedCents,
+      );
+      continue;
+    }
+
+    orders.set(key, {
+      productRevenueCents: sale.salePriceCents,
+      shippingCollectedCents: sale.shippingCollectedCents,
+    });
+  }
+
+  return [...orders.values()];
 }
 
 async function getOrCreateExpenseSettings() {
@@ -325,16 +368,44 @@ export async function expensesRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        const [salesSummary] = await db
+        const settings = await getOrCreateExpenseSettings();
+
+        const saleRows = await db
           .select({
-            revenueCents:
-              sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
-            salesCount: sql<number>`count(*)::int`,
+            id: sales.id,
+            tcgplayerOrderId: sales.tcgplayerOrderId,
+            salePriceCents: sales.salePriceCents,
+            shippingCollectedCents: sales.shippingCollectedCents,
           })
           .from(sales)
           .where(and(...salesConditions));
 
-        let expensesSummaryQuery: any = db
+        const paidOrders = buildPaidOrderSummaries(saleRows);
+        const salesCount = saleRows.length;
+        const revenueCents = paidOrders.reduce(
+          (sum, order) =>
+            sum + order.productRevenueCents + order.shippingCollectedCents,
+          0,
+        );
+        const estimatedTcgplayerFeesCents = settings.autoRecordTcgplayerFees
+          ? paidOrders.reduce((sum, order) => {
+              const feeBasisCents =
+                order.productRevenueCents + order.shippingCollectedCents;
+              return (
+                sum +
+                calculateBpsAmount(feeBasisCents, settings.marketplaceFeeBps) +
+                calculateBpsAmount(feeBasisCents, settings.transactionFeeBps) +
+                settings.transactionFlatFeeCents
+              );
+            }, 0)
+          : 0;
+
+        const manualExpenseConditions = [
+          ...expenseConditions,
+          ne(expenses.source, 'sale_auto_estimate'),
+        ];
+
+        const [expensesSummary] = await db
           .select({
             expensesCents:
               sql<number>`coalesce(sum(${expenses.amountCents}), 0)::int`,
@@ -344,47 +415,62 @@ export async function expensesRoutes(fastify: FastifyInstance) {
             actualExpensesCents:
               sql<number>`coalesce(sum(case when not ${expenses.isEstimate} then ${expenses.amountCents} else 0 end), 0)::int`,
           })
-          .from(expenses);
+          .from(expenses)
+          .where(and(...manualExpenseConditions));
 
-        if (expenseConditions.length > 0) {
-          expensesSummaryQuery = expensesSummaryQuery.where(and(...expenseConditions));
-        }
-
-        const [expensesSummary] = await expensesSummaryQuery;
-
-        let byCategoryQuery: any = db
+        const manualByCategory = await db
           .select({
             category: expenses.category,
             totalCents: sql<number>`coalesce(sum(${expenses.amountCents}), 0)::int`,
             count: sql<number>`count(*)::int`,
           })
-          .from(expenses);
-
-        if (expenseConditions.length > 0) {
-          byCategoryQuery = byCategoryQuery.where(and(...expenseConditions));
-        }
-
-        const byCategory = await byCategoryQuery
+          .from(expenses)
+          .where(and(...manualExpenseConditions))
           .groupBy(expenses.category)
           .orderBy(asc(expenses.category));
 
-        const revenueCents = salesSummary?.revenueCents ?? 0;
-        const expensesCents = expensesSummary?.expensesCents ?? 0;
+        const byCategoryMap = new Map(
+          manualByCategory.map((row) => [row.category, { ...row }]),
+        );
+
+        if (estimatedTcgplayerFeesCents > 0) {
+          const existingFees = byCategoryMap.get('tcgplayer_fees');
+          if (existingFees) {
+            existingFees.totalCents += estimatedTcgplayerFeesCents;
+            existingFees.count += paidOrders.length;
+          } else {
+            byCategoryMap.set('tcgplayer_fees', {
+              category: 'tcgplayer_fees',
+              totalCents: estimatedTcgplayerFeesCents,
+              count: paidOrders.length,
+            });
+          }
+        }
+
+        const manualExpensesCents = expensesSummary?.expensesCents ?? 0;
+        const manualEstimatedExpensesCents =
+          expensesSummary?.estimatedExpensesCents ?? 0;
+        const expensesCents = manualExpensesCents + estimatedTcgplayerFeesCents;
         const netProfitCents = revenueCents - expensesCents;
         const marginPercent =
           revenueCents > 0
             ? Number(((netProfitCents / revenueCents) * 100).toFixed(2))
             : null;
+        const byCategory = [...byCategoryMap.values()].sort((left, right) =>
+          left.category.localeCompare(right.category),
+        );
 
         return reply.send({
           revenueCents,
           expensesCents,
           netProfitCents,
           marginPercent,
-          salesCount: salesSummary?.salesCount ?? 0,
+          salesCount,
           expenseCount: expensesSummary?.expenseCount ?? 0,
-          estimatedExpensesCents: expensesSummary?.estimatedExpensesCents ?? 0,
+          estimatedExpensesCents:
+            manualEstimatedExpensesCents + estimatedTcgplayerFeesCents,
           actualExpensesCents: expensesSummary?.actualExpensesCents ?? 0,
+          estimatedTcgplayerFeesCents,
           byCategory,
         });
       } catch (error) {
@@ -421,6 +507,7 @@ export async function expensesRoutes(fastify: FastifyInstance) {
         marketplaceFeeBps,
         transactionFeeBps,
         transactionFlatFeeCents,
+        defaultShippingCollectedCents,
       } = request.body;
 
       if (
@@ -508,6 +595,15 @@ export async function expensesRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (
+        defaultShippingCollectedCents !== undefined &&
+        !isNonNegativeInteger(defaultShippingCollectedCents)
+      ) {
+        return reply.code(400).send({
+          error: 'defaultShippingCollectedCents must be a non-negative integer',
+        });
+      }
+
       const updateData: Record<string, unknown> = {
         updatedAt: new Date(),
       };
@@ -546,6 +642,10 @@ export async function expensesRoutes(fastify: FastifyInstance) {
 
       if (transactionFlatFeeCents !== undefined) {
         updateData.transactionFlatFeeCents = transactionFlatFeeCents;
+      }
+
+      if (defaultShippingCollectedCents !== undefined) {
+        updateData.defaultShippingCollectedCents = defaultShippingCollectedCents;
       }
 
       if (Object.keys(updateData).length === 1) {

@@ -12,6 +12,7 @@ const defaultSettings = {
   marketplaceFeeBps: 1075,
   transactionFeeBps: 250,
   transactionFlatFeeCents: 30,
+  defaultShippingCollectedCents: 149,
   createdAt: new Date('2026-04-18T00:00:00.000Z'),
   updatedAt: new Date('2026-04-18T00:00:00.000Z'),
 };

@@ -3,7 +3,7 @@
 Date: 2026-04-01
 
 ## Current behavior
-Sales History is sales-focused only. Notification history is no longer fetched or rendered here; it lives in the Notifications tab. Bulk order recording is initiated from Inventory and uses `POST /api/sales/bulk` when an order contains multiple paid or gift lines.
+Sales History is sales-focused only. Notification history is no longer fetched or rendered here; it lives in the Notifications tab. Bulk order recording is initiated from Inventory and uses `POST /api/sales/bulk` when an order contains multiple paid or gift lines. Order revenue includes product totals plus shipping collected once per order; gift lines remain zero-revenue history rows.
 
 ## Summary
 Implemented an end-to-end Sales History slice with backend sales APIs and a new dashboard view for browsing completed sales.

@@ -757,6 +757,7 @@ describe('ApiClient', () => {
         salesCount: 3,
         expenseCount: 4,
         estimatedExpensesCents: 130,
+        estimatedTcgplayerFeesCents: 66,
         actualExpensesCents: 300,
         byCategory: [
           { category: 'shipping', totalCents: 130, count: 2 },
@@ -782,6 +783,7 @@ describe('ApiClient', () => {
         salesCount: 0,
         expenseCount: 0,
         estimatedExpensesCents: 0,
+        estimatedTcgplayerFeesCents: 0,
         actualExpensesCents: 0,
         byCategory: [],
       });
@@ -813,6 +815,7 @@ describe('ApiClient', () => {
         autoRecordSaleExpenses: false,
         autoRecordShipping: true,
         shippingCostCents: 99,
+        defaultShippingCollectedCents: 149,
         autoRecordSupplies: true,
         suppliesCostCents: 25,
         autoRecordTcgplayerFees: true,
@@ -848,6 +851,7 @@ describe('ApiClient', () => {
         autoRecordSaleExpenses: true,
         autoRecordShipping: true,
         shippingCostCents: 149,
+        defaultShippingCollectedCents: 249,
         autoRecordSupplies: true,
         suppliesCostCents: 35,
         autoRecordTcgplayerFees: true,
@@ -862,6 +866,7 @@ describe('ApiClient', () => {
       const request: UpdateExpenseSettingsRequest = {
         autoRecordSaleExpenses: true,
         shippingCostCents: 149,
+        defaultShippingCollectedCents: 249,
         suppliesCostCents: 35,
         marketplaceFeeBps: 900,
         transactionFeeBps: 275,
@@ -983,6 +988,7 @@ describe('ApiClient', () => {
         tcgplayerOrderId: 'ORD-100',
         orderStatus: 'confirmed',
         buyerName: 'Jane Doe',
+        shippingCollectedCents: 149,
         applyEstimatedExpenses: true,
         lines: [
           { cardId: 1, quantitySold: 1, salePriceCents: 245, lineItemType: 'sale' },

@@ -43,6 +43,9 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
   const [shippingCost, setShippingCost] = useState(
     centsToDollars(settings.shippingCostCents),
   );
+  const [defaultShippingCollected, setDefaultShippingCollected] = useState(
+    centsToDollars(settings.defaultShippingCollectedCents ?? 149),
+  );
   const [autoRecordSupplies, setAutoRecordSupplies] = useState(
     settings.autoRecordSupplies,
   );
@@ -69,6 +72,9 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
     setAutoRecordSaleExpenses(settings.autoRecordSaleExpenses);
     setAutoRecordShipping(settings.autoRecordShipping);
     setShippingCost(centsToDollars(settings.shippingCostCents));
+    setDefaultShippingCollected(
+      centsToDollars(settings.defaultShippingCollectedCents ?? 149),
+    );
     setAutoRecordSupplies(settings.autoRecordSupplies);
     setSuppliesCost(centsToDollars(settings.suppliesCostCents));
     setAutoRecordTcgplayerFees(settings.autoRecordTcgplayerFees);
@@ -82,6 +88,9 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
     setError(null);
 
     const shippingCostCents = parseDollarsToCents(shippingCost);
+    const defaultShippingCollectedCents = parseDollarsToCents(
+      defaultShippingCollected,
+    );
     const suppliesCostCents = parseDollarsToCents(suppliesCost);
     const transactionFlatFeeCents = parseDollarsToCents(transactionFlatFee);
     const marketplaceFeeBps = parsePercentToBps(marketplaceFee);
@@ -89,6 +98,7 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
 
     if (
       shippingCostCents === null ||
+      defaultShippingCollectedCents === null ||
       suppliesCostCents === null ||
       transactionFlatFeeCents === null
     ) {
@@ -108,6 +118,7 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
         autoRecordSaleExpenses,
         autoRecordShipping,
         shippingCostCents,
+        defaultShippingCollectedCents,
         autoRecordSupplies,
         suppliesCostCents,
         autoRecordTcgplayerFees,
@@ -129,19 +140,6 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
       </div>
 
       <form onSubmit={handleSubmit} className="price-check-body" noValidate>
-        <div className="shipment-field">
-          <label htmlFor="settings-auto-record-sale-expenses">
-            <input
-              id="settings-auto-record-sale-expenses"
-              type="checkbox"
-              checked={autoRecordSaleExpenses}
-              onChange={(e) => setAutoRecordSaleExpenses(e.target.checked)}
-              disabled={saving}
-            />{' '}
-            Auto-record sale expenses
-          </label>
-        </div>
-
         <div className="shipment-field">
           <label htmlFor="settings-auto-record-shipping">
             <input
@@ -176,7 +174,7 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
         </div>
 
         <div className="shipment-field">
-          <label htmlFor="settings-shipping-cost">Default shipping cost ($)</label>
+          <label htmlFor="settings-shipping-cost">Default postage cost expense ($)</label>
           <input
             id="settings-shipping-cost"
             type="number"
@@ -184,6 +182,20 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
             step={0.01}
             value={shippingCost}
             onChange={(e) => setShippingCost(e.target.value)}
+            disabled={saving}
+            className="shipment-input"
+          />
+        </div>
+
+        <div className="shipment-field">
+          <label htmlFor="settings-shipping-collected">Default shipping collected ($)</label>
+          <input
+            id="settings-shipping-collected"
+            type="number"
+            min={0}
+            step={0.01}
+            value={defaultShippingCollected}
+            onChange={(e) => setDefaultShippingCollected(e.target.value)}
             disabled={saving}
             className="shipment-input"
           />

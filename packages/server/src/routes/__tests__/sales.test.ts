@@ -15,6 +15,7 @@ function buildExpenseSettings(overrides: Record<string, unknown> = {}) {
     marketplaceFeeBps: 1075,
     transactionFeeBps: 250,
     transactionFlatFeeCents: 30,
+    defaultShippingCollectedCents: 149,
     createdAt: new Date('2026-04-18T00:00:00.000Z'),
     updatedAt: new Date('2026-04-18T00:00:00.000Z'),
     ...overrides,
@@ -218,7 +219,7 @@ describe('sales routes', () => {
       );
     });
 
-    it('creates estimated expenses when applyEstimatedExpenses is true', async () => {
+    it('defaults shippingCollectedCents from settings when tcgplayerOrderId is provided', async () => {
       mockCardSelectResult([
         {
           id: 12,
@@ -228,7 +229,7 @@ describe('sales routes', () => {
       ]);
 
       mockGetOrCreateExpenseSettings.mockResolvedValueOnce(
-        buildExpenseSettings({ autoRecordSaleExpenses: false }),
+        buildExpenseSettings({ defaultShippingCollectedCents: 149 }),
       );
 
       vi.mocked(db.update).mockReturnValue({
@@ -237,21 +238,24 @@ describe('sales routes', () => {
         }),
       } as any);
 
+      const saleInsertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: 55,
+            cardId: 12,
+            quantitySold: 1,
+            salePriceCents: 200,
+            shippingCollectedCents: 149,
+            orderStatus: 'pending',
+            soldAt: new Date('2026-04-18T12:00:00.000Z'),
+            tcgplayerOrderId: 'ORDER-55',
+          },
+        ]),
+      });
+
       vi.mocked(db.insert)
         .mockReturnValueOnce({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([
-              {
-                id: 55,
-                cardId: 12,
-                quantitySold: 1,
-                salePriceCents: 200,
-                orderStatus: 'pending',
-                soldAt: new Date('2026-04-18T12:00:00.000Z'),
-                tcgplayerOrderId: 'ORDER-55',
-              },
-            ]),
-          }),
+          values: saleInsertValues,
         } as any)
         .mockReturnValueOnce({
           values: vi.fn().mockResolvedValue(undefined),
@@ -271,20 +275,21 @@ describe('sales routes', () => {
 
       expect(response.statusCode).toBe(201);
       expect(mockGetOrCreateExpenseSettings).toHaveBeenCalledTimes(1);
-      expect(mockCreateSaleAutoEstimates).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(saleInsertValues).toHaveBeenCalledWith(
         expect.objectContaining({
-          saleId: 55,
-          salePriceCents: 200,
           tcgplayerOrderId: 'ORDER-55',
-          settings: expect.objectContaining({
-            autoRecordSaleExpenses: false,
-          }),
+          shippingCollectedCents: 149,
+        }),
+      );
+      expect(mockCreateSaleAutoEstimates).not.toHaveBeenCalled();
+      expect(JSON.parse(response.body)).toEqual(
+        expect.objectContaining({
+          shippingCollectedCents: 149,
         }),
       );
     });
 
-    it('uses the global expense setting when applyEstimatedExpenses is omitted', async () => {
+    it('accepts an explicit shippingCollectedCents override', async () => {
       mockCardSelectResult([
         {
           id: 13,
@@ -293,31 +298,30 @@ describe('sales routes', () => {
         },
       ]);
 
-      mockGetOrCreateExpenseSettings.mockResolvedValueOnce(
-        buildExpenseSettings({ autoRecordSaleExpenses: true }),
-      );
-
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue(undefined),
         }),
       } as any);
 
+      const saleInsertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: 56,
+            cardId: 13,
+            quantitySold: 1,
+            salePriceCents: 225,
+            shippingCollectedCents: 199,
+            orderStatus: 'pending',
+            soldAt: new Date('2026-04-18T12:05:00.000Z'),
+            tcgplayerOrderId: 'ORDER-56',
+          },
+        ]),
+      });
+
       vi.mocked(db.insert)
         .mockReturnValueOnce({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([
-              {
-                id: 56,
-                cardId: 13,
-                quantitySold: 1,
-                salePriceCents: 225,
-                orderStatus: 'pending',
-                soldAt: new Date('2026-04-18T12:05:00.000Z'),
-                tcgplayerOrderId: 'ORDER-56',
-              },
-            ]),
-          }),
+          values: saleInsertValues,
         } as any)
         .mockReturnValueOnce({
           values: vi.fn().mockResolvedValue(undefined),
@@ -331,24 +335,25 @@ describe('sales routes', () => {
           quantitySold: 1,
           salePriceCents: 225,
           tcgplayerOrderId: 'ORDER-56',
+          shippingCollectedCents: 199,
         },
       });
 
       expect(response.statusCode).toBe(201);
-      expect(mockCreateSaleAutoEstimates).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
+      expect(saleInsertValues).toHaveBeenCalledWith(
         expect.objectContaining({
-          saleId: 56,
-          salePriceCents: 225,
-          tcgplayerOrderId: 'ORDER-56',
-          settings: expect.objectContaining({
-            autoRecordSaleExpenses: true,
-          }),
+          shippingCollectedCents: 199,
+        }),
+      );
+      expect(JSON.parse(response.body)).toEqual(
+        expect.objectContaining({
+          shippingCollectedCents: 199,
         }),
       );
     });
 
-    it('leaves expenses untouched when auto-estimates are disabled by default', async () => {
+    it('uses zero shippingCollectedCents for legacy single-sale requests without an order id', async () => {
       mockCardSelectResult([
         {
           id: 14,
@@ -357,30 +362,29 @@ describe('sales routes', () => {
         },
       ]);
 
-      mockGetOrCreateExpenseSettings.mockResolvedValueOnce(
-        buildExpenseSettings({ autoRecordSaleExpenses: false }),
-      );
-
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue(undefined),
         }),
       } as any);
 
+      const saleInsertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: 57,
+            cardId: 14,
+            quantitySold: 1,
+            salePriceCents: 250,
+            shippingCollectedCents: 0,
+            orderStatus: 'pending',
+            soldAt: new Date('2026-04-18T12:10:00.000Z'),
+          },
+        ]),
+      });
+
       vi.mocked(db.insert)
         .mockReturnValueOnce({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([
-              {
-                id: 57,
-                cardId: 14,
-                quantitySold: 1,
-                salePriceCents: 250,
-                orderStatus: 'pending',
-                soldAt: new Date('2026-04-18T12:10:00.000Z'),
-              },
-            ]),
-          }),
+          values: saleInsertValues,
         } as any)
         .mockReturnValueOnce({
           values: vi.fn().mockResolvedValue(undefined),
@@ -397,7 +401,12 @@ describe('sales routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
-      expect(mockGetOrCreateExpenseSettings).toHaveBeenCalledTimes(1);
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
+      expect(saleInsertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shippingCollectedCents: 0,
+        }),
+      );
       expect(mockCreateSaleAutoEstimates).not.toHaveBeenCalled();
     });
 
@@ -727,6 +736,7 @@ describe('sales routes', () => {
                 quantitySold: 1,
                 lineItemType: 'sale',
                 salePriceCents: 250,
+                shippingCollectedCents: 149,
                 buyerName: 'Buyer',
                 tcgplayerOrderId: 'ORDER-BULK-1',
                 orderStatus: 'confirmed',
@@ -744,6 +754,7 @@ describe('sales routes', () => {
                 quantitySold: 1,
                 lineItemType: 'gift',
                 salePriceCents: 0,
+                shippingCollectedCents: 149,
                 buyerName: 'Buyer',
                 tcgplayerOrderId: 'ORDER-BULK-1',
                 orderStatus: 'confirmed',
@@ -793,15 +804,8 @@ describe('sales routes', () => {
         }),
       ]);
       expect(mockCreateShipmentOnConfirm).toHaveBeenCalledTimes(2);
-      expect(mockCreateSaleAutoEstimates).toHaveBeenCalledTimes(1);
-      expect(mockCreateSaleAutoEstimates).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          saleId: 200,
-          salePriceCents: 250,
-          tcgplayerOrderId: 'ORDER-BULK-1',
-        }),
-      );
+      expect(mockGetOrCreateExpenseSettings).toHaveBeenCalledTimes(1);
+      expect(mockCreateSaleAutoEstimates).not.toHaveBeenCalled();
       expect(mockSendSaleConfirmedAlert).toHaveBeenCalledTimes(1);
       expect(mockSendSaleConfirmedAlert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -818,6 +822,7 @@ describe('sales routes', () => {
             id: 200,
             lineItemType: 'sale',
             orderStatus: 'confirmed',
+            shippingCollectedCents: 149,
             cardProductName: 'Paid Card',
             cardSetName: null,
           }),
@@ -826,8 +831,82 @@ describe('sales routes', () => {
             lineItemType: 'gift',
             salePriceCents: 0,
             orderStatus: 'confirmed',
+            shippingCollectedCents: 149,
             cardProductName: 'Gift Card',
             cardSetName: null,
+          }),
+        ],
+      });
+    });
+
+    it('accepts an explicit bulk shippingCollectedCents override', async () => {
+      mockCardSelectResult([
+        {
+          id: 102,
+          productName: 'Override Card',
+          status: 'listed',
+          attentionReason: null,
+          quantity: 1,
+        },
+      ]);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      const saleInsertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: 202,
+            cardId: 102,
+            quantitySold: 1,
+            lineItemType: 'sale',
+            salePriceCents: 275,
+            shippingCollectedCents: 199,
+            buyerName: null,
+            tcgplayerOrderId: 'ORDER-BULK-OVERRIDE',
+            orderStatus: 'confirmed',
+          },
+        ]),
+      });
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: saleInsertValues,
+        } as any)
+        .mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales/bulk',
+        payload: {
+          tcgplayerOrderId: 'ORDER-BULK-OVERRIDE',
+          shippingCollectedCents: 199,
+          lines: [
+            {
+              cardId: 102,
+              quantitySold: 1,
+              salePriceCents: 275,
+              lineItemType: 'sale',
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
+      expect(saleInsertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shippingCollectedCents: 199,
+        }),
+      );
+      expect(JSON.parse(response.body)).toEqual({
+        sales: [
+          expect.objectContaining({
+            id: 202,
+            shippingCollectedCents: 199,
           }),
         ],
       });
@@ -1141,9 +1220,22 @@ describe('sales routes', () => {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockResolvedValue([
               {
-                totalSales: 3,
-                totalRevenueCents: 950,
-                averageSaleCents: 317,
+                id: 1,
+                tcgplayerOrderId: 'ORDER-1',
+                salePriceCents: 300,
+                shippingCollectedCents: 149,
+              },
+              {
+                id: 2,
+                tcgplayerOrderId: 'ORDER-1',
+                salePriceCents: 201,
+                shippingCollectedCents: 149,
+              },
+              {
+                id: 3,
+                tcgplayerOrderId: null,
+                salePriceCents: 300,
+                shippingCollectedCents: 0,
               },
             ]),
           }),
@@ -1177,13 +1269,7 @@ describe('sales routes', () => {
       vi.mocked(db.select)
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([
-              {
-                totalSales: 0,
-                totalRevenueCents: 0,
-                averageSaleCents: 0,
-              },
-            ]),
+            where: vi.fn().mockResolvedValue([]),
           }),
         } as any)
         .mockReturnValueOnce({
@@ -1214,9 +1300,16 @@ describe('sales routes', () => {
     it('filters gift lines out of the sales stats summary', async () => {
       const salesWhere = vi.fn().mockResolvedValue([
         {
-          totalSales: 2,
-          totalRevenueCents: 700,
-          averageSaleCents: 350,
+          id: 10,
+          tcgplayerOrderId: 'ORDER-10',
+          salePriceCents: 200,
+          shippingCollectedCents: 0,
+        },
+        {
+          id: 11,
+          tcgplayerOrderId: 'ORDER-11',
+          salePriceCents: 500,
+          shippingCollectedCents: 0,
         },
       ]);
 

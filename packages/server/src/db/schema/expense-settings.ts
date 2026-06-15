@@ -17,6 +17,9 @@ export const expenseSettings = pgTable('expense_settings', {
   transactionFlatFeeCents: integer('transaction_flat_fee_cents')
     .notNull()
     .default(30),
+  defaultShippingCollectedCents: integer('default_shipping_collected_cents')
+    .notNull()
+    .default(149),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

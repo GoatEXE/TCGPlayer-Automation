@@ -883,12 +883,12 @@ describe('CardTable Record Sale button', () => {
     expect(within(dialog).getByText('Test Card')).toBeInTheDocument();
   });
 
-  it('passes defaultApplyExpenses through to RecordSaleModal', async () => {
+  it('passes defaultShippingCollectedCents through to RecordSaleModal', async () => {
     const user = userEvent.setup();
     render(
       <CardTable
         {...defaultTableProps}
-        defaultApplyExpenses
+        defaultShippingCollectedCents={249}
         cards={[
           makeCard({ id: 5, status: 'listed', productName: 'Test Card', listingPrice: '1.50', setName: 'Origins' }),
         ]}
@@ -899,10 +899,13 @@ describe('CardTable Record Sale button', () => {
     await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
-    const checkbox = within(dialog).getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
+    const shippingInput = within(dialog).getByLabelText(
+      /shipping collected/i,
+    ) as HTMLInputElement;
+    expect(shippingInput.value).toBe('2.49');
+    expect(
+      within(dialog).queryByRole('checkbox', { name: /apply estimated expenses/i }),
+    ).toBeNull();
   });
 
   it('RecordSaleModal onSubmit calls onRecordSale prop', async () => {
@@ -1033,13 +1036,13 @@ describe('CardTable sell flow (enableSellFlow)', () => {
     expect(within(dialog).getByText('Sell Card B')).toBeInTheDocument();
   });
 
-  it('passes defaultApplyExpenses through to BulkSellModal', async () => {
+  it('passes defaultShippingCollectedCents through to BulkSellModal', async () => {
     const user = userEvent.setup();
     render(
       <CardTable
         {...defaultTableProps}
         enableSellFlow
-        defaultApplyExpenses
+        defaultShippingCollectedCents={249}
         cards={[
           makeCard({ id: 1, status: 'listed', productName: 'Sell Card A', listingPrice: '1.00' }),
           makeCard({ id: 2, status: 'listed', productName: 'Sell Card B', listingPrice: '2.00' }),
@@ -1052,10 +1055,10 @@ describe('CardTable sell flow (enableSellFlow)', () => {
     await user.click(screen.getByText(/attach 2 to order/i));
 
     const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
-    const checkbox = within(dialog).getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
+    const shippingInput = within(dialog).getByLabelText(
+      /shipping collected/i,
+    ) as HTMLInputElement;
+    expect(shippingInput.value).toBe('2.49');
   });
 
   it('when bulkMode=list, matched cards are selectable and Mark as Listed is shown', async () => {

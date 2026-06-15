@@ -54,6 +54,7 @@ const expenseSettingsFixture = {
   autoRecordSaleExpenses: false,
   autoRecordShipping: true,
   shippingCostCents: 99,
+  defaultShippingCollectedCents: 149,
   autoRecordSupplies: true,
   suppliesCostCents: 25,
   autoRecordTcgplayerFees: true,
@@ -813,11 +814,11 @@ describe('App record sale + bulk sell integration', () => {
     });
   });
 
-  it('uses expense settings autoRecordSaleExpenses as default for sale modal', async () => {
+  it('uses expense settings defaultShippingCollectedCents for sale modal', async () => {
     const user = userEvent.setup();
     apiMocks.getExpenseSettings.mockResolvedValue({
       ...expenseSettingsFixture,
-      autoRecordSaleExpenses: true,
+      defaultShippingCollectedCents: 249,
     });
 
     apiMocks.getCards.mockResolvedValue({
@@ -872,18 +873,22 @@ describe('App record sale + bulk sell integration', () => {
     await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
-    const checkbox = within(dialog).getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
+    const shippingInput = within(dialog).getByLabelText(
+      /shipping collected/i,
+    ) as HTMLInputElement;
+    expect(shippingInput.value).toBe('2.49');
+    expect(
+      within(dialog).queryByRole('checkbox', { name: /apply estimated expenses/i }),
+    ).toBeNull();
 
+    await user.type(within(dialog).getByLabelText(/TCGPlayer Order ID/i), 'ORD-123');
     await user.click(within(dialog).getByRole('button', { name: /record sale/i }));
 
     await waitFor(() => {
       expect(apiMocks.createSale).toHaveBeenCalledWith(
         expect.objectContaining({
           cardId: 1,
-          applyEstimatedExpenses: true,
+          shippingCollectedCents: 249,
         }),
       );
     });

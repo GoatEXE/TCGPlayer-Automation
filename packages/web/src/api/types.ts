@@ -206,6 +206,7 @@ export interface PerformanceSummaryResponse {
   salesCount: number;
   expenseCount: number;
   estimatedExpensesCents: number;
+  estimatedTcgplayerFeesCents?: number;
   actualExpensesCents: number;
   byCategory: Array<{
     category: ExpenseCategory;
@@ -219,6 +220,7 @@ export interface ExpenseSettings {
   autoRecordSaleExpenses: boolean;
   autoRecordShipping: boolean;
   shippingCostCents: number;
+  defaultShippingCollectedCents?: number;
   autoRecordSupplies: boolean;
   suppliesCostCents: number;
   autoRecordTcgplayerFees: boolean;
@@ -233,6 +235,7 @@ export interface UpdateExpenseSettingsRequest {
   autoRecordSaleExpenses?: boolean;
   autoRecordShipping?: boolean;
   shippingCostCents?: number;
+  defaultShippingCollectedCents?: number;
   autoRecordSupplies?: boolean;
   suppliesCostCents?: number;
   autoRecordTcgplayerFees?: boolean;
@@ -250,6 +253,7 @@ export interface Sale {
   quantitySold: number;
   lineItemType: SaleLineItemType;
   salePriceCents: number;
+  shippingCollectedCents: number;
   buyerName: string | null;
   orderStatus: OrderStatus;
   soldAt: string;
@@ -280,6 +284,7 @@ export interface CreateSaleRequest {
   cardId: number;
   quantitySold: number;
   salePriceCents: number;
+  shippingCollectedCents?: number;
   lineItemType?: SaleLineItemType;
   buyerName?: string | null;
   tcgplayerOrderId?: string | null;
@@ -305,6 +310,7 @@ export interface CreateBulkOrderRequest {
   soldAt?: string;
   notes?: string | null;
   applyEstimatedExpenses?: boolean;
+  shippingCollectedCents?: number;
   lines: BulkOrderLineRequest[];
 }
 
@@ -318,6 +324,7 @@ export interface UpdateSaleRequest {
   orderStatus?: OrderStatus;
   soldAt?: string;
   notes?: string | null;
+  shippingCollectedCents?: number;
 }
 
 export interface SaleStatusHistoryEntry {

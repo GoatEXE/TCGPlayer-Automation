@@ -6,7 +6,7 @@ interface BulkSellModalProps {
   giftCards?: Card[];
   onSubmit: (order: CreateBulkOrderRequest) => Promise<void>;
   onClose: () => void;
-  defaultApplyExpenses?: boolean;
+  defaultShippingCollectedCents?: number;
 }
 
 interface PerCardState {
@@ -23,15 +23,15 @@ export function BulkSellModal({
   giftCards = [],
   onSubmit,
   onClose,
-  defaultApplyExpenses = false,
+  defaultShippingCollectedCents = 149,
 }: BulkSellModalProps) {
   const [buyerName, setBuyerName] = useState('');
   const [tcgplayerOrderId, setTcgplayerOrderId] = useState('');
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('confirmed');
   const [soldAt, setSoldAt] = useState(() => toDatetimeLocal(new Date()));
   const [notes, setNotes] = useState('');
-  const [applyEstimatedExpenses, setApplyEstimatedExpenses] = useState(
-    defaultApplyExpenses,
+  const [shippingCollected, setShippingCollected] = useState(
+    (defaultShippingCollectedCents / 100).toFixed(2),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +113,12 @@ export function BulkSellModal({
       return;
     }
 
+    const shippingCollectedCents = parseDollarsToCents(shippingCollected);
+    if (shippingCollectedCents === null) {
+      setError('Shipping collected must be a valid non-negative dollar amount');
+      return;
+    }
+
     const lines = [
       ...cards.map((card, i) => ({
         cardId: card.id,
@@ -136,7 +142,7 @@ export function BulkSellModal({
         orderStatus,
         soldAt: soldAt ? new Date(soldAt).toISOString() : undefined,
         notes: notes || null,
-        applyEstimatedExpenses,
+        shippingCollectedCents,
         lines,
       });
     } catch (err) {
@@ -202,14 +208,12 @@ export function BulkSellModal({
               <input id="bulk-sold-date" type="datetime-local" value={soldAt} onChange={(e) => setSoldAt(e.target.value)} disabled={saving} className="sale-input" />
             </div>
             <div className="sale-field">
-              <label htmlFor="bulk-notes">Notes</label>
-              <textarea id="bulk-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} className="sale-textarea" rows={2} placeholder="Optional" />
+              <label htmlFor="bulk-shipping-collected">Shipping Collected ($)</label>
+              <input id="bulk-shipping-collected" type="number" min={0} step={0.01} value={shippingCollected} onChange={(e) => setShippingCollected(e.target.value)} disabled={saving} className="sale-input" />
             </div>
             <div className="sale-field">
-              <label htmlFor="bulk-apply-estimated-expenses">
-                <input id="bulk-apply-estimated-expenses" type="checkbox" checked={applyEstimatedExpenses} onChange={(e) => setApplyEstimatedExpenses(e.target.checked)} disabled={saving} />{' '}
-                Apply estimated expenses
-              </label>
+              <label htmlFor="bulk-notes">Notes</label>
+              <textarea id="bulk-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} className="sale-textarea" rows={2} placeholder="Optional" />
             </div>
           </div>
 
@@ -307,6 +311,12 @@ export function BulkSellModal({
       </div>
     </div>
   );
+}
+
+function parseDollarsToCents(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed * 100);
 }
 
 function toDatetimeLocal(d: Date): string {

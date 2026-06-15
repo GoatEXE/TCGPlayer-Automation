@@ -12,6 +12,7 @@ const mockSettings: ExpenseSettings = {
   autoRecordSaleExpenses: false,
   autoRecordShipping: true,
   shippingCostCents: 99,
+  defaultShippingCollectedCents: 149,
   autoRecordSupplies: true,
   suppliesCostCents: 25,
   autoRecordTcgplayerFees: true,
@@ -32,18 +33,20 @@ describe('ExpenseSettingsCard', () => {
   it('renders toggles and defaults with dollar/percent conversions', () => {
     render(<ExpenseSettingsCard settings={mockSettings} onSave={onSave} />);
 
-    const autoRecord = screen.getByLabelText(/Auto-record sale expenses/i) as HTMLInputElement;
     const autoShipping = screen.getByLabelText(/Auto-record shipping/i) as HTMLInputElement;
     const autoSupplies = screen.getByLabelText(/Auto-record supplies/i) as HTMLInputElement;
     const autoFees = screen.getByLabelText(/Auto-record TCGplayer fees/i) as HTMLInputElement;
 
-    expect(autoRecord.checked).toBe(false);
+    expect(screen.queryByLabelText(/Auto-record sale expenses/i)).toBeNull();
     expect(autoShipping.checked).toBe(true);
     expect(autoSupplies.checked).toBe(true);
     expect(autoFees.checked).toBe(true);
 
     const shippingInput = screen.getByLabelText(
-      /Default shipping cost \(\$\)/i,
+      /Default postage cost expense \(\$\)/i,
+    ) as HTMLInputElement;
+    const shippingCollectedInput = screen.getByLabelText(
+      /Default shipping collected \(\$\)/i,
     ) as HTMLInputElement;
     const suppliesInput = screen.getByLabelText(
       /Default supplies cost \(\$\)/i,
@@ -59,6 +62,7 @@ describe('ExpenseSettingsCard', () => {
     ) as HTMLInputElement;
 
     expect(shippingInput.value).toBe('0.99');
+    expect(shippingCollectedInput.value).toBe('1.49');
     expect(suppliesInput.value).toBe('0.25');
     expect(parseFloat(marketplaceInput.value)).toBe(10.75);
     expect(parseFloat(transactionFeeInput.value)).toBe(2.5);
@@ -71,12 +75,15 @@ describe('ExpenseSettingsCard', () => {
 
     render(<ExpenseSettingsCard settings={mockSettings} onSave={onSave} />);
 
-    await user.click(screen.getByLabelText(/Auto-record sale expenses/i)); // false -> true
     await user.click(screen.getByLabelText(/Auto-record supplies/i)); // true -> false
 
-    const shippingInput = screen.getByLabelText(/Default shipping cost/i);
+    const shippingInput = screen.getByLabelText(/Default postage cost expense/i);
     await user.clear(shippingInput);
-    await user.type(shippingInput, '1.49');
+    await user.type(shippingInput, '0.99');
+
+    const shippingCollectedInput = screen.getByLabelText(/Default shipping collected/i);
+    await user.clear(shippingCollectedInput);
+    await user.type(shippingCollectedInput, '2.49');
 
     const suppliesInput = screen.getByLabelText(/Default supplies cost/i);
     await user.clear(suppliesInput);
@@ -98,9 +105,10 @@ describe('ExpenseSettingsCard', () => {
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
-        autoRecordSaleExpenses: true,
+        autoRecordSaleExpenses: false,
         autoRecordShipping: true,
-        shippingCostCents: 149,
+        shippingCostCents: 99,
+        defaultShippingCollectedCents: 249,
         autoRecordSupplies: false,
         suppliesCostCents: 35,
         autoRecordTcgplayerFees: true,

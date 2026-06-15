@@ -20,7 +20,7 @@ interface CardTableProps {
   onPrepareBulkSell?: () => Promise<void>;
   bulkMode?: 'list' | 'sell';
   enableSellFlow?: boolean;
-  defaultApplyExpenses?: boolean;
+  defaultShippingCollectedCents?: number;
   sortField?: SortField;
   sortDirection?: SortDirection;
   onSortChange?: (field: SortField, direction: SortDirection) => void;
@@ -70,7 +70,7 @@ export function CardTable({
   onPrepareBulkSell,
   bulkMode,
   enableSellFlow,
-  defaultApplyExpenses = false,
+  defaultShippingCollectedCents = 149,
   sortField: controlledSortField,
   sortDirection: controlledSortDirection,
   onSortChange,
@@ -805,7 +805,7 @@ export function CardTable({
               setRecordSaleCardId(null);
             }}
             onClose={() => setRecordSaleCardId(null)}
-            defaultApplyExpenses={defaultApplyExpenses}
+            defaultShippingCollectedCents={defaultShippingCollectedCents}
           />
         );
       })()}
@@ -821,7 +821,7 @@ export function CardTable({
           onClose={() => {
             setShowBulkSellModal(false);
           }}
-          defaultApplyExpenses={defaultApplyExpenses}
+          defaultShippingCollectedCents={defaultShippingCollectedCents}
         />
       )}
     </div>

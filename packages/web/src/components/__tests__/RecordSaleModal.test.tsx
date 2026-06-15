@@ -64,58 +64,23 @@ describe('RecordSaleModal', () => {
     expect(priceInput.value).toBe('2.45');
   });
 
-  it('renders apply estimated expenses checkbox defaulting to true', () => {
+  it('shows shipping collected and hides deprecated estimated-expenses checkbox', () => {
     render(
       <RecordSaleModal
         card={mockCard}
         onSubmit={onSubmit}
         onClose={onClose}
-        defaultApplyExpenses
+        defaultShippingCollectedCents={149}
       />,
     );
 
-    const checkbox = screen.getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
-  });
-
-  it('renders apply estimated expenses checkbox defaulting to false', () => {
-    render(
-      <RecordSaleModal
-        card={mockCard}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses={false}
-      />,
-    );
-
-    const checkbox = screen.getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
-  });
-
-  it('allows user to toggle apply estimated expenses checkbox', async () => {
-    const user = userEvent.setup();
-    render(
-      <RecordSaleModal
-        card={mockCard}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses
-      />,
-    );
-
-    const checkbox = screen.getByRole('checkbox', {
-      name: /apply estimated expenses/i,
-    }) as HTMLInputElement;
-
-    expect(checkbox.checked).toBe(true);
-    await user.click(checkbox);
-    expect(checkbox.checked).toBe(false);
-    await user.click(checkbox);
-    expect(checkbox.checked).toBe(true);
+    const shippingInput = screen.getByLabelText(
+      /shipping collected/i,
+    ) as HTMLInputElement;
+    expect(shippingInput.value).toBe('1.49');
+    expect(
+      screen.queryByRole('checkbox', { name: /apply estimated expenses/i }),
+    ).toBeNull();
   });
 
   it('validates quantity does not exceed card.quantity', async () => {
@@ -171,54 +136,27 @@ describe('RecordSaleModal', () => {
           cardId: 42,
           quantitySold: 4,
           salePriceCents: 245,
+          shippingCollectedCents: 149,
         }),
       );
     });
   });
 
-  it('submits applyEstimatedExpenses=true when checkbox is checked', async () => {
+  it('submits edited shipping collected cents', async () => {
     const user = userEvent.setup();
     onSubmit.mockResolvedValueOnce(undefined);
 
     render(
-      <RecordSaleModal
-        card={mockCard}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses
-      />,
+      <RecordSaleModal card={mockCard} onSubmit={onSubmit} onClose={onClose} />,
     );
 
+    await user.clear(screen.getByLabelText(/shipping collected/i));
+    await user.type(screen.getByLabelText(/shipping collected/i), '2.49');
     await user.click(screen.getByRole('button', { name: /record sale/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ applyEstimatedExpenses: true }),
-      );
-    });
-  });
-
-  it('submits applyEstimatedExpenses=false when checkbox is unchecked', async () => {
-    const user = userEvent.setup();
-    onSubmit.mockResolvedValueOnce(undefined);
-
-    render(
-      <RecordSaleModal
-        card={mockCard}
-        onSubmit={onSubmit}
-        onClose={onClose}
-        defaultApplyExpenses
-      />,
-    );
-
-    await user.click(
-      screen.getByRole('checkbox', { name: /apply estimated expenses/i }),
-    );
-    await user.click(screen.getByRole('button', { name: /record sale/i }));
-
-    await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ applyEstimatedExpenses: false }),
+        expect.objectContaining({ shippingCollectedCents: 249 }),
       );
     });
   });

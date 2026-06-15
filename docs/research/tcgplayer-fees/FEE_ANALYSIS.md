@@ -38,6 +38,7 @@ There is **no tiered commission ladder** — all standard sellers pay the same r
 
 - Marketplace Commission: order subtotal × 10.75% (capped at $75 per product)
 - Transaction Fee: (order total [items + shipping + tax] × 2.5%) + $0.30 flat
+- App estimate: product sale total + shipping collected, excluding tax for now
 
 ### Key Details
 - The **$0.30 flat fee** is per ORDER, not per card — order consolidation amortizes this
@@ -62,7 +63,8 @@ There is **no tiered commission ladder** — all standard sellers pay the same r
 
 - **Seller Level:** Standard (Level 1–4) — 10.75% commission + 2.5% + $0.30 transaction fee
 - **Pricing Strategy:** 98% of market price
-- **Shipping Cost:** Not included in fee analysis (seller handles separately)
+- **Shipping collected:** Buyer-paid shipping is revenue. The app defaults shipping collected to $1.49 unless changed in expense settings or edited on the order.
+- **Postage/shipping cost:** Not the same as shipping collected. Postage, supplies, and other fulfillment costs are tracked separately as expenses.
 
 ### Single Card Orders (Worst Case)
 
@@ -88,6 +90,14 @@ When a buyer purchases multiple cards, the $0.30 flat fee is amortized.
 | $5.00 (5 × $1.00) | $0.54 | $0.43 | $0.96 | $0.81 | 81% |
 
 **Finding:** Consolidation dramatically improves margins. Even $0.50 cards become 75% margin at 5 cards/order.
+
+### App Performance Semantics
+
+Performance revenue includes paid product sale totals plus TCGPlayer shipping collected once per order. Shipping collected is revenue, not postage cost. Existing historical sales default to `$0.00` shipping collected unless edited or backfilled.
+
+Estimated TCGPlayer fees are subtracted in performance using the working assumption in this document: 10.75% marketplace commission + 2.5% transaction fee + $0.30 per order, computed from product total plus shipping collected. Tax is deferred and not modeled.
+
+Manual expenses, including actual postage and supplies, continue to subtract normally. The previous `applyEstimatedExpenses` sale-flow flag is deprecated/no-op; supplies and postage should be recorded through manual expenses/settings as applicable.
 
 ### Breakeven Analysis
 

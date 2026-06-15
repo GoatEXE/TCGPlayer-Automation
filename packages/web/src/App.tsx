@@ -354,6 +354,7 @@ export function App() {
   useEffect(() => {
     fetchStats();
     fetchPriceCheckStatus();
+    fetchExpenseSettings();
   }, []);
 
   const handleImportComplete = () => {
@@ -1069,8 +1070,8 @@ export function App() {
               onPrepareBulkSell={fetchGiftCards}
               bulkMode={statusFilter === 'matched' ? 'list' : 'sell'}
               enableSellFlow
-              defaultApplyExpenses={
-                expenseSettings?.autoRecordSaleExpenses ?? false
+              defaultShippingCollectedCents={
+                expenseSettings?.defaultShippingCollectedCents ?? 149
               }
               sortField={cardSortField}
               sortDirection={cardSortDirection}

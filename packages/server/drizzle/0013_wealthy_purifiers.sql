@@ -1,0 +1,2 @@
+ALTER TABLE "expense_settings" ADD COLUMN "default_shipping_collected_cents" integer DEFAULT 149 NOT NULL;--> statement-breakpoint
+ALTER TABLE "sales" ADD COLUMN "shipping_collected_cents" integer DEFAULT 0 NOT NULL;

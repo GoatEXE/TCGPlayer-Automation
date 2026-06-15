@@ -27,6 +27,9 @@ export const sales = pgTable('sales', {
   quantitySold: integer('quantity_sold').notNull(),
   lineItemType: lineItemTypeEnum('sale_line_type').notNull().default('sale'),
   salePriceCents: integer('sale_price_cents').notNull(),
+  shippingCollectedCents: integer('shipping_collected_cents')
+    .notNull()
+    .default(0),
   buyerName: text('buyer_name'),
   orderStatus: orderStatusEnum('order_status').notNull().default('pending'),
   soldAt: timestamp('sold_at', { withTimezone: true }).notNull().defaultNow(),

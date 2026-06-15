@@ -346,6 +346,7 @@ describe('expenses routes', () => {
               marketplaceFeeBps: 1075,
               transactionFeeBps: 250,
               transactionFlatFeeCents: 30,
+              defaultShippingCollectedCents: 149,
               createdAt: new Date('2026-04-18T12:00:00.000Z'),
               updatedAt: new Date('2026-04-18T12:00:00.000Z'),
             },
@@ -368,6 +369,7 @@ describe('expenses routes', () => {
           marketplaceFeeBps: 1075,
           transactionFeeBps: 250,
           transactionFlatFeeCents: 30,
+          defaultShippingCollectedCents: 149,
         }),
       );
     });
@@ -389,6 +391,7 @@ describe('expenses routes', () => {
               marketplaceFeeBps: 1075,
               transactionFeeBps: 250,
               transactionFlatFeeCents: 30,
+              defaultShippingCollectedCents: 149,
             },
           ]),
         }),
@@ -408,6 +411,7 @@ describe('expenses routes', () => {
               marketplaceFeeBps: 900,
               transactionFeeBps: 275,
               transactionFlatFeeCents: 35,
+              defaultShippingCollectedCents: 199,
               createdAt: new Date('2026-04-18T12:00:00.000Z'),
               updatedAt: new Date('2026-04-18T13:00:00.000Z'),
             },
@@ -429,6 +433,7 @@ describe('expenses routes', () => {
           marketplaceFeeBps: 900,
           transactionFeeBps: 275,
           transactionFlatFeeCents: 35,
+          defaultShippingCollectedCents: 199,
         },
       });
 
@@ -441,6 +446,7 @@ describe('expenses routes', () => {
           marketplaceFeeBps: 900,
           transactionFeeBps: 275,
           transactionFlatFeeCents: 35,
+          defaultShippingCollectedCents: 199,
           updatedAt: expect.any(Date),
         }),
       );
@@ -452,6 +458,7 @@ describe('expenses routes', () => {
           marketplaceFeeBps: 900,
           transactionFeeBps: 275,
           transactionFlatFeeCents: 35,
+          defaultShippingCollectedCents: 199,
         }),
       );
     });
@@ -470,6 +477,19 @@ describe('expenses routes', () => {
         error: 'shippingCostCents must be a non-negative integer',
       });
 
+      const invalidDefaultShippingResponse = await app.inject({
+        method: 'POST',
+        url: '/api/expenses/settings',
+        payload: {
+          defaultShippingCollectedCents: -1,
+        },
+      });
+
+      expect(invalidDefaultShippingResponse.statusCode).toBe(400);
+      expect(JSON.parse(invalidDefaultShippingResponse.body)).toEqual({
+        error: 'defaultShippingCollectedCents must be a non-negative integer',
+      });
+
       const invalidBpsResponse = await app.inject({
         method: 'POST',
         url: '/api/expenses/settings',
@@ -486,133 +506,70 @@ describe('expenses routes', () => {
   });
 
   describe('GET /api/expenses/performance', () => {
-    it('returns performance summary math and category grouping', async () => {
-      const salesWhere = vi.fn().mockResolvedValue([
-        {
-          revenueCents: 1500,
-          salesCount: 3,
-        },
-      ]);
-      const expensesWhere = vi.fn().mockResolvedValue([
-        {
-          expensesCents: 430,
-          expenseCount: 4,
-          estimatedExpensesCents: 130,
-          actualExpensesCents: 300,
-        },
-      ]);
-      const categoriesOrderBy = vi.fn().mockResolvedValue([
-        {
-          category: 'shipping',
-          totalCents: 130,
-          count: 2,
-        },
-        {
-          category: 'supplies',
-          totalCents: 300,
-          count: 2,
-        },
-      ]);
-      const categoriesGroupBy = vi.fn().mockReturnValue({
-        orderBy: categoriesOrderBy,
-      });
-      const categoriesWhere = vi.fn().mockReturnValue({
-        groupBy: categoriesGroupBy,
-      });
-
+    it('matches the TCGplayer invoice example using product plus shipping for revenue and fee basis', async () => {
       let selectCallCount = 0;
       vi.mocked(db.select).mockImplementation(() => {
         selectCallCount += 1;
+
         if (selectCallCount === 1) {
           return {
-            from: vi.fn().mockReturnValue({ where: salesWhere }),
+            from: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: 1,
+                  autoRecordSaleExpenses: false,
+                  autoRecordShipping: true,
+                  shippingCostCents: 99,
+                  autoRecordSupplies: true,
+                  suppliesCostCents: 25,
+                  autoRecordTcgplayerFees: true,
+                  marketplaceFeeBps: 1075,
+                  transactionFeeBps: 250,
+                  transactionFlatFeeCents: 30,
+                  defaultShippingCollectedCents: 149,
+                },
+              ]),
+            }),
           } as any;
         }
 
         if (selectCallCount === 2) {
           return {
-            from: vi.fn().mockReturnValue({ where: expensesWhere }),
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  id: 10,
+                  tcgplayerOrderId: 'ORDER-10',
+                  salePriceCents: 123,
+                  shippingCollectedCents: 149,
+                },
+              ]),
+            }),
           } as any;
         }
 
-        return {
-          from: vi.fn().mockReturnValue({ where: categoriesWhere }),
-        } as any;
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/api/expenses/performance?dateFrom=2026-04-01T00:00:00.000Z&dateTo=2026-04-30T23:59:59.999Z',
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(salesWhere).toHaveBeenCalledTimes(1);
-      expect(expensesWhere).toHaveBeenCalledTimes(1);
-      expect(categoriesWhere).toHaveBeenCalledTimes(1);
-      expect(categoriesGroupBy).toHaveBeenCalledTimes(1);
-
-      const body = JSON.parse(response.body);
-      expect(body).toEqual({
-        revenueCents: 1500,
-        expensesCents: 430,
-        netProfitCents: 1070,
-        marginPercent: 71.33,
-        salesCount: 3,
-        expenseCount: 4,
-        estimatedExpensesCents: 130,
-        actualExpensesCents: 300,
-        byCategory: [
-          {
-            category: 'shipping',
-            totalCents: 130,
-            count: 2,
-          },
-          {
-            category: 'supplies',
-            totalCents: 300,
-            count: 2,
-          },
-        ],
-      });
-    });
-
-    it('excludes cancelled sales from revenue totals', async () => {
-      const salesWhere = vi.fn().mockResolvedValue([
-        {
-          revenueCents: 800,
-          salesCount: 2,
-        },
-      ]);
-      const categoriesOrderBy = vi.fn().mockResolvedValue([]);
-      const categoriesGroupBy = vi.fn().mockReturnValue({
-        orderBy: categoriesOrderBy,
-      });
-
-      let selectCallCount = 0;
-      vi.mocked(db.select).mockImplementation(() => {
-        selectCallCount += 1;
-        if (selectCallCount === 1) {
+        if (selectCallCount === 3) {
           return {
-            from: vi.fn().mockReturnValue({ where: salesWhere }),
-          } as any;
-        }
-
-        if (selectCallCount === 2) {
-          return {
-            from: vi.fn().mockResolvedValue([
-              {
-                expensesCents: 100,
-                expenseCount: 1,
-                estimatedExpensesCents: 0,
-                actualExpensesCents: 100,
-              },
-            ]),
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  expensesCents: 0,
+                  expenseCount: 0,
+                  estimatedExpensesCents: 0,
+                  actualExpensesCents: 0,
+                },
+              ]),
+            }),
           } as any;
         }
 
         return {
           from: vi.fn().mockReturnValue({
-            groupBy: categoriesGroupBy,
+            where: vi.fn().mockReturnValue({
+              groupBy: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([]),
+              }),
+            }),
           }),
         } as any;
       });
@@ -623,15 +580,135 @@ describe('expenses routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(salesWhere).toHaveBeenCalledTimes(1);
-      expect(JSON.parse(response.body)).toEqual(
-        expect.objectContaining({
-          revenueCents: 800,
-          salesCount: 2,
-          expensesCents: 100,
-          netProfitCents: 700,
-        }),
-      );
+      expect(JSON.parse(response.body)).toEqual({
+        revenueCents: 272,
+        expensesCents: 66,
+        netProfitCents: 206,
+        marginPercent: 75.74,
+        salesCount: 1,
+        expenseCount: 0,
+        estimatedExpensesCents: 66,
+        actualExpensesCents: 0,
+        estimatedTcgplayerFeesCents: 66,
+        byCategory: [
+          {
+            category: 'tcgplayer_fees',
+            totalCents: 66,
+            count: 1,
+          },
+        ],
+      });
+    });
+
+    it('counts shipping and flat fees once per multi-line order while manual expenses still reduce profit', async () => {
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount += 1;
+
+        if (selectCallCount === 1) {
+          return {
+            from: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: 1,
+                  autoRecordSaleExpenses: false,
+                  autoRecordShipping: true,
+                  shippingCostCents: 99,
+                  autoRecordSupplies: true,
+                  suppliesCostCents: 25,
+                  autoRecordTcgplayerFees: true,
+                  marketplaceFeeBps: 1075,
+                  transactionFeeBps: 250,
+                  transactionFlatFeeCents: 30,
+                  defaultShippingCollectedCents: 149,
+                },
+              ]),
+            }),
+          } as any;
+        }
+
+        if (selectCallCount === 2) {
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  id: 20,
+                  tcgplayerOrderId: 'ORDER-20',
+                  salePriceCents: 123,
+                  shippingCollectedCents: 149,
+                },
+                {
+                  id: 21,
+                  tcgplayerOrderId: 'ORDER-20',
+                  salePriceCents: 200,
+                  shippingCollectedCents: 149,
+                },
+              ]),
+            }),
+          } as any;
+        }
+
+        if (selectCallCount === 3) {
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([
+                {
+                  expensesCents: 50,
+                  expenseCount: 1,
+                  estimatedExpensesCents: 0,
+                  actualExpensesCents: 50,
+                },
+              ]),
+            }),
+          } as any;
+        }
+
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              groupBy: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([
+                  {
+                    category: 'shipping',
+                    totalCents: 50,
+                    count: 1,
+                  },
+                ]),
+              }),
+            }),
+          }),
+        } as any;
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/expenses/performance',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        revenueCents: 472,
+        expensesCents: 143,
+        netProfitCents: 329,
+        marginPercent: 69.7,
+        salesCount: 2,
+        expenseCount: 1,
+        estimatedExpensesCents: 93,
+        actualExpensesCents: 50,
+        estimatedTcgplayerFeesCents: 93,
+        byCategory: [
+          {
+            category: 'shipping',
+            totalCents: 50,
+            count: 1,
+          },
+          {
+            category: 'tcgplayer_fees',
+            totalCents: 93,
+            count: 1,
+          },
+        ],
+      });
     });
   });
 });
