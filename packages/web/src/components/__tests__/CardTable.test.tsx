@@ -525,7 +525,6 @@ describe('CardTable pricing review', () => {
     expect(openSpy).toHaveBeenCalledWith(
       'https://store.tcgplayer.com/admin/product/manage/685490?OnlyMyInventory=false&SearchValue=Turn%20to%20Dust&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true',
       'tcgplayer-inventory',
-      'noopener,noreferrer',
     );
 
     openSpy.mockRestore();
@@ -784,8 +783,7 @@ describe('CardTable row actions menu', () => {
 
     expect(openSpy).toHaveBeenCalledWith(
       'https://store.tcgplayer.com/admin/product/manage/685490?OnlyMyInventory=false&SearchValue=Turn%20to%20Dust&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true',
-      '_blank',
-      'noopener,noreferrer',
+      'tcgplayer-inventory',
     );
 
     openSpy.mockRestore();
@@ -821,8 +819,7 @@ describe('CardTable row actions menu', () => {
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining('SearchValue=Turn%20to%20Dust%20-%20Foil'),
-      '_blank',
-      'noopener,noreferrer',
+      'tcgplayer-inventory',
     );
 
     openSpy.mockRestore();

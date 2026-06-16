@@ -78,8 +78,11 @@ async function copyTextToClipboard(text: string): Promise<void> {
   }
 }
 
-function openExternalUrl(url: string, target = '_blank') {
-  window.open(url, target, 'noopener,noreferrer');
+const TCGPLAYER_INVENTORY_WINDOW_TARGET = 'tcgplayer-inventory';
+
+function openTcgplayerInventoryUrl(url: string) {
+  const openedWindow = window.open(url, TCGPLAYER_INVENTORY_WINDOW_TARGET);
+  openedWindow?.focus();
 }
 
 function getAttentionReasonLabel(reason: Card['attentionReason']) {
@@ -790,7 +793,7 @@ export function CardTable({
                             role="menuitem"
                             onClick={() => {
                               setOpenActionMenuId(null);
-                              openExternalUrl(tcgplayerInventoryUrl);
+                              openTcgplayerInventoryUrl(tcgplayerInventoryUrl);
                             }}
                           >
                             Open TCGPlayer inventory
@@ -924,7 +927,7 @@ export function CardTable({
                       className="button-secondary"
                       onClick={() => {
                         if (tcgplayerInventoryUrl) {
-                          openExternalUrl(tcgplayerInventoryUrl, 'tcgplayer-inventory');
+                          openTcgplayerInventoryUrl(tcgplayerInventoryUrl);
                         }
                       }}
                       disabled={!tcgplayerInventoryUrl}
