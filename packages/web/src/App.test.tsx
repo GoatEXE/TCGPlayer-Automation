@@ -190,6 +190,73 @@ describe('App view tabs', () => {
     ).toBeTruthy();
   });
 
+  it('loads all Needs Attention cards for Review Pricing regardless of current table rows', async () => {
+    const user = userEvent.setup();
+    const displayedCard = {
+      id: 1,
+      tcgplayerId: 100,
+      tcgProductId: null,
+      productLine: 'Riftbound',
+      setName: 'Origins',
+      productName: 'Displayed Matched Card',
+      title: null,
+      number: '001',
+      rarity: 'Common',
+      condition: 'Near Mint',
+      quantity: 1,
+      status: 'matched',
+      marketPrice: '1.00',
+      listingPrice: '0.98',
+      floorPriceCents: null,
+      isFoilPrice: false,
+      photoUrl: null,
+      notes: null,
+      lastCheckedAt: null,
+      importedAt: '2026-04-01T00:00:00Z',
+      updatedAt: '2026-04-01T00:00:00Z',
+    };
+    const reviewCard = {
+      ...displayedCard,
+      id: 2,
+      tcgProductId: 685490,
+      productName: 'Fetched Needs Attention Card',
+      status: 'needs_attention',
+      marketPrice: '2.50',
+      listingPrice: '2.00',
+    };
+
+    apiMocks.getStats.mockResolvedValue({
+      total: 2,
+      pending: 0,
+      matched: 1,
+      listed: 0,
+      gift: 0,
+      needs_attention: 1,
+      sold: 0,
+      error: 0,
+    });
+    apiMocks.getCards.mockImplementation((params) => {
+      if (params?.status === 'needs_attention') {
+        return Promise.resolve({ cards: [reviewCard], total: 1, page: 1, limit: 200 });
+      }
+      return Promise.resolve({ cards: [displayedCard], total: 1, page: 1, limit: 50 });
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Displayed Matched Card')).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /pricing review/i });
+    expect(dialog).toHaveTextContent('Fetched Needs Attention Card');
+    expect(apiMocks.getCards).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'needs_attention', page: 1, limit: 200 }),
+    );
+  });
+
   it('requests globally sorted cards and resets to page 1 when Name sort is clicked', async () => {
     const user = userEvent.setup();
     apiMocks.getCards.mockResolvedValue({

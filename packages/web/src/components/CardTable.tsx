@@ -21,6 +21,8 @@ interface CardTableProps {
   bulkMode?: 'list' | 'sell';
   enableSellFlow?: boolean;
   defaultShippingCollectedCents?: number;
+  needsAttentionCount?: number;
+  onLoadNeedsAttentionReviewCards?: () => Promise<Card[]>;
   sortField?: SortField;
   sortDirection?: SortDirection;
   onSortChange?: (field: SortField, direction: SortDirection) => void;
@@ -48,6 +50,32 @@ function buildTcgplayerInventoryUrl(card: Card): string | null {
   const displayName = card.title || card.productName;
   const searchValue = encodeURIComponent(displayName);
   return `https://store.tcgplayer.com/admin/product/manage/${card.tcgProductId}?OnlyMyInventory=false&SearchValue=${searchValue}&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true`;
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    const copied = document.execCommand('copy');
+    if (!copied) {
+      throw new Error('Copy command failed');
+    }
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 function openExternalUrl(url: string, target = '_blank') {
@@ -96,6 +124,8 @@ export function CardTable({
   bulkMode,
   enableSellFlow,
   defaultShippingCollectedCents = 149,
+  needsAttentionCount,
+  onLoadNeedsAttentionReviewCards,
   sortField: controlledSortField,
   sortDirection: controlledSortDirection,
   onSortChange,
@@ -125,6 +155,9 @@ export function CardTable({
   const [preparingBulkSell, setPreparingBulkSell] = useState(false);
   const [needsAttentionReviewQueue, setNeedsAttentionReviewQueue] = useState<Card[] | null>(null);
   const [needsAttentionReviewIndex, setNeedsAttentionReviewIndex] = useState(0);
+  const [needsAttentionReviewLoading, setNeedsAttentionReviewLoading] = useState(false);
+  const [needsAttentionReviewError, setNeedsAttentionReviewError] = useState<string | null>(null);
+  const [needsAttentionCopyStatus, setNeedsAttentionCopyStatus] = useState<string | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{
@@ -325,6 +358,7 @@ export function CardTable({
   const needsAttentionReviewCards = sortedCards.filter(
     (card) => card.status === 'needs_attention',
   );
+  const reviewPricingCount = needsAttentionCount ?? needsAttentionReviewCards.length;
 
   const parsePriceValue = (price: string | null | undefined) => {
     if (!price) return null;
@@ -388,25 +422,50 @@ export function CardTable({
     return formattedPrice;
   };
 
-  const handleStartNeedsAttentionReview = () => {
-    if (needsAttentionReviewCards.length === 0) return;
-    setNeedsAttentionReviewQueue(needsAttentionReviewCards);
-    setNeedsAttentionReviewIndex(0);
+  const handleStartNeedsAttentionReview = async () => {
+    if (reviewPricingCount === 0) return;
+    setNeedsAttentionReviewLoading(true);
+    setNeedsAttentionReviewError(null);
+    setNeedsAttentionCopyStatus(null);
+    try {
+      const queue = onLoadNeedsAttentionReviewCards
+        ? await onLoadNeedsAttentionReviewCards()
+        : needsAttentionReviewCards;
+      setNeedsAttentionReviewQueue(queue);
+      setNeedsAttentionReviewIndex(0);
+      if (queue.length === 0) {
+        setNeedsAttentionReviewError('No Needs Attention cards are available to review.');
+      }
+    } catch (err) {
+      setNeedsAttentionReviewError(
+        err instanceof Error ? err.message : 'Failed to load pricing review cards',
+      );
+    } finally {
+      setNeedsAttentionReviewLoading(false);
+    }
   };
 
   const handleCloseNeedsAttentionReview = () => {
     setNeedsAttentionReviewQueue(null);
     setNeedsAttentionReviewIndex(0);
+    setNeedsAttentionCopyStatus(null);
   };
 
   const handleAdvanceNeedsAttentionReview = () => {
+    setNeedsAttentionCopyStatus(null);
     setNeedsAttentionReviewIndex((current) => current + 1);
   };
 
   const handleCopyRecommendedPrice = async (card: Card) => {
     const recommended = getRecommendedPrice(card);
     if (recommended === null) return;
-    await navigator.clipboard.writeText(recommended.toFixed(2));
+
+    try {
+      await copyTextToClipboard(recommended.toFixed(2));
+      setNeedsAttentionCopyStatus('Copied Rec’d price');
+    } catch {
+      setNeedsAttentionCopyStatus('Copy failed. Select and copy the Rec’d price manually.');
+    }
   };
 
   const handleSaveRecommendedListing = async (card: Card) => {
@@ -465,15 +524,23 @@ export function CardTable({
 
   return (
     <div className="table-container">
-      {needsAttentionReviewCards.length > 0 && (
+      {reviewPricingCount > 0 && (
         <div className="selection-actions needs-attention-review-actions">
           <button
             type="button"
             className="button-primary"
             onClick={handleStartNeedsAttentionReview}
+            disabled={needsAttentionReviewLoading}
           >
-            Review Pricing ({needsAttentionReviewCards.length} on this page)
+            {needsAttentionReviewLoading
+              ? 'Loading pricing review…'
+              : `Review Pricing (${reviewPricingCount} Needs Attention)`}
           </button>
+          {needsAttentionReviewError && (
+            <span className="form-help" role="alert">
+              {needsAttentionReviewError}
+            </span>
+          )}
         </div>
       )}
       {selectedIds.size > 0 && (
@@ -783,7 +850,7 @@ export function CardTable({
               {isComplete ? (
                 <>
                   <div className="sale-card-info">
-                    <p className="sale-card-name">All cards on this page reviewed</p>
+                    <p className="sale-card-name">All Needs Attention cards reviewed</p>
                     <p className="sale-card-details">
                       You have reached the end of this pricing review queue.
                     </p>
@@ -837,6 +904,11 @@ export function CardTable({
                       No TCGPlayer Product ID is available, so the seller inventory link is disabled.
                     </p>
                   )}
+                  {needsAttentionCopyStatus && (
+                    <p className="form-help" role="status">
+                      {needsAttentionCopyStatus}
+                    </p>
+                  )}
 
                   <div className="modal-actions">
                     <button
@@ -881,7 +953,7 @@ export function CardTable({
                       Previous
                     </button>
                     <span className="form-help">
-                      {needsAttentionReviewIndex + 1} of {needsAttentionReviewQueue.length} on this page
+                      {needsAttentionReviewIndex + 1} of {needsAttentionReviewQueue.length} Needs Attention
                     </span>
                     <button
                       type="button"

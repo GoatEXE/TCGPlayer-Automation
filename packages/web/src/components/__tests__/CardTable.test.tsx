@@ -377,12 +377,18 @@ describe('CardTable price history button', () => {
 });
 
 describe('CardTable pricing review', () => {
-  it('shows the review launcher for Needs Attention rows and opens the modal', async () => {
+  it('shows the review launcher from the global Needs Attention count and opens fetched cards', async () => {
     const user = userEvent.setup();
+
+    const onLoadNeedsAttentionReviewCards = vi.fn().mockResolvedValue([
+      makeCard({ id: 2, status: 'needs_attention', productName: 'Fetched Review Card' }),
+    ]);
 
     render(
       <CardTable
-        cards={[makeCard({ id: 1, status: 'needs_attention', productName: 'Review Card' })]}
+        cards={[makeCard({ id: 1, status: 'matched', productName: 'Displayed Card' })]}
+        needsAttentionCount={1}
+        onLoadNeedsAttentionReviewCards={onLoadNeedsAttentionReviewCards}
         onReprice={() => {}}
         onDelete={() => {}}
         onMarkListed={() => {}}
@@ -393,8 +399,9 @@ describe('CardTable pricing review', () => {
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
 
-    const dialog = screen.getByRole('dialog', { name: /pricing review/i });
-    expect(dialog).toHaveTextContent('Review Card');
+    const dialog = await screen.findByRole('dialog', { name: /pricing review/i });
+    expect(onLoadNeedsAttentionReviewCards).toHaveBeenCalled();
+    expect(dialog).toHaveTextContent('Fetched Review Card');
     expect(dialog).toHaveTextContent('Market');
     expect(dialog).toHaveTextContent('Listing');
     expect(dialog).toHaveTextContent('Rec’d');
@@ -423,6 +430,71 @@ describe('CardTable pricing review', () => {
     await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
 
     expect(writeText).toHaveBeenCalledWith('2.45');
+    expect(await screen.findByRole('status')).toHaveTextContent(/copied rec’d price/i);
+  });
+
+  it('falls back to a temporary textarea when Clipboard API is unavailable', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, 'execCommand', {
+      value: execCommand,
+      configurable: true,
+    });
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, status: 'needs_attention', marketPrice: '2.50' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
+
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(await screen.findByRole('status')).toHaveTextContent(/copied rec’d price/i);
+    expect(document.querySelector('textarea')).toBeNull();
+
+  });
+
+  it('shows a graceful message when clipboard copy fails', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    const execCommand = vi.fn().mockReturnValue(false);
+    Object.defineProperty(document, 'execCommand', {
+      value: execCommand,
+      configurable: true,
+    });
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, status: 'needs_attention', marketPrice: '2.50' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
+
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(await screen.findByRole('status')).toHaveTextContent(/copy failed/i);
+    expect(document.querySelector('textarea')).toBeNull();
+
   });
 
   it('opens TCGPlayer in a reusable named browser target', async () => {
@@ -530,7 +602,7 @@ describe('CardTable pricing review', () => {
       expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.45 });
     });
     expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
-      /all cards on this page reviewed/i,
+      /all needs attention cards reviewed/i,
     );
   });
 

@@ -156,6 +156,33 @@ export function App() {
     }
   };
 
+  const fetchAllNeedsAttentionCards = async () => {
+    const limit = 200;
+    const allCards: Card[] = [];
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (allCards.length < total) {
+      const response = await api.getCards({
+        status: 'needs_attention',
+        page,
+        limit,
+        sortField: 'productName',
+        sortDirection: 'asc',
+      });
+      allCards.push(...response.cards);
+      total = response.total;
+
+      if (response.cards.length === 0) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return allCards;
+  };
+
   const fetchStats = async () => {
     setStatsLoading(true);
     try {
@@ -1073,6 +1100,8 @@ export function App() {
               defaultShippingCollectedCents={
                 expenseSettings?.defaultShippingCollectedCents ?? 149
               }
+              needsAttentionCount={stats?.needs_attention ?? 0}
+              onLoadNeedsAttentionReviewCards={fetchAllNeedsAttentionCards}
               sortField={cardSortField}
               sortDirection={cardSortDirection}
               onSortChange={handleCardSortChange}
