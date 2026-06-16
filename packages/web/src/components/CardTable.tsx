@@ -42,6 +42,31 @@ const CONDITION_OPTIONS = [
   'Damaged Foil',
 ];
 
+function buildTcgplayerInventoryUrl(card: Card): string | null {
+  if (card.tcgProductId == null) return null;
+
+  const displayName = card.title || card.productName;
+  const searchValue = encodeURIComponent(displayName);
+  return `https://store.tcgplayer.com/admin/product/manage/${card.tcgProductId}?OnlyMyInventory=false&SearchValue=${searchValue}&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true`;
+}
+
+function openExternalUrl(url: string, target = '_blank') {
+  window.open(url, target, 'noopener,noreferrer');
+}
+
+function getAttentionReasonLabel(reason: Card['attentionReason']) {
+  switch (reason) {
+    case 'listed_price_drift':
+      return 'Listed price drift';
+    case 'listed_missing_price':
+      return 'Listed card missing market price';
+    case 'listed_below_threshold':
+      return 'Listed card below gift threshold';
+    default:
+      return 'Needs attention';
+  }
+}
+
 function isValidPhotoUrl(photoUrl: string | null | undefined) {
   if (!photoUrl) return false;
 
@@ -98,6 +123,8 @@ export function CardTable({
   const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
   const [preparingBulkSell, setPreparingBulkSell] = useState(false);
+  const [needsAttentionReviewQueue, setNeedsAttentionReviewQueue] = useState<Card[] | null>(null);
+  const [needsAttentionReviewIndex, setNeedsAttentionReviewIndex] = useState(0);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{
@@ -295,6 +322,9 @@ export function CardTable({
   const matchedCards = sortedCards.filter((card) => card.status === 'matched');
   const sellableCards = sortedCards.filter(isSellEligible);
   const selectableCards = effectiveBulkMode === 'sell' ? sellableCards : matchedCards;
+  const needsAttentionReviewCards = sortedCards.filter(
+    (card) => card.status === 'needs_attention',
+  );
 
   const parsePriceValue = (price: string | null | undefined) => {
     if (!price) return null;
@@ -328,10 +358,19 @@ export function CardTable({
     }
   };
 
-  const formatRecommendedPrice = (marketPrice: string | null) => {
-    const parsedMarketPrice = parsePriceValue(marketPrice);
-    if (parsedMarketPrice === null) return '\u2014';
-    const recommended = Math.round(parsedMarketPrice * 98) / 100;
+  const getRecommendedPrice = (card: Card) => {
+    const parsedMarketPrice = parsePriceValue(card.marketPrice);
+    if (parsedMarketPrice === null) return null;
+    const marketRecommended = Math.round(parsedMarketPrice * 98) / 100;
+    const floorPrice = card.floorPriceCents == null ? null : card.floorPriceCents / 100;
+    return floorPrice == null
+      ? marketRecommended
+      : Math.max(marketRecommended, floorPrice);
+  };
+
+  const formatRecommendedPrice = (card: Card) => {
+    const recommended = getRecommendedPrice(card);
+    if (recommended === null) return '\u2014';
     return `$${recommended.toFixed(2)}`;
   };
 
@@ -347,6 +386,34 @@ export function CardTable({
       );
     }
     return formattedPrice;
+  };
+
+  const handleStartNeedsAttentionReview = () => {
+    if (needsAttentionReviewCards.length === 0) return;
+    setNeedsAttentionReviewQueue(needsAttentionReviewCards);
+    setNeedsAttentionReviewIndex(0);
+  };
+
+  const handleCloseNeedsAttentionReview = () => {
+    setNeedsAttentionReviewQueue(null);
+    setNeedsAttentionReviewIndex(0);
+  };
+
+  const handleAdvanceNeedsAttentionReview = () => {
+    setNeedsAttentionReviewIndex((current) => current + 1);
+  };
+
+  const handleCopyRecommendedPrice = async (card: Card) => {
+    const recommended = getRecommendedPrice(card);
+    if (recommended === null) return;
+    await navigator.clipboard.writeText(recommended.toFixed(2));
+  };
+
+  const handleSaveRecommendedListing = async (card: Card) => {
+    const recommended = getRecommendedPrice(card);
+    if (recommended === null) return;
+    await onUpdateCard(card.id, { listingPrice: recommended } as unknown as Partial<Card>);
+    handleAdvanceNeedsAttentionReview();
   };
 
   const formatDate = (dateStr: string) => {
@@ -398,6 +465,17 @@ export function CardTable({
 
   return (
     <div className="table-container">
+      {needsAttentionReviewCards.length > 0 && (
+        <div className="selection-actions needs-attention-review-actions">
+          <button
+            type="button"
+            className="button-primary"
+            onClick={handleStartNeedsAttentionReview}
+          >
+            Review Pricing ({needsAttentionReviewCards.length} on this page)
+          </button>
+        </div>
+      )}
       {selectedIds.size > 0 && (
         <div className="selection-actions">
           {effectiveBulkMode === 'sell' ? (
@@ -467,6 +545,10 @@ export function CardTable({
               card.status === 'listed' || card.status === 'needs_attention';
             const isSelected = selectedIds.has(card.id);
             const photoUrl = isValidPhotoUrl(card.photoUrl) ? card.photoUrl : null;
+            const tcgplayerInventoryUrl =
+              card.status === 'needs_attention'
+                ? buildTcgplayerInventoryUrl(card)
+                : null;
 
             return (
               <tr key={card.id} className={isListed ? 'listed-row' : ''}>
@@ -520,7 +602,7 @@ export function CardTable({
                   {formatPrice(card.marketPrice, card.isFoilPrice)}
                 </td>
                 <td className="price">
-                  {formatRecommendedPrice(card.marketPrice)}
+                  {formatRecommendedPrice(card)}
                 </td>
                 <td className="price listing-price-cell">
                   {canEditListingPrice ? (
@@ -635,6 +717,18 @@ export function CardTable({
                         >
                           View price history
                         </button>
+                        {tcgplayerInventoryUrl && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setOpenActionMenuId(null);
+                              openExternalUrl(tcgplayerInventoryUrl);
+                            }}
+                          >
+                            Open TCGPlayer inventory
+                          </button>
+                        )}
                         <button
                           type="button"
                           role="menuitem"
@@ -656,6 +750,165 @@ export function CardTable({
           })}
         </tbody>
       </table>
+      {needsAttentionReviewQueue && (() => {
+        const card = needsAttentionReviewQueue[needsAttentionReviewIndex];
+        const isComplete = needsAttentionReviewIndex >= needsAttentionReviewQueue.length;
+        const displayName = card ? card.title || card.productName : '';
+        const recommended = card ? getRecommendedPrice(card) : null;
+        const tcgplayerInventoryUrl = card ? buildTcgplayerInventoryUrl(card) : null;
+        return (
+          <div
+            className="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pricing review"
+            onClick={handleCloseNeedsAttentionReview}
+          >
+            <div
+              className="modal-content needs-attention-review-modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2>Review Pricing</h2>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={handleCloseNeedsAttentionReview}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              {isComplete ? (
+                <>
+                  <div className="sale-card-info">
+                    <p className="sale-card-name">All cards on this page reviewed</p>
+                    <p className="sale-card-details">
+                      You have reached the end of this pricing review queue.
+                    </p>
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="button-primary"
+                      onClick={handleCloseNeedsAttentionReview}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              ) : card ? (
+                <>
+                  <div className="sale-card-info">
+                    <p className="sale-card-name">{displayName}</p>
+                    <p className="sale-card-details">
+                      {card.setName && <span>{card.setName}</span>}
+                      {card.setName && ' · '}
+                      <span>{card.condition}</span>
+                    </p>
+                    <p className="sale-card-details">
+                      Reason: {getAttentionReasonLabel(card.attentionReason)}
+                    </p>
+                  </div>
+
+                  <dl className="needs-attention-review-prices">
+                    <div>
+                      <dt>Market</dt>
+                      <dd>{formatPrice(card.marketPrice)}</dd>
+                    </div>
+                    <div>
+                      <dt>Listing</dt>
+                      <dd>{formatPrice(card.listingPrice)}</dd>
+                    </div>
+                    <div>
+                      <dt>Rec’d</dt>
+                      <dd>{recommended === null ? '—' : `$${recommended.toFixed(2)}`}</dd>
+                    </div>
+                  </dl>
+
+                  {recommended === null && (
+                    <p className="form-help">
+                      No valid Rec’d price is available yet, so copy and save are disabled.
+                    </p>
+                  )}
+                  {!tcgplayerInventoryUrl && (
+                    <p className="form-help">
+                      No TCGPlayer Product ID is available, so the seller inventory link is disabled.
+                    </p>
+                  )}
+
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => handleCopyRecommendedPrice(card)}
+                      disabled={recommended === null}
+                    >
+                      Copy Rec’d
+                    </button>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => {
+                        if (tcgplayerInventoryUrl) {
+                          openExternalUrl(tcgplayerInventoryUrl, 'tcgplayer-inventory');
+                        }
+                      }}
+                      disabled={!tcgplayerInventoryUrl}
+                    >
+                      Open TCGPlayer
+                    </button>
+                    <button
+                      type="button"
+                      className="button-primary"
+                      onClick={() => handleSaveRecommendedListing(card)}
+                      disabled={recommended === null}
+                    >
+                      I updated TCGPlayer — save Listing to Rec’d
+                    </button>
+                  </div>
+
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() =>
+                        setNeedsAttentionReviewIndex((current) => Math.max(0, current - 1))
+                      }
+                      disabled={needsAttentionReviewIndex === 0}
+                    >
+                      Previous
+                    </button>
+                    <span className="form-help">
+                      {needsAttentionReviewIndex + 1} of {needsAttentionReviewQueue.length} on this page
+                    </span>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={handleAdvanceNeedsAttentionReview}
+                    >
+                      Skip
+                    </button>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() =>
+                        setNeedsAttentionReviewIndex((current) =>
+                          Math.min(needsAttentionReviewQueue.length - 1, current + 1),
+                        )
+                      }
+                      disabled={needsAttentionReviewIndex >= needsAttentionReviewQueue.length - 1}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        );
+      })()}
       {selectedPhoto && (
         <div
           className="modal-backdrop"

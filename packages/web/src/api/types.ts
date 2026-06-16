@@ -1,6 +1,7 @@
 export interface Card {
   id: number;
   tcgplayerId: number | null;
+  tcgProductId: number | null;
   productLine: string;
   setName: string | null;
   productName: string;

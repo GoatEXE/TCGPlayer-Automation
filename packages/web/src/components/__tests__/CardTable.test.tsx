@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,6 +10,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
   return {
     id: 1,
     tcgplayerId: 123,
+  tcgProductId: null,
     productLine: 'Riftbound: League of Legends Trading Card Game',
     setName: 'Origins',
     productName: "Targon's Peak",
@@ -374,6 +376,198 @@ describe('CardTable price history button', () => {
   });
 });
 
+describe('CardTable pricing review', () => {
+  it('shows the review launcher for Needs Attention rows and opens the modal', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, status: 'needs_attention', productName: 'Review Card' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    expect(dialog).toHaveTextContent('Review Card');
+    expect(dialog).toHaveTextContent('Market');
+    expect(dialog).toHaveTextContent('Listing');
+    expect(dialog).toHaveTextContent('Rec’d');
+  });
+
+  it('copies the recommended price to the clipboard', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, status: 'needs_attention', marketPrice: '2.50' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
+
+    expect(writeText).toHaveBeenCalledWith('2.45');
+  });
+
+  it('opens TCGPlayer in a reusable named browser target', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            tcgProductId: 685490,
+            productName: 'Turn to Dust',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(screen.getByRole('button', { name: /open tcgplayer/i }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://store.tcgplayer.com/admin/product/manage/685490?OnlyMyInventory=false&SearchValue=Turn%20to%20Dust&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true',
+      'tcgplayer-inventory',
+      'noopener,noreferrer',
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it('saves Listing to Rec’d and advances to the next card even when the parent updates resolved status', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn();
+
+    function Harness() {
+      const [cards, setCards] = useState([
+        makeCard({ id: 1, status: 'needs_attention', productName: 'First Card', marketPrice: '2.50' }),
+        makeCard({ id: 2, status: 'needs_attention', productName: 'Second Card', marketPrice: '5.00' }),
+      ]);
+
+      return (
+        <CardTable
+          cards={cards}
+          onReprice={() => {}}
+          onDelete={() => {}}
+          onMarkListed={() => {}}
+          onUnlist={() => {}}
+          onUpdateCard={async (id, data) => {
+            onUpdateCard(id, data);
+            setCards((current) =>
+              current.map((card) =>
+                card.id === id
+                  ? { ...card, ...data, status: 'listed' as const }
+                  : card,
+              ),
+            );
+            return makeCard({ id, status: 'listed', ...data });
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save listing to rec’d/i }),
+    );
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.45 });
+    });
+    expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
+      'Second Card',
+    );
+  });
+
+  it('shows a completion state after the last queued card is resolved', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+
+    render(
+      <CardTable
+        cards={[makeCard({ id: 1, status: 'needs_attention', productName: 'Only Card', marketPrice: '2.50' })]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save listing to rec’d/i }),
+    );
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.45 });
+    });
+    expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
+      /all cards on this page reviewed/i,
+    );
+  });
+
+  it('disables unavailable actions when Rec’d price or Product ID is missing', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            productName: 'Incomplete Card',
+            marketPrice: null,
+            tcgProductId: null,
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+
+    expect(screen.getByRole('button', { name: /copy rec’d/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /open tcgplayer/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /save listing to rec’d/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/no valid rec’d price/i)).toBeInTheDocument();
+    expect(screen.getByText(/no tcgplayer product id/i)).toBeInTheDocument();
+  });
+});
+
 describe('CardTable row actions menu', () => {
   it('opens Edit details and submits quantity and condition updates', async () => {
     const user = userEvent.setup();
@@ -487,6 +681,117 @@ describe('CardTable row actions menu', () => {
     await waitFor(() => {
       expect(onUnlist).toHaveBeenCalledWith(1);
     });
+  });
+
+  it('opens TCGPlayer inventory for Needs Attention cards with a Product ID', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            tcgProductId: 685490,
+            productName: 'Turn to Dust',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for turn to dust/i }));
+    await user.click(
+      screen.getByRole('menuitem', { name: /open tcgplayer inventory/i }),
+    );
+
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://store.tcgplayer.com/admin/product/manage/685490?OnlyMyInventory=false&SearchValue=Turn%20to%20Dust&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true',
+      '_blank',
+      'noopener,noreferrer',
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it('uses the display title in the TCGPlayer inventory search value', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            tcgProductId: 685490,
+            productName: 'Raw Name',
+            title: 'Turn to Dust - Foil',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for turn to dust - foil/i }));
+    await user.click(
+      screen.getByRole('menuitem', { name: /open tcgplayer inventory/i }),
+    );
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining('SearchValue=Turn%20to%20Dust%20-%20Foil'),
+      '_blank',
+      'noopener,noreferrer',
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it('does not show TCGPlayer inventory action without Needs Attention and Product ID', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            tcgProductId: null,
+            productName: 'Missing Product ID',
+          }),
+          makeCard({
+            id: 2,
+            status: 'listed',
+            tcgProductId: 685490,
+            productName: 'Listed Card',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for missing product id/i }));
+    expect(
+      screen.queryByRole('menuitem', { name: /open tcgplayer inventory/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /actions for listed card/i }));
+    expect(
+      screen.queryByRole('menuitem', { name: /open tcgplayer inventory/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('triggers Delete from the row actions menu after confirmation', async () => {

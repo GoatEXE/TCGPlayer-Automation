@@ -197,6 +197,7 @@ describe('App view tabs', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Against the Odds',
@@ -367,6 +368,7 @@ describe('App view tabs', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Against the Odds',
@@ -754,6 +756,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Test Card',
@@ -826,6 +829,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Test Card',
@@ -901,6 +905,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card A',
@@ -923,6 +928,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 2,
           tcgplayerId: 101,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card B',
@@ -983,6 +989,7 @@ describe('App record sale + bulk sell integration', () => {
     const paidCard = {
       id: 1,
       tcgplayerId: 100,
+  tcgProductId: null,
       productLine: 'Riftbound',
       setName: 'Origins',
       productName: 'Paid Card',
@@ -1006,6 +1013,7 @@ describe('App record sale + bulk sell integration', () => {
       ...paidCard,
       id: 50,
       tcgplayerId: 150,
+  tcgProductId: null,
       productName: 'Gift Card',
       quantity: 3,
       status: 'gift',
@@ -1058,6 +1066,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card A',
@@ -1080,6 +1089,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 2,
           tcgplayerId: 101,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card B',
@@ -1132,6 +1142,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
+  tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Listed Card',

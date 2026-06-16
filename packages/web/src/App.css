@@ -1248,6 +1248,55 @@ body {
   border-top: 1px solid var(--color-border);
 }
 
+.form-help {
+  margin: 0.5rem 1.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.needs-attention-review-modal {
+  max-width: 640px;
+}
+
+.needs-attention-review-modal .sale-card-info {
+  padding: 1rem 1.5rem 0;
+}
+
+.needs-attention-review-modal .sale-card-name {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.needs-attention-review-modal .sale-card-details {
+  margin: 0.25rem 0;
+  color: var(--color-text-muted);
+}
+
+.needs-attention-review-prices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 1.5rem;
+}
+
+.needs-attention-review-prices div {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.needs-attention-review-prices dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.needs-attention-review-prices dd {
+  margin: 0;
+  font-weight: 600;
+}
+
 /* ───── Price History Modal ───── */
 .price-history-modal {
   max-width: 780px;

@@ -7,6 +7,7 @@ import type { Card, CreateBulkOrderRequest } from '../../api/types';
 const makeCard = (overrides: Partial<Card> = {}): Card => ({
   id: 1,
   tcgplayerId: 100,
+  tcgProductId: null,
   productLine: 'Riftbound',
   setName: 'Origins',
   productName: 'Fire Drake',

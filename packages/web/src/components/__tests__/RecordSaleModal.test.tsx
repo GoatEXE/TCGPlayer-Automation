@@ -7,6 +7,7 @@ import type { Card, CreateSaleRequest } from '../../api/types';
 const mockCard: Card = {
   id: 42,
   tcgplayerId: 12345,
+  tcgProductId: null,
   productLine: 'Riftbound',
   setName: 'Origins',
   productName: 'Fire Drake',

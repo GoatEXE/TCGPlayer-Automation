@@ -9,6 +9,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
   return {
     id: 1,
     tcgplayerId: 123,
+  tcgProductId: null,
     productLine: 'Riftbound: League of Legends Trading Card Game',
     setName: 'Origins',
     productName: "Targon's Peak",
