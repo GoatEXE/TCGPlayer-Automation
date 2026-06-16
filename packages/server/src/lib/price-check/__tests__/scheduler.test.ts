@@ -12,7 +12,7 @@ const workerOn = vi.fn();
 
 const runPriceCheck = vi.fn();
 const sendTelegramMessage = vi.fn();
-const sendNeedsAttentionAlert = vi.fn();
+const buildNeedsAttentionAlertBatches = vi.fn();
 
 const dbUpdate = vi.fn();
 const dbSet = vi.fn();
@@ -57,7 +57,7 @@ vi.mock('../run-price-check.js', () => ({
 
 vi.mock('../../notifications/telegram.js', () => ({
   sendTelegramMessage,
-  sendNeedsAttentionAlert,
+  buildNeedsAttentionAlertBatches,
 }));
 
 vi.mock('../../../db/index.js', () => ({
@@ -176,6 +176,7 @@ describe('BullMQ price check scheduler', () => {
     dbUpdate.mockReturnValue({ set: dbSet });
     dbSet.mockReturnValue({ where: dbWhere });
     dbWhere.mockResolvedValue(undefined);
+    buildNeedsAttentionAlertBatches.mockReturnValue([]);
   });
 
   afterEach(async () => {
@@ -430,7 +431,7 @@ describe('BullMQ price check scheduler', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('sends needs_attention alerts and marks successful notifications', async () => {
+  it('sends grouped needs_attention alerts for both newly-transitioned and already-needs_attention cards and marks only successful history ids as sent', async () => {
     const { startPriceCheckScheduler } = await loadSchedulerModule();
 
     runPriceCheck.mockResolvedValue({
@@ -441,13 +442,51 @@ describe('BullMQ price check scheduler', () => {
       driftedCards: [],
       driftedHistoryIds: [],
       needsAttentionCards: [
-        { cardId: 10, productName: 'No Market Card' },
-        { cardId: 11, productName: 'Also Missing' },
+        {
+          cardId: 10,
+          historyId: 301,
+          source: 'scheduled',
+          displayName: 'No Market Card',
+          productName: 'No Market Card',
+          title: null,
+          setName: 'Origins',
+          condition: 'Near Mint',
+          attentionReason: 'listed_missing_price',
+          previousStatus: 'listed',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1.25,
+          newMarketPrice: null,
+          currentListingPrice: 1,
+          recommendedListingPrice: null,
+          driftPercent: null,
+        },
+        {
+          cardId: 11,
+          historyId: 302,
+          source: 'scheduled',
+          displayName: 'Also Missing',
+          productName: 'Also Missing',
+          title: null,
+          setName: 'Origins',
+          condition: 'Near Mint',
+          attentionReason: 'listed_price_drift',
+          previousStatus: 'needs_attention',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1.25,
+          newMarketPrice: 0.51,
+          currentListingPrice: 1,
+          recommendedListingPrice: 0.5,
+          driftPercent: -50,
+        },
       ],
       needsAttentionHistoryIds: [301, 302],
     });
 
-    sendNeedsAttentionAlert
+    buildNeedsAttentionAlertBatches.mockReturnValue([
+      { message: 'batch 1', historyIds: [301] },
+      { message: 'batch 2', historyIds: [302] },
+    ]);
+    sendTelegramMessage
       .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error('telegram down'));
 
@@ -460,18 +499,23 @@ describe('BullMQ price check scheduler', () => {
     await startPriceCheckScheduler(logger);
     await workerProcessor?.({ name: 'check-prices' });
 
-    expect(sendNeedsAttentionAlert).toHaveBeenCalledTimes(2);
-    expect(sendNeedsAttentionAlert).toHaveBeenNthCalledWith(1, {
-      cardId: 10,
-      productName: 'No Market Card',
-    });
-    expect(sendNeedsAttentionAlert).toHaveBeenNthCalledWith(2, {
-      cardId: 11,
-      productName: 'Also Missing',
-    });
+    expect(buildNeedsAttentionAlertBatches).toHaveBeenCalledWith([
+      expect.objectContaining({ cardId: 10, historyId: 301 }),
+      expect.objectContaining({ cardId: 11, historyId: 302 }),
+    ]);
+    expect(sendTelegramMessage).toHaveBeenNthCalledWith(
+      1,
+      'batch 1',
+      expect.objectContaining({ eventType: 'needs_attention' }),
+    );
+    expect(sendTelegramMessage).toHaveBeenNthCalledWith(
+      2,
+      'batch 2',
+      expect.objectContaining({ eventType: 'needs_attention' }),
+    );
     expect(dbSet).toHaveBeenCalledWith({ notificationSent: true });
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining('needs_attention telegram notification failed'),
+      expect.stringContaining('historyIds=302'),
     );
   });
 

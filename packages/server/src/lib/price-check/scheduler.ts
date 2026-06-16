@@ -4,7 +4,7 @@ import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
 import { priceHistory } from '../../db/schema/price-history.js';
 import {
-  sendNeedsAttentionAlert,
+  buildNeedsAttentionAlertBatches,
   sendTelegramMessage,
 } from '../notifications/telegram.js';
 import type { RunPriceCheckResult } from './run-price-check.js';
@@ -169,18 +169,21 @@ async function executeScheduledRun(logger: LoggerLike) {
 
     if (result.needsAttentionCards.length > 0) {
       const sentNeedsAttentionHistoryIds: number[] = [];
+      const batches = buildNeedsAttentionAlertBatches(
+        result.needsAttentionCards,
+      );
 
-      for (const [index, card] of result.needsAttentionCards.entries()) {
+      for (const batch of batches) {
         try {
-          const sent = await sendNeedsAttentionAlert(card);
-          if (sent && result.needsAttentionHistoryIds[index]) {
-            sentNeedsAttentionHistoryIds.push(
-              result.needsAttentionHistoryIds[index],
-            );
+          const sent = await sendTelegramMessage(batch.message, {
+            eventType: 'needs_attention',
+          });
+          if (sent) {
+            sentNeedsAttentionHistoryIds.push(...batch.historyIds);
           }
         } catch (error) {
           logger.error(
-            `[price-check] needs_attention telegram notification failed for cardId=${card.cardId}: ${error}`,
+            `[price-check] needs_attention telegram notification failed for historyIds=${batch.historyIds.join(',')}: ${error}`,
           );
         }
       }

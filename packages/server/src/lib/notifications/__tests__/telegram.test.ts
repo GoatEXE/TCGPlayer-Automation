@@ -13,6 +13,7 @@ vi.mock('../../../db/index.js', () => ({
 
 import { env } from '../../../config/env.js';
 import {
+  buildNeedsAttentionAlertBatches,
   sendNeedsAttentionAlert,
   sendOrderShippedAlert,
   sendSaleConfirmedAlert,
@@ -123,16 +124,68 @@ describe('sendTelegramMessage', () => {
   });
 });
 
-describe('sendNeedsAttentionAlert', () => {
+describe('needs attention telegram formatting', () => {
+  const driftAlert = {
+    cardId: 42,
+    historyId: 501,
+    source: 'scheduled' as const,
+    displayName: 'Jinx',
+    productName: 'Jinx',
+    title: null,
+    setName: 'Origins',
+    condition: 'Near Mint',
+    attentionReason: 'listed_price_drift' as const,
+    previousStatus: 'listed' as const,
+    newStatus: 'needs_attention' as const,
+    previousMarketPrice: 1.25,
+    newMarketPrice: 0.51,
+    currentListingPrice: 1,
+    recommendedListingPrice: 0.5,
+    driftPercent: -50,
+  };
+
+  it('builds grouped needs_attention messages as compact bullet price transitions', () => {
+    const batches = buildNeedsAttentionAlertBatches([driftAlert]);
+
+    expect(batches).toEqual([
+      {
+        historyIds: [501],
+        message: expect.stringContaining(
+          '⚠️ Scheduled price check: 1 card needs attention',
+        ),
+      },
+    ]);
+    expect(batches[0].message).toContain('• Jinx: $1.00 → $0.50');
+    expect(batches[0].message).not.toContain('Origins');
+    expect(batches[0].message).not.toContain('Reason:');
+    expect(batches[0].message).not.toContain('Market:');
+    expect(batches[0].message).not.toContain('Listing kept:');
+    expect(batches[0].message).not.toContain('Recommended:');
+    expect(batches[0].message).not.toContain('Drift:');
+    expect(batches[0].message).not.toContain(
+      'Market price not found during scheduled price check',
+    );
+  });
+
+  it('chunks grouped needs_attention messages under the max length', () => {
+    const batches = buildNeedsAttentionAlertBatches(
+      [driftAlert, { ...driftAlert, cardId: 43, historyId: 502, displayName: 'Yasuo' }],
+      80,
+    );
+
+    expect(batches).toHaveLength(2);
+    expect(batches[0].message).toContain('(1/2)');
+    expect(batches[1].message).toContain('(2/2)');
+    expect(batches[0].historyIds).toEqual([501]);
+    expect(batches[1].historyIds).toEqual([502]);
+  });
+
   it('uses the same env gating as generic telegram sends', async () => {
     (env as any).TELEGRAM_BOT_TOKEN = undefined;
     (env as any).TELEGRAM_CHAT_ID = undefined;
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const result = await sendNeedsAttentionAlert({
-      cardId: 42,
-      productName: 'Jinx',
-    });
+    const result = await sendNeedsAttentionAlert(driftAlert);
 
     expect(result).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -145,7 +198,7 @@ describe('sendNeedsAttentionAlert', () => {
     );
   });
 
-  it('formats the per-card needs_attention alert message', async () => {
+  it('formats a single needs_attention alert as a compact bullet line', async () => {
     (env as any).TELEGRAM_BOT_TOKEN = 'bot-token';
     (env as any).TELEGRAM_CHAT_ID = 'chat-id';
 
@@ -155,10 +208,7 @@ describe('sendNeedsAttentionAlert', () => {
       statusText: 'OK',
     } as Response);
 
-    const result = await sendNeedsAttentionAlert({
-      cardId: 42,
-      productName: 'Jinx',
-    });
+    const result = await sendNeedsAttentionAlert(driftAlert);
 
     expect(result).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -166,18 +216,17 @@ describe('sendNeedsAttentionAlert', () => {
       'https://api.telegram.org/botbot-token/sendMessage',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({
-          chat_id: 'chat-id',
-          text: [
-            '⚠️ Card needs attention',
-            'Card ID: 42',
-            'Product: Jinx',
-            'Reason: Market price not found during scheduled price check',
-          ].join('\n'),
-          disable_web_page_preview: true,
-        }),
       }),
     );
+    const requestBody = JSON.parse(
+      String(fetchSpy.mock.calls[0]?.[1]?.body ?? '{}'),
+    );
+    expect(requestBody).toMatchObject({
+      chat_id: 'chat-id',
+      disable_web_page_preview: true,
+    });
+    expect(requestBody.text).toContain('• Jinx: $1.00 → $0.50');
+    expect(requestBody.text).not.toContain('Reason:');
     expect(dbMocks.values).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: 'needs_attention',

@@ -148,7 +148,20 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       needsAttentionCards: [
         {
           cardId: 10,
+          historyId: 501,
+          source: 'scheduled',
+          displayName: 'No Market Card',
           productName: 'No Market Card',
+          setName: undefined,
+          condition: 'Near Mint',
+          attentionReason: 'listed_missing_price',
+          previousStatus: 'listed',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1.25,
+          newMarketPrice: null,
+          currentListingPrice: 1,
+          recommendedListingPrice: null,
+          driftPercent: null,
         },
       ],
       needsAttentionHistoryIds: [501],
@@ -167,7 +180,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
-  it('does not add needs_attention alerts when a missing-price card is already in needs_attention', async () => {
+  it('includes a missing-price card in needs_attention alerts even when it is already in needs_attention', async () => {
     dbFrom.mockResolvedValueOnce([
       {
         id: 11,
@@ -192,8 +205,24 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       updated: 0,
       notFound: 1,
       driftedHistoryIds: [],
-      needsAttentionCards: [],
-      needsAttentionHistoryIds: [],
+      needsAttentionCards: [
+        {
+          cardId: 11,
+          historyId: 502,
+          source: 'scheduled',
+          displayName: 'Still Missing',
+          productName: 'Still Missing',
+          attentionReason: null,
+          previousStatus: 'needs_attention',
+          newStatus: 'needs_attention',
+          previousMarketPrice: null,
+          newMarketPrice: null,
+          currentListingPrice: null,
+          recommendedListingPrice: null,
+          driftPercent: null,
+        },
+      ],
+      needsAttentionHistoryIds: [502],
       csvDiff: {
         rows: [],
       },
@@ -246,7 +275,21 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       needsAttentionCards: [
         {
           cardId: 12,
+          historyId: 503,
+          source: 'manual',
+          displayName: 'Backfill Me',
           productName: 'Unleashed',
+          title: 'Backfill Me',
+          setName: 'Riftbound: League of Legends Trading Card Game',
+          condition: 'Normal',
+          attentionReason: 'listed_price_drift',
+          previousStatus: 'listed',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1.25,
+          newMarketPrice: 0.51,
+          currentListingPrice: 1,
+          recommendedListingPrice: 0.5,
+          driftPercent: -50,
         },
       ],
     });
@@ -347,7 +390,18 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       needsAttentionCards: [
         {
           cardId: 1,
+          historyId: 601,
+          source: 'manual',
+          displayName: 'Jinx',
           productName: 'Jinx',
+          attentionReason: 'listed_price_drift',
+          previousStatus: 'listed',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1.25,
+          newMarketPrice: 0.51,
+          currentListingPrice: 1,
+          recommendedListingPrice: 0.5,
+          driftPercent: -50,
         },
       ],
       needsAttentionHistoryIds: [601],
@@ -469,7 +523,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
-  it('keeps listed-origin needs_attention cards in needs_attention when drift remains unresolved', async () => {
+  it('keeps listed-origin needs_attention cards in needs_attention and includes them in alert payloads when drift remains unresolved', async () => {
     dbFrom.mockResolvedValueOnce([
       {
         id: 15,
@@ -513,8 +567,24 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     expect(result).toMatchObject({
       updated: 1,
       drifted: 1,
-      needsAttentionCards: [],
-      needsAttentionHistoryIds: [],
+      needsAttentionCards: [
+        {
+          cardId: 15,
+          historyId: 607,
+          source: 'scheduled',
+          displayName: 'Still Drifted',
+          productName: 'Still Drifted',
+          attentionReason: 'listed_price_drift',
+          previousStatus: 'needs_attention',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1,
+          newMarketPrice: 0.51,
+          currentListingPrice: 1,
+          recommendedListingPrice: 0.5,
+          driftPercent: -50,
+        },
+      ],
+      needsAttentionHistoryIds: [607],
     });
   });
 
@@ -761,7 +831,18 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       needsAttentionCards: [
         {
           cardId: 2,
+          historyId: 702,
+          source: 'scheduled',
+          displayName: 'Yasuo',
           productName: 'Yasuo',
+          attentionReason: 'listed_below_threshold',
+          previousStatus: 'listed',
+          newStatus: 'needs_attention',
+          previousMarketPrice: 1.25,
+          newMarketPrice: 0.51,
+          currentListingPrice: 1,
+          recommendedListingPrice: null,
+          driftPercent: null,
         },
       ],
       needsAttentionHistoryIds: [702],

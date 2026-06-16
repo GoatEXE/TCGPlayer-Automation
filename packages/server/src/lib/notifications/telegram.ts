@@ -1,13 +1,11 @@
 import { env } from '../../config/env.js';
+import type { NeedsAttentionCardAlert } from '../price-check/run-price-check.js';
 import {
   recordNotificationEvent,
   type NotificationEventRecord,
 } from './events.js';
 
-export interface NeedsAttentionAlertInput {
-  cardId: number;
-  productName: string;
-}
+export type NeedsAttentionAlertInput = NeedsAttentionCardAlert;
 
 export interface SaleConfirmedAlertInput {
   saleId: number;
@@ -43,6 +41,103 @@ function formatOptionalDate(value: string | Date | null | undefined) {
   }
 
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function formatPrice(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function formatPriceOrDash(value: number | null): string {
+  return value === null ? '—' : formatPrice(value);
+}
+
+function getNeedsAttentionPriceTransition(alert: NeedsAttentionAlertInput) {
+  switch (alert.attentionReason) {
+    case 'listed_price_drift':
+      return {
+        from: alert.currentListingPrice,
+        to: alert.recommendedListingPrice,
+      };
+    case 'listed_below_threshold':
+      return {
+        from: alert.currentListingPrice,
+        to: alert.recommendedListingPrice,
+      };
+    case 'listed_missing_price':
+      return {
+        from: alert.previousMarketPrice ?? alert.currentListingPrice,
+        to: null,
+      };
+    default:
+      return {
+        from:
+          alert.previousMarketPrice ??
+          alert.currentListingPrice ??
+          alert.recommendedListingPrice,
+        to: alert.newMarketPrice,
+      };
+  }
+}
+
+function buildNeedsAttentionEntry(alert: NeedsAttentionAlertInput): string {
+  const { from, to } = getNeedsAttentionPriceTransition(alert);
+  const toDisplay =
+    alert.attentionReason === 'listed_below_threshold' && to === null
+      ? 'Gift'
+      : formatPriceOrDash(to);
+
+  return `• ${alert.displayName}: ${formatPriceOrDash(from)} → ${toDisplay}`;
+}
+
+export function buildNeedsAttentionAlertBatches(
+  alerts: NeedsAttentionAlertInput[],
+  maxLength = 3500,
+): Array<{ message: string; historyIds: number[] }> {
+  if (alerts.length === 0) {
+    return [];
+  }
+
+  const baseHeaderLines = [
+    `⚠️ Scheduled price check: ${alerts.length} card${alerts.length === 1 ? '' : 's'} need${alerts.length === 1 ? 's' : ''} attention`,
+  ];
+
+  const chunks: Array<{ entries: string[]; historyIds: number[] }> = [];
+  let currentEntries: string[] = [];
+  let currentHistoryIds: number[] = [];
+
+  for (const alert of alerts) {
+    const entry = buildNeedsAttentionEntry(alert);
+    const candidateEntries = [...currentEntries, entry];
+    const candidateMessage = [...baseHeaderLines, '', ...candidateEntries].join(
+      '\n',
+    );
+
+    if (currentEntries.length > 0 && candidateMessage.length > maxLength) {
+      chunks.push({ entries: currentEntries, historyIds: currentHistoryIds });
+      currentEntries = [entry];
+      currentHistoryIds = [alert.historyId];
+      continue;
+    }
+
+    currentEntries = candidateEntries;
+    currentHistoryIds = [...currentHistoryIds, alert.historyId];
+  }
+
+  if (currentEntries.length > 0) {
+    chunks.push({ entries: currentEntries, historyIds: currentHistoryIds });
+  }
+
+  return chunks.map((chunk, index) => {
+    const chunkHeaderLines = [...baseHeaderLines];
+    if (chunks.length > 1) {
+      chunkHeaderLines[0] = `${chunkHeaderLines[0]} (${index + 1}/${chunks.length})`;
+    }
+
+    return {
+      message: [...chunkHeaderLines, '', ...chunk.entries].join('\n'),
+      historyIds: chunk.historyIds,
+    };
+  });
 }
 
 function buildSaleContextLines({
@@ -145,20 +240,14 @@ export async function sendTelegramMessage(
   }
 }
 
-export async function sendNeedsAttentionAlert({
-  cardId,
-  productName,
-}: NeedsAttentionAlertInput): Promise<boolean> {
-  const message = [
-    '⚠️ Card needs attention',
-    `Card ID: ${cardId}`,
-    `Product: ${productName}`,
-    'Reason: Market price not found during scheduled price check',
-  ].join('\n');
+export async function sendNeedsAttentionAlert(
+  alert: NeedsAttentionAlertInput,
+): Promise<boolean> {
+  const [batch] = buildNeedsAttentionAlertBatches([alert]);
 
-  return sendTelegramMessage(message, {
+  return sendTelegramMessage(batch.message, {
     eventType: 'needs_attention',
-    cardId,
+    cardId: alert.cardId,
   });
 }
 

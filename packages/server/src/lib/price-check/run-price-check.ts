@@ -22,7 +22,7 @@ import { TCGTrackingClient } from '../tcgtracking/client.js';
 import type { TCGTrackingProductPrice } from '../tcgtracking/types.js';
 import { getRuntimeListedPriceAttentionThresholdPercent } from './settings.js';
 
-type PriceCheckSource = 'manual' | 'scheduled';
+export type PriceCheckSource = 'manual' | 'scheduled';
 
 export interface RunPriceCheckOptions {
   source?: PriceCheckSource;
@@ -38,7 +38,21 @@ export interface DriftedCardChange {
 
 export interface NeedsAttentionCardAlert {
   cardId: number;
+  historyId: number;
+  source: PriceCheckSource;
+  displayName: string;
   productName: string;
+  title: string | null;
+  setName: string | null;
+  condition: string;
+  attentionReason: Card['attentionReason'];
+  previousStatus: Card['status'];
+  newStatus: Card['status'];
+  previousMarketPrice: number | null;
+  newMarketPrice: number | null;
+  currentListingPrice: number | null;
+  recommendedListingPrice: number | null;
+  driftPercent: number | null;
 }
 
 export interface RunPriceCheckResult {
@@ -232,6 +246,44 @@ async function insertPriceHistoryEntry(
   return insertedHistory.id;
 }
 
+function buildNeedsAttentionCardAlert(params: {
+  card: Pick<
+    Card,
+    'id' | 'productName' | 'title' | 'setName' | 'condition'
+  >;
+  historyId: number;
+  source: PriceCheckSource;
+  attentionReason: Card['attentionReason'];
+  previousStatus: Card['status'];
+  newStatus: Card['status'];
+  previousMarketPrice: number | null;
+  newMarketPrice: number | null;
+  currentListingPrice: number | null;
+  recommendedListingPrice: number | null;
+  driftPercent: number | null;
+}): NeedsAttentionCardAlert {
+  const { card } = params;
+
+  return {
+    cardId: card.id,
+    historyId: params.historyId,
+    source: params.source,
+    displayName: card.title?.trim() || card.productName,
+    productName: card.productName,
+    title: card.title,
+    setName: card.setName,
+    condition: card.condition,
+    attentionReason: params.attentionReason,
+    previousStatus: params.previousStatus,
+    newStatus: params.newStatus,
+    previousMarketPrice: params.previousMarketPrice,
+    newMarketPrice: params.newMarketPrice,
+    currentListingPrice: params.currentListingPrice,
+    recommendedListingPrice: params.recommendedListingPrice,
+    driftPercent: params.driftPercent,
+  };
+}
+
 export async function runPriceCheck(
   options: RunPriceCheckOptions = {},
 ): Promise<RunPriceCheckResult> {
@@ -325,13 +377,22 @@ export async function runPriceCheck(
         checkedAt: new Date(),
       });
 
-      if (previousStatus !== 'needs_attention') {
-        needsAttentionCards.push({
-          cardId: card.id,
-          productName: card.productName,
-        });
-        needsAttentionHistoryIds.push(historyId);
-      }
+      needsAttentionCards.push(
+        buildNeedsAttentionCardAlert({
+          card,
+          historyId,
+          source,
+          attentionReason: wasListedLike ? 'listed_missing_price' : null,
+          previousStatus,
+          newStatus: 'needs_attention',
+          previousMarketPrice,
+          newMarketPrice: null,
+          currentListingPrice: historyListingPrice,
+          recommendedListingPrice: null,
+          driftPercent: null,
+        }),
+      );
+      needsAttentionHistoryIds.push(historyId);
 
       const csvDiffAction = getCsvDiffAction({
         previousStatus,
@@ -415,13 +476,22 @@ export async function runPriceCheck(
         checkedAt: new Date(),
       });
 
-      if (previousStatus !== 'needs_attention') {
-        needsAttentionCards.push({
-          cardId: card.id,
-          productName: card.productName,
-        });
-        needsAttentionHistoryIds.push(historyId);
-      }
+      needsAttentionCards.push(
+        buildNeedsAttentionCardAlert({
+          card,
+          historyId,
+          source,
+          attentionReason: wasListedLike ? 'listed_missing_price' : null,
+          previousStatus,
+          newStatus: 'needs_attention',
+          previousMarketPrice,
+          newMarketPrice: null,
+          currentListingPrice: historyListingPrice,
+          recommendedListingPrice: null,
+          driftPercent: null,
+        }),
+      );
+      needsAttentionHistoryIds.push(historyId);
 
       const csvDiffAction = getCsvDiffAction({
         previousStatus,
@@ -595,14 +665,22 @@ export async function runPriceCheck(
       });
     }
 
-    if (
-      previousStatus !== 'needs_attention' &&
-      newStatus === 'needs_attention'
-    ) {
-      needsAttentionCards.push({
-        cardId: card.id,
-        productName: card.productName,
-      });
+    if (newStatus === 'needs_attention') {
+      needsAttentionCards.push(
+        buildNeedsAttentionCardAlert({
+          card,
+          historyId,
+          source,
+          attentionReason,
+          previousStatus,
+          newStatus,
+          previousMarketPrice,
+          newMarketPrice,
+          currentListingPrice: newListingPrice,
+          recommendedListingPrice,
+          driftPercent,
+        }),
+      );
       needsAttentionHistoryIds.push(historyId);
     }
 
