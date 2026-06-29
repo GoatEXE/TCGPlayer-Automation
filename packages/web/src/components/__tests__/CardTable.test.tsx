@@ -407,6 +407,96 @@ describe('CardTable pricing review', () => {
     expect(dialog).toHaveTextContent('Rec’d');
   });
 
+  it('groups Normal and Foil variants with the same Product ID into one review step', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            tcgProductId: 685490,
+            productName: 'Punch First',
+            condition: 'Near Mint',
+            marketPrice: '0.15',
+          }),
+          makeCard({
+            id: 2,
+            status: 'needs_attention',
+            tcgProductId: 685490,
+            productName: 'Punch First',
+            condition: 'Near Mint Foil',
+            marketPrice: '0.80',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /pricing review/i });
+    expect(dialog).toHaveTextContent('Punch First, 2 variants');
+    expect(within(dialog).getByText('Near Mint Foil')).toBeInTheDocument();
+    expect(within(dialog).getByText('$0.78')).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 of 1 groups/i)).toBeInTheDocument();
+  });
+
+  it('copies all valid grouped Rec’d prices as a multiline list', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', condition: 'Near Mint', marketPrice: '0.15' }),
+          makeCard({ id: 2, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', condition: 'Near Mint Foil', marketPrice: '0.80' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(screen.getByRole('button', { name: /copy all rec’d/i }));
+
+    expect(writeText).toHaveBeenCalledWith('Near Mint: $0.15\nNear Mint Foil: $0.78');
+  });
+
+  it('keeps the same title in different Product IDs as separate review groups', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 111, productName: 'Shared Name', setName: 'Set A' }),
+          makeCard({ id: 2, status: 'needs_attention', tcgProductId: 222, productName: 'Shared Name', setName: 'Set B' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+
+    expect(await screen.findByText(/1 of 2 groups/i)).toBeInTheDocument();
+  });
+
   it('copies the recommended price to the clipboard', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -427,10 +517,10 @@ describe('CardTable pricing review', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
-    await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
+    await user.click(screen.getByRole('button', { name: /copy all rec’d/i }));
 
-    expect(writeText).toHaveBeenCalledWith('2.45');
-    expect(await screen.findByRole('status')).toHaveTextContent(/copied rec’d price/i);
+    expect(writeText).toHaveBeenCalledWith('Near Mint: $2.45');
+    expect(await screen.findByRole('status')).toHaveTextContent(/copied rec’d prices/i);
   });
 
   it('falls back to a temporary textarea when Clipboard API is unavailable', async () => {
@@ -457,7 +547,7 @@ describe('CardTable pricing review', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
-    await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
+    await user.click(screen.getByRole('button', { name: /copy all rec’d/i }));
 
     expect(execCommand).toHaveBeenCalledWith('copy');
     expect(await screen.findByRole('status')).toHaveTextContent(/copied rec’d price/i);
@@ -489,7 +579,7 @@ describe('CardTable pricing review', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
-    await user.click(screen.getByRole('button', { name: /copy rec’d/i }));
+    await user.click(screen.getByRole('button', { name: /copy all rec’d/i }));
 
     expect(execCommand).toHaveBeenCalledWith('copy');
     expect(await screen.findByRole('status')).toHaveTextContent(/copy failed/i);
@@ -566,7 +656,7 @@ describe('CardTable pricing review', () => {
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
     await user.click(
-      screen.getByRole('button', { name: /save listing to rec’d/i }),
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
     );
 
     await waitFor(() => {
@@ -574,6 +664,38 @@ describe('CardTable pricing review', () => {
     });
     expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
       'Second Card',
+    );
+  });
+
+  it('saves every selected valid row in a grouped review step', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', condition: 'Near Mint', marketPrice: '0.15' }),
+          makeCard({ id: 2, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', condition: 'Near Mint Foil', marketPrice: '0.80' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
+    );
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 0.15 });
+      expect(onUpdateCard).toHaveBeenCalledWith(2, { listingPrice: 0.78 });
+    });
+    expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
+      /all needs attention cards reviewed/i,
     );
   });
 
@@ -594,7 +716,7 @@ describe('CardTable pricing review', () => {
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
     await user.click(
-      screen.getByRole('button', { name: /save listing to rec’d/i }),
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
     );
 
     await waitFor(() => {
@@ -602,6 +724,34 @@ describe('CardTable pricing review', () => {
     });
     expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
       /all needs attention cards reviewed/i,
+    );
+  });
+
+  it('keeps the group open and displays an error when a selected update fails', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockRejectedValue(new Error('Update failed'));
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', marketPrice: '2.50' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Update failed');
+    expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
+      'Punch First',
     );
   });
 
@@ -629,10 +779,10 @@ describe('CardTable pricing review', () => {
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
 
-    expect(screen.getByRole('button', { name: /copy rec’d/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /copy all rec’d/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /open tcgplayer/i })).toBeDisabled();
     expect(
-      screen.getByRole('button', { name: /save listing to rec’d/i }),
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
     ).toBeDisabled();
     expect(screen.getByText(/no valid rec’d price/i)).toBeInTheDocument();
     expect(screen.getByText(/no tcgplayer product id/i)).toBeInTheDocument();

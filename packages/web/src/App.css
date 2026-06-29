@@ -1297,6 +1297,29 @@ body {
   font-weight: 600;
 }
 
+.needs-attention-review-table {
+  width: calc(100% - 3rem);
+  margin: 1rem 1.5rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.needs-attention-review-table th,
+.needs-attention-review-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.needs-attention-review-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.review-row-disabled {
+  color: var(--color-text-muted);
+}
+
 /* ───── Price History Modal ───── */
 .price-history-modal {
   max-width: 780px;
