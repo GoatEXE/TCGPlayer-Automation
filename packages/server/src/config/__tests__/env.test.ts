@@ -67,22 +67,26 @@ describe('env config', () => {
     const nextEnv = { ...ORIGINAL_ENV };
     delete nextEnv.PRICE_CHECK_INTERVAL_HOURS;
     delete nextEnv.LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT;
+    delete nextEnv.LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS;
     process.env = nextEnv;
 
     const { env } = await loadEnvModule();
 
     expect(env.PRICE_CHECK_INTERVAL_HOURS).toBe(12);
     expect(env.LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT).toBe(5);
+    expect(env.LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS).toBe(5);
   });
 
-  it('reads configured listed price attention threshold', async () => {
+  it('reads configured listed price attention settings', async () => {
     process.env = {
       ...ORIGINAL_ENV,
       LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT: '7.5',
+      LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS: '9',
     };
 
     const { env } = await loadEnvModule();
 
     expect(env.LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT).toBe(7.5);
+    expect(env.LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS).toBe(9);
   });
 });

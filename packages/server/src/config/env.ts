@@ -38,6 +38,11 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   PRICE_CHECK_INTERVAL_HOURS: z.coerce.number().default(12),
   LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT: z.coerce.number().default(5),
+  LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(5),
   PRICE_DRIFT_THRESHOLD_PERCENT: z.coerce.number().default(2),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),

@@ -109,6 +109,7 @@ describe('App view tabs', () => {
       intervalHours: 12,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
@@ -117,6 +118,7 @@ describe('App view tabs', () => {
       intervalHours: 12,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
@@ -594,6 +596,7 @@ describe('App performance view integration', () => {
       intervalHours: 12,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
@@ -784,6 +787,7 @@ describe('App record sale + bulk sell integration', () => {
       intervalHours: 12,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });

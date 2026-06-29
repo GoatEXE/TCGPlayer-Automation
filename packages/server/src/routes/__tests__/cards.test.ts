@@ -86,6 +86,7 @@ const priceCheckMocks = vi.hoisted(() => ({
   getPriceCheckSchedulerStatus: vi.fn(),
   updatePriceCheckIntervalHours: vi.fn(),
   updateListedPriceAttentionThresholdPercent: vi.fn(),
+  updateListedPriceAttentionMinDiffCents: vi.fn(),
 }));
 vi.mock('../../lib/price-check/index.js', async () => {
   const actual = await vi.importActual<
@@ -99,6 +100,8 @@ vi.mock('../../lib/price-check/index.js', async () => {
       priceCheckMocks.updatePriceCheckIntervalHours,
     updateListedPriceAttentionThresholdPercent:
       priceCheckMocks.updateListedPriceAttentionThresholdPercent,
+    updateListedPriceAttentionMinDiffCents:
+      priceCheckMocks.updateListedPriceAttentionMinDiffCents,
   };
 });
 
@@ -318,6 +321,7 @@ describe('GET /api/cards', () => {
       intervalHours: 12,
       thresholdPercent: 5,
       listedPriceAttentionThresholdPercent: 5,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
@@ -2338,6 +2342,7 @@ describe('GET /api/cards/price-check-status', () => {
     expect(body).toHaveProperty('intervalHours');
     expect(body).toHaveProperty('thresholdPercent');
     expect(body).toHaveProperty('listedPriceAttentionThresholdPercent');
+    expect(body).toHaveProperty('listedPriceAttentionMinDiffCents');
     expect(body).toHaveProperty('running');
     expect(body).toHaveProperty('lastRun');
   });
@@ -2353,11 +2358,15 @@ describe('POST /api/cards/price-check-settings', () => {
       intervalHours: 6,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 5,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
     priceCheckMocks.updatePriceCheckIntervalHours.mockResolvedValue(undefined);
     priceCheckMocks.updateListedPriceAttentionThresholdPercent.mockResolvedValue(
+      undefined,
+    );
+    priceCheckMocks.updateListedPriceAttentionMinDiffCents.mockResolvedValue(
       undefined,
     );
     app = Fastify();
@@ -2384,6 +2393,7 @@ describe('POST /api/cards/price-check-settings', () => {
       intervalHours: 6,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 5,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
@@ -2395,6 +2405,7 @@ describe('POST /api/cards/price-check-settings', () => {
       intervalHours: 6,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 7.5,
+      listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
     });
@@ -2415,6 +2426,43 @@ describe('POST /api/cards/price-check-settings', () => {
       intervalHours: 6,
       thresholdPercent: 2,
       listedPriceAttentionThresholdPercent: 7.5,
+      listedPriceAttentionMinDiffCents: 5,
+      running: false,
+      lastRun: null,
+    });
+  });
+
+  it('updates the listed price attention minimum diff and returns scheduler status', async () => {
+    priceCheckMocks.getPriceCheckSchedulerStatus.mockReturnValue({
+      enabled: true,
+      intervalHours: 6,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 5,
+      listedPriceAttentionMinDiffCents: 9,
+      running: false,
+      lastRun: null,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: { listedPriceAttentionMinDiffCents: 9 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      priceCheckMocks.updateListedPriceAttentionMinDiffCents,
+    ).toHaveBeenCalledWith(9, expect.any(Object));
+    expect(priceCheckMocks.updatePriceCheckIntervalHours).not.toHaveBeenCalled();
+    expect(
+      priceCheckMocks.updateListedPriceAttentionThresholdPercent,
+    ).not.toHaveBeenCalled();
+    expect(JSON.parse(response.body)).toEqual({
+      enabled: true,
+      intervalHours: 6,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 5,
+      listedPriceAttentionMinDiffCents: 9,
       running: false,
       lastRun: null,
     });
@@ -2450,6 +2498,20 @@ describe('POST /api/cards/price-check-settings', () => {
     expect(
       priceCheckMocks.updateListedPriceAttentionThresholdPercent,
     ).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for invalid listed price attention minimum diff payloads', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/price-check-settings',
+      payload: { listedPriceAttentionMinDiffCents: -1 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'listedPriceAttentionMinDiffCents must be a non-negative integer',
+    });
+    expect(priceCheckMocks.updateListedPriceAttentionMinDiffCents).not.toHaveBeenCalled();
   });
 
   it('returns 400 when no price check settings are provided', async () => {

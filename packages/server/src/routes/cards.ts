@@ -22,6 +22,7 @@ import {
   getPriceCheckSchedulerStatus,
   updatePriceCheckIntervalHours,
   updateListedPriceAttentionThresholdPercent,
+  updateListedPriceAttentionMinDiffCents,
 } from '../lib/price-check/index.js';
 import type { ImportedCard } from '../lib/importers/index.js';
 import type { Card } from '../db/schema/cards.js';
@@ -91,6 +92,7 @@ interface PriceCheckStatusResponse {
   intervalHours: number;
   thresholdPercent: number;
   listedPriceAttentionThresholdPercent: number;
+  listedPriceAttentionMinDiffCents: number;
   running: boolean;
   lastRun: {
     startedAt: string;
@@ -663,16 +665,21 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     Body: {
       intervalHours?: number;
       listedPriceAttentionThresholdPercent?: number;
+      listedPriceAttentionMinDiffCents?: number;
     };
   }>(
     '/price-check-settings',
     async (request, reply) => {
-      const { intervalHours, listedPriceAttentionThresholdPercent } =
-        request.body ?? {};
+      const {
+        intervalHours,
+        listedPriceAttentionThresholdPercent,
+        listedPriceAttentionMinDiffCents,
+      } = request.body ?? {};
 
       if (
         intervalHours === undefined &&
-        listedPriceAttentionThresholdPercent === undefined
+        listedPriceAttentionThresholdPercent === undefined &&
+        listedPriceAttentionMinDiffCents === undefined
       ) {
         return reply.code(400).send({
           error: 'At least one price check setting must be provided',
@@ -698,6 +705,16 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (
+        listedPriceAttentionMinDiffCents !== undefined &&
+        (!Number.isInteger(listedPriceAttentionMinDiffCents) ||
+          listedPriceAttentionMinDiffCents < 0)
+      ) {
+        return reply.code(400).send({
+          error: 'listedPriceAttentionMinDiffCents must be a non-negative integer',
+        });
+      }
+
       try {
         if (intervalHours !== undefined) {
           await updatePriceCheckIntervalHours(intervalHours, fastify.log);
@@ -706,6 +723,13 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         if (listedPriceAttentionThresholdPercent !== undefined) {
           await updateListedPriceAttentionThresholdPercent(
             listedPriceAttentionThresholdPercent,
+            fastify.log,
+          );
+        }
+
+        if (listedPriceAttentionMinDiffCents !== undefined) {
+          await updateListedPriceAttentionMinDiffCents(
+            listedPriceAttentionMinDiffCents,
             fastify.log,
           );
         }

@@ -20,7 +20,10 @@ import {
 import { capDownwardListingPriceChange } from './max-price-drop-safeguard.js';
 import { TCGTrackingClient } from '../tcgtracking/client.js';
 import type { TCGTrackingProductPrice } from '../tcgtracking/types.js';
-import { getRuntimeListedPriceAttentionThresholdPercent } from './settings.js';
+import {
+  getRuntimeListedPriceAttentionMinDiffCents,
+  getRuntimeListedPriceAttentionThresholdPercent,
+} from './settings.js';
 
 export type PriceCheckSource = 'manual' | 'scheduled';
 
@@ -128,6 +131,19 @@ function resolveProductId(
   }
 
   return null;
+}
+
+function calculateAbsolutePriceDiffCents(
+  previousListingPrice: number | null,
+  newListingPrice: number | null,
+): number | null {
+  if (previousListingPrice === null || newListingPrice === null) {
+    return null;
+  }
+
+  return Math.abs(
+    Math.round(previousListingPrice * 100) - Math.round(newListingPrice * 100),
+  );
 }
 
 function calculateDriftPercent(
@@ -554,11 +570,17 @@ export async function runPriceCheck(
       previousListingPrice,
       recommendedListingPrice,
     );
+    const absolutePriceDiffCents = calculateAbsolutePriceDiffCents(
+      previousListingPrice,
+      recommendedListingPrice,
+    );
     const isThresholdDrift =
       wasListedLike &&
       recommendedDriftPercent !== null &&
+      absolutePriceDiffCents !== null &&
       Math.abs(recommendedDriftPercent) >=
-        getRuntimeListedPriceAttentionThresholdPercent();
+        getRuntimeListedPriceAttentionThresholdPercent() &&
+      absolutePriceDiffCents >= getRuntimeListedPriceAttentionMinDiffCents();
 
     const listedNeedsAttention =
       wasListedLike &&

@@ -267,6 +267,7 @@ describe('ApiClient', () => {
         intervalHours: 12,
         thresholdPercent: 10,
         listedPriceAttentionThresholdPercent: 12,
+        listedPriceAttentionMinDiffCents: 5,
         running: false,
         lastRun: null,
       };
@@ -285,12 +286,13 @@ describe('ApiClient', () => {
       expect(result).toEqual(mockResponse);
     });
 
-    it('sends POST with listedPriceAttentionThresholdPercent and returns updated status', async () => {
+    it('sends POST with listed price attention threshold settings and returns updated status', async () => {
       const mockResponse = {
         enabled: true,
         intervalHours: 12,
         thresholdPercent: 10,
         listedPriceAttentionThresholdPercent: 15,
+        listedPriceAttentionMinDiffCents: 10,
         running: false,
         lastRun: null,
       };
@@ -298,13 +300,17 @@ describe('ApiClient', () => {
 
       const result = await api.updatePriceCheckSettings({
         listedPriceAttentionThresholdPercent: 15,
+        listedPriceAttentionMinDiffCents: 10,
       });
 
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/cards/price-check-settings',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ listedPriceAttentionThresholdPercent: 15 }),
+          body: JSON.stringify({
+            listedPriceAttentionThresholdPercent: 15,
+            listedPriceAttentionMinDiffCents: 10,
+          }),
           headers: { 'Content-Type': 'application/json' },
         }),
       );

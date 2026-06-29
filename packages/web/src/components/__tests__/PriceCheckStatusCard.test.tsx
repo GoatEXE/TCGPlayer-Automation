@@ -9,6 +9,7 @@ const mockStatus: PriceCheckStatus = {
   intervalHours: 6,
   thresholdPercent: 10,
   listedPriceAttentionThresholdPercent: 12,
+  listedPriceAttentionMinDiffCents: 5,
   running: false,
   lastRun: {
     startedAt: '2026-03-31T10:00:00.000Z',
@@ -68,6 +69,7 @@ describe('PriceCheckStatusCard', () => {
     expect(screen.getByText('6h')).toBeTruthy();
     expect(screen.getByText(/Listing attention ≥/i)).toBeTruthy();
     expect(screen.getByText('12%')).toBeTruthy();
+    expect(screen.getByText('$0.05')).toBeTruthy();
     expect(screen.queryByText(/Market drift/i)).toBeNull();
   });
 
@@ -116,17 +118,19 @@ describe('PriceCheckStatusCard', () => {
     );
 
     const input = screen.getByLabelText('Listing attention threshold (%)');
+    const minDiffInput = screen.getByLabelText('Minimum dollar difference ($)');
     expect((input as HTMLInputElement).value).toBe('12');
-    expect(
-      screen.getByText(/does not change tcgplayer listing prices/i),
-    ).toBeTruthy();
+    expect((minDiffInput as HTMLInputElement).value).toBe('0.05');
+    expect(screen.queryByText(/both the percent threshold and/i)).toBeNull();
 
     await user.clear(input);
     await user.type(input, '15');
+    await user.clear(minDiffInput);
+    await user.type(minDiffInput, '0.10');
     await user.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(onUpdateListedPriceAttentionThreshold).toHaveBeenCalledWith(15);
+      expect(onUpdateListedPriceAttentionThreshold).toHaveBeenCalledWith(15, 10);
     });
   });
 
