@@ -1297,6 +1297,46 @@ body {
   font-weight: 600;
 }
 
+.needs-attention-review-table {
+  width: calc(100% - 3rem);
+  margin: 1rem 1.5rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.needs-attention-review-table th,
+.needs-attention-review-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.needs-attention-review-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.review-row-disabled {
+  color: var(--color-text-muted);
+}
+
+.review-row-updated {
+  background: #ecfdf5;
+}
+
+.review-updated-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  background: var(--color-success);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ───── Price History Modal ───── */
 .price-history-modal {
   max-width: 780px;

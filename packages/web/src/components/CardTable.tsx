@@ -6,6 +6,14 @@ import { PriceHistoryModal } from './PriceHistoryModal';
 import { RecordSaleModal } from './RecordSaleModal';
 import { BulkSellModal } from './BulkSellModal';
 
+interface ReviewPricingGroup {
+  key: string;
+  displayName: string;
+  productId: number | null;
+  setNames: string[];
+  cards: Card[];
+}
+
 interface CardTableProps {
   cards: Card[];
   loading?: boolean;
@@ -52,6 +60,40 @@ function buildTcgplayerInventoryUrl(card: Card): string | null {
   return `https://store.tcgplayer.com/admin/product/manage/${card.tcgProductId}?OnlyMyInventory=false&SearchValue=${searchValue}&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true`;
 }
 
+function normalizeGroupValue(value: string | null | undefined) {
+  return (value ?? '').trim().toLocaleLowerCase();
+}
+
+function buildReviewPricingGroups(cards: Card[]): ReviewPricingGroup[] {
+  const groups = new Map<string, ReviewPricingGroup>();
+
+  for (const card of cards) {
+    const displayName = card.title || card.productName;
+    const key = card.tcgProductId != null
+      ? `product:${card.tcgProductId}`
+      : `fallback:${normalizeGroupValue(card.setName)}|${normalizeGroupValue(displayName)}`;
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.cards.push(card);
+      if (card.setName && !existing.setNames.includes(card.setName)) {
+        existing.setNames.push(card.setName);
+      }
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      displayName,
+      productId: card.tcgProductId,
+      setNames: card.setName ? [card.setName] : [],
+      cards: [card],
+    });
+  }
+
+  return Array.from(groups.values());
+}
+
 async function copyTextToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -83,19 +125,6 @@ const TCGPLAYER_INVENTORY_WINDOW_TARGET = 'tcgplayer-inventory';
 function openTcgplayerInventoryUrl(url: string) {
   const openedWindow = window.open(url, TCGPLAYER_INVENTORY_WINDOW_TARGET);
   openedWindow?.focus();
-}
-
-function getAttentionReasonLabel(reason: Card['attentionReason']) {
-  switch (reason) {
-    case 'listed_price_drift':
-      return 'Listed price drift';
-    case 'listed_missing_price':
-      return 'Listed card missing market price';
-    case 'listed_below_threshold':
-      return 'Listed card below gift threshold';
-    default:
-      return 'Needs attention';
-  }
 }
 
 function isValidPhotoUrl(photoUrl: string | null | undefined) {
@@ -156,11 +185,14 @@ export function CardTable({
   const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
   const [preparingBulkSell, setPreparingBulkSell] = useState(false);
-  const [needsAttentionReviewQueue, setNeedsAttentionReviewQueue] = useState<Card[] | null>(null);
+  const [needsAttentionReviewQueue, setNeedsAttentionReviewQueue] = useState<ReviewPricingGroup[] | null>(null);
   const [needsAttentionReviewIndex, setNeedsAttentionReviewIndex] = useState(0);
   const [needsAttentionReviewLoading, setNeedsAttentionReviewLoading] = useState(false);
   const [needsAttentionReviewError, setNeedsAttentionReviewError] = useState<string | null>(null);
   const [needsAttentionCopyStatus, setNeedsAttentionCopyStatus] = useState<string | null>(null);
+  const [needsAttentionSelectedIds, setNeedsAttentionSelectedIds] = useState<Set<number>>(new Set());
+  const [needsAttentionSavedIds, setNeedsAttentionSavedIds] = useState<Set<number>>(new Set());
+  const [needsAttentionSaveError, setNeedsAttentionSaveError] = useState<string | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{
@@ -431,11 +463,19 @@ export function CardTable({
     setNeedsAttentionReviewError(null);
     setNeedsAttentionCopyStatus(null);
     try {
-      const queue = onLoadNeedsAttentionReviewCards
+      const cardsToReview = onLoadNeedsAttentionReviewCards
         ? await onLoadNeedsAttentionReviewCards()
         : needsAttentionReviewCards;
+      const queue = buildReviewPricingGroups(cardsToReview);
       setNeedsAttentionReviewQueue(queue);
       setNeedsAttentionReviewIndex(0);
+      setNeedsAttentionSelectedIds(new Set(
+        queue[0]?.cards
+          .filter((card) => getRecommendedPrice(card) !== null)
+          .map((card) => card.id) ?? [],
+      ));
+      setNeedsAttentionSaveError(null);
+      setNeedsAttentionSavedIds(new Set());
       if (queue.length === 0) {
         setNeedsAttentionReviewError('No Needs Attention cards are available to review.');
       }
@@ -452,30 +492,78 @@ export function CardTable({
     setNeedsAttentionReviewQueue(null);
     setNeedsAttentionReviewIndex(0);
     setNeedsAttentionCopyStatus(null);
+    setNeedsAttentionSaveError(null);
+    setNeedsAttentionSelectedIds(new Set());
+    setNeedsAttentionSavedIds(new Set());
+  };
+
+  const getValidReviewIds = (group: ReviewPricingGroup | undefined) =>
+    new Set(
+      group?.cards
+        .filter((card) => getRecommendedPrice(card) !== null)
+        .map((card) => card.id) ?? [],
+    );
+
+  const setReviewGroupIndex = (nextIndex: number) => {
+    setNeedsAttentionCopyStatus(null);
+    setNeedsAttentionSaveError(null);
+    setNeedsAttentionReviewIndex(nextIndex);
+    setNeedsAttentionSelectedIds(getValidReviewIds(needsAttentionReviewQueue?.[nextIndex]));
   };
 
   const handleAdvanceNeedsAttentionReview = () => {
-    setNeedsAttentionCopyStatus(null);
-    setNeedsAttentionReviewIndex((current) => current + 1);
+    setReviewGroupIndex(needsAttentionReviewIndex + 1);
   };
 
-  const handleCopyRecommendedPrice = async (card: Card) => {
-    const recommended = getRecommendedPrice(card);
-    if (recommended === null) return;
+  const handleCopyRecommendedPrices = async (group: ReviewPricingGroup) => {
+    const lines = group.cards
+      .map((card) => {
+        const recommended = getRecommendedPrice(card);
+        if (recommended === null) return null;
+        return `${card.condition}: $${recommended.toFixed(2)}`;
+      })
+      .filter((line): line is string => line !== null);
+
+    if (lines.length === 0) return;
 
     try {
-      await copyTextToClipboard(recommended.toFixed(2));
-      setNeedsAttentionCopyStatus('Copied Rec’d price');
+      await copyTextToClipboard(lines.join('\n'));
+      setNeedsAttentionCopyStatus('Copied Rec’d prices');
     } catch {
-      setNeedsAttentionCopyStatus('Copy failed. Select and copy the Rec’d price manually.');
+      setNeedsAttentionCopyStatus('Copy failed. Select and copy the Rec’d prices manually.');
     }
   };
 
-  const handleSaveRecommendedListing = async (card: Card) => {
-    const recommended = getRecommendedPrice(card);
-    if (recommended === null) return;
-    await onUpdateCard(card.id, { listingPrice: recommended } as unknown as Partial<Card>);
-    handleAdvanceNeedsAttentionReview();
+  const handleToggleReviewRow = (id: number, checked: boolean) => {
+    setNeedsAttentionSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSaveRecommendedListings = async (group: ReviewPricingGroup) => {
+    const selectedCards = group.cards.filter((card) => needsAttentionSelectedIds.has(card.id));
+    if (selectedCards.length === 0) return;
+
+    setNeedsAttentionSaveError(null);
+    try {
+      for (const card of selectedCards) {
+        const recommended = getRecommendedPrice(card);
+        if (recommended === null) continue;
+        await onUpdateCard(card.id, { listingPrice: recommended } as unknown as Partial<Card>);
+        setNeedsAttentionSavedIds((current) => new Set(current).add(card.id));
+      }
+      handleAdvanceNeedsAttentionReview();
+    } catch (err) {
+      setNeedsAttentionSaveError(
+        err instanceof Error ? err.message : 'Failed to save selected listings',
+      );
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -821,11 +909,21 @@ export function CardTable({
         </tbody>
       </table>
       {needsAttentionReviewQueue && (() => {
-        const card = needsAttentionReviewQueue[needsAttentionReviewIndex];
+        const group = needsAttentionReviewQueue[needsAttentionReviewIndex];
         const isComplete = needsAttentionReviewIndex >= needsAttentionReviewQueue.length;
-        const displayName = card ? card.title || card.productName : '';
-        const recommended = card ? getRecommendedPrice(card) : null;
-        const tcgplayerInventoryUrl = card ? buildTcgplayerInventoryUrl(card) : null;
+        const representativeCard = group?.cards[0];
+        const tcgplayerInventoryUrl = representativeCard
+          ? buildTcgplayerInventoryUrl(representativeCard)
+          : null;
+        const hasSelectedRows = group?.cards.some((card) =>
+          needsAttentionSelectedIds.has(card.id) && getRecommendedPrice(card) !== null,
+        ) ?? false;
+        const groupSaveableCards = group?.cards.filter(
+          (card) => getRecommendedPrice(card) !== null,
+        ) ?? [];
+        const isGroupUpdated =
+          groupSaveableCards.length > 0 &&
+          groupSaveableCards.every((card) => needsAttentionSavedIds.has(card.id));
         return (
           <div
             className="modal-backdrop"
@@ -868,40 +966,21 @@ export function CardTable({
                     </button>
                   </div>
                 </>
-              ) : card ? (
+              ) : group ? (
                 <>
                   <div className="sale-card-info">
-                    <p className="sale-card-name">{displayName}</p>
-                    <p className="sale-card-details">
-                      {card.setName && <span>{card.setName}</span>}
-                      {card.setName && ' · '}
-                      <span>{card.condition}</span>
+                    <p className="sale-card-name">
+                      {group.displayName}, {group.cards.length} {group.cards.length === 1 ? 'variant' : 'variants'}
+                      {isGroupUpdated && (
+                        <span className="review-updated-badge">✓ Updated</span>
+                      )}
                     </p>
                     <p className="sale-card-details">
-                      Reason: {getAttentionReasonLabel(card.attentionReason)}
+                      {group.setNames.length > 0 ? group.setNames.join(', ') : 'Set unknown'}
+                      {group.productId != null && ` · Product ID: ${group.productId}`}
                     </p>
                   </div>
 
-                  <dl className="needs-attention-review-prices">
-                    <div>
-                      <dt>Market</dt>
-                      <dd>{formatPrice(card.marketPrice)}</dd>
-                    </div>
-                    <div>
-                      <dt>Listing</dt>
-                      <dd>{formatPrice(card.listingPrice)}</dd>
-                    </div>
-                    <div>
-                      <dt>Rec’d</dt>
-                      <dd>{recommended === null ? '—' : `$${recommended.toFixed(2)}`}</dd>
-                    </div>
-                  </dl>
-
-                  {recommended === null && (
-                    <p className="form-help">
-                      No valid Rec’d price is available yet, so copy and save are disabled.
-                    </p>
-                  )}
                   {!tcgplayerInventoryUrl && (
                     <p className="form-help">
                       No TCGPlayer Product ID is available, so the seller inventory link is disabled.
@@ -912,15 +991,75 @@ export function CardTable({
                       {needsAttentionCopyStatus}
                     </p>
                   )}
+                  {needsAttentionSaveError && (
+                    <p className="form-help" role="alert">
+                      {needsAttentionSaveError}
+                    </p>
+                  )}
+
+                  <table className="needs-attention-review-table">
+                    <thead>
+                      <tr>
+                        <th>Save</th>
+                        <th>Condition</th>
+                        <th>Qty</th>
+                        <th>Market</th>
+                        <th>Listing</th>
+                        <th>Rec’d</th>
+                        <th>SKU</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.cards.map((card) => {
+                        const recommended = getRecommendedPrice(card);
+                        const disabled = recommended === null;
+                        const isSaved = needsAttentionSavedIds.has(card.id);
+                        const rowClassName = [
+                          disabled ? 'review-row-disabled' : '',
+                          isSaved ? 'review-row-updated' : '',
+                        ].filter(Boolean).join(' ');
+                        return (
+                          <tr key={card.id} className={rowClassName}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                aria-label={`Save ${card.condition}`}
+                                checked={needsAttentionSelectedIds.has(card.id)}
+                                onChange={(event) =>
+                                  handleToggleReviewRow(card.id, event.target.checked)
+                                }
+                                disabled={disabled}
+                              />
+                            </td>
+                            <td>
+                              {card.condition}
+                              {isSaved && (
+                                <span className="review-updated-badge">✓ Updated</span>
+                              )}
+                            </td>
+                            <td>{card.quantity}</td>
+                            <td>{formatPrice(card.marketPrice)}</td>
+                            <td>{formatPrice(card.listingPrice)}</td>
+                            <td>
+                              {recommended === null
+                                ? 'No valid Rec’d price'
+                                : `$${recommended.toFixed(2)}`}
+                            </td>
+                            <td>{card.tcgplayerId ?? '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
 
                   <div className="modal-actions">
                     <button
                       type="button"
                       className="button-secondary"
-                      onClick={() => handleCopyRecommendedPrice(card)}
-                      disabled={recommended === null}
+                      onClick={() => handleCopyRecommendedPrices(group)}
+                      disabled={!group.cards.some((card) => getRecommendedPrice(card) !== null)}
                     >
-                      Copy Rec’d
+                      Copy all Rec’d
                     </button>
                     <button
                       type="button"
@@ -937,10 +1076,10 @@ export function CardTable({
                     <button
                       type="button"
                       className="button-primary"
-                      onClick={() => handleSaveRecommendedListing(card)}
-                      disabled={recommended === null}
+                      onClick={() => handleSaveRecommendedListings(group)}
+                      disabled={!hasSelectedRows}
                     >
-                      I updated TCGPlayer — save Listing to Rec’d
+                      I updated TCGPlayer — save selected Listings to Rec’d
                     </button>
                   </div>
 
@@ -948,15 +1087,13 @@ export function CardTable({
                     <button
                       type="button"
                       className="button-secondary"
-                      onClick={() =>
-                        setNeedsAttentionReviewIndex((current) => Math.max(0, current - 1))
-                      }
+                      onClick={() => setReviewGroupIndex(Math.max(0, needsAttentionReviewIndex - 1))}
                       disabled={needsAttentionReviewIndex === 0}
                     >
                       Previous
                     </button>
                     <span className="form-help">
-                      {needsAttentionReviewIndex + 1} of {needsAttentionReviewQueue.length} Needs Attention
+                      {needsAttentionReviewIndex + 1} of {needsAttentionReviewQueue.length} groups
                     </span>
                     <button
                       type="button"
@@ -969,8 +1106,8 @@ export function CardTable({
                       type="button"
                       className="button-secondary"
                       onClick={() =>
-                        setNeedsAttentionReviewIndex((current) =>
-                          Math.min(needsAttentionReviewQueue.length - 1, current + 1),
+                        setReviewGroupIndex(
+                          Math.min(needsAttentionReviewQueue.length - 1, needsAttentionReviewIndex + 1),
                         )
                       }
                       disabled={needsAttentionReviewIndex >= needsAttentionReviewQueue.length - 1}
