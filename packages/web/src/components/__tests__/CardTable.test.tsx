@@ -667,6 +667,71 @@ describe('CardTable pricing review', () => {
     );
   });
 
+  it('shows Updated indicators for saved rows when navigating back to a saved group', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 111, productName: 'First Group', condition: 'Near Mint', marketPrice: '2.50' }),
+          makeCard({ id: 2, status: 'needs_attention', tcgProductId: 222, productName: 'Second Group', condition: 'Near Mint Foil', marketPrice: '5.00' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
+    );
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.45 });
+    });
+    expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
+      'Second Group',
+    );
+
+    await user.click(screen.getByRole('button', { name: /previous/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    expect(dialog).toHaveTextContent('First Group');
+    expect(within(dialog).getAllByText(/^✓ Updated$/i).length).toBeGreaterThan(0);
+  });
+
+  it('does not mark skipped rows as Updated when navigating back', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 111, productName: 'Skipped Group', marketPrice: '2.50' }),
+          makeCard({ id: 2, status: 'needs_attention', tcgProductId: 222, productName: 'Next Group', marketPrice: '5.00' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    let dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    await user.click(within(dialog).getByRole('button', { name: /^skip$/i }));
+    dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    await user.click(within(dialog).getByRole('button', { name: /previous/i }));
+
+    dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    expect(dialog).toHaveTextContent('Skipped Group');
+    expect(within(dialog).queryByText(/^✓ Updated$/i)).not.toBeInTheDocument();
+  });
+
   it('saves every selected valid row in a grouped review step', async () => {
     const user = userEvent.setup();
     const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
@@ -727,6 +792,39 @@ describe('CardTable pricing review', () => {
     );
   });
 
+  it('marks only successfully saved rows when a later selected update fails', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi
+      .fn()
+      .mockResolvedValueOnce(makeCard())
+      .mockRejectedValueOnce(new Error('Second update failed'));
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', condition: 'Near Mint', marketPrice: '2.50' }),
+          makeCard({ id: 2, status: 'needs_attention', tcgProductId: 685490, productName: 'Punch First', condition: 'Near Mint Foil', marketPrice: '5.00' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save selected listings to rec’d/i }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Second update failed');
+    const dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    const rows = within(dialog).getAllByRole('row');
+    expect(rows[1]).toHaveTextContent(/updated/i);
+    expect(rows[2]).not.toHaveTextContent(/updated/i);
+  });
+
   it('keeps the group open and displays an error when a selected update fails', async () => {
     const user = userEvent.setup();
     const onUpdateCard = vi.fn().mockRejectedValue(new Error('Update failed'));
@@ -750,9 +848,9 @@ describe('CardTable pricing review', () => {
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Update failed');
-    expect(screen.getByRole('dialog', { name: /pricing review/i })).toHaveTextContent(
-      'Punch First',
-    );
+    const dialog = screen.getByRole('dialog', { name: /pricing review/i });
+    expect(dialog).toHaveTextContent('Punch First');
+    expect(within(dialog).queryByText(/^✓ Updated$/i)).not.toBeInTheDocument();
   });
 
   it('disables unavailable actions when Rec’d price or Product ID is missing', async () => {

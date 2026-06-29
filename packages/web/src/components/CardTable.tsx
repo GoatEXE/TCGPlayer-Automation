@@ -191,6 +191,7 @@ export function CardTable({
   const [needsAttentionReviewError, setNeedsAttentionReviewError] = useState<string | null>(null);
   const [needsAttentionCopyStatus, setNeedsAttentionCopyStatus] = useState<string | null>(null);
   const [needsAttentionSelectedIds, setNeedsAttentionSelectedIds] = useState<Set<number>>(new Set());
+  const [needsAttentionSavedIds, setNeedsAttentionSavedIds] = useState<Set<number>>(new Set());
   const [needsAttentionSaveError, setNeedsAttentionSaveError] = useState<string | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
@@ -474,6 +475,7 @@ export function CardTable({
           .map((card) => card.id) ?? [],
       ));
       setNeedsAttentionSaveError(null);
+      setNeedsAttentionSavedIds(new Set());
       if (queue.length === 0) {
         setNeedsAttentionReviewError('No Needs Attention cards are available to review.');
       }
@@ -492,6 +494,7 @@ export function CardTable({
     setNeedsAttentionCopyStatus(null);
     setNeedsAttentionSaveError(null);
     setNeedsAttentionSelectedIds(new Set());
+    setNeedsAttentionSavedIds(new Set());
   };
 
   const getValidReviewIds = (group: ReviewPricingGroup | undefined) =>
@@ -553,6 +556,7 @@ export function CardTable({
         const recommended = getRecommendedPrice(card);
         if (recommended === null) continue;
         await onUpdateCard(card.id, { listingPrice: recommended } as unknown as Partial<Card>);
+        setNeedsAttentionSavedIds((current) => new Set(current).add(card.id));
       }
       handleAdvanceNeedsAttentionReview();
     } catch (err) {
@@ -914,6 +918,12 @@ export function CardTable({
         const hasSelectedRows = group?.cards.some((card) =>
           needsAttentionSelectedIds.has(card.id) && getRecommendedPrice(card) !== null,
         ) ?? false;
+        const groupSaveableCards = group?.cards.filter(
+          (card) => getRecommendedPrice(card) !== null,
+        ) ?? [];
+        const isGroupUpdated =
+          groupSaveableCards.length > 0 &&
+          groupSaveableCards.every((card) => needsAttentionSavedIds.has(card.id));
         return (
           <div
             className="modal-backdrop"
@@ -961,6 +971,9 @@ export function CardTable({
                   <div className="sale-card-info">
                     <p className="sale-card-name">
                       {group.displayName}, {group.cards.length} {group.cards.length === 1 ? 'variant' : 'variants'}
+                      {isGroupUpdated && (
+                        <span className="review-updated-badge">✓ Updated</span>
+                      )}
                     </p>
                     <p className="sale-card-details">
                       {group.setNames.length > 0 ? group.setNames.join(', ') : 'Set unknown'}
@@ -1000,8 +1013,13 @@ export function CardTable({
                       {group.cards.map((card) => {
                         const recommended = getRecommendedPrice(card);
                         const disabled = recommended === null;
+                        const isSaved = needsAttentionSavedIds.has(card.id);
+                        const rowClassName = [
+                          disabled ? 'review-row-disabled' : '',
+                          isSaved ? 'review-row-updated' : '',
+                        ].filter(Boolean).join(' ');
                         return (
-                          <tr key={card.id} className={disabled ? 'review-row-disabled' : ''}>
+                          <tr key={card.id} className={rowClassName}>
                             <td>
                               <input
                                 type="checkbox"
@@ -1013,7 +1031,12 @@ export function CardTable({
                                 disabled={disabled}
                               />
                             </td>
-                            <td>{card.condition}</td>
+                            <td>
+                              {card.condition}
+                              {isSaved && (
+                                <span className="review-updated-badge">✓ Updated</span>
+                              )}
+                            </td>
                             <td>{card.quantity}</td>
                             <td>{formatPrice(card.marketPrice)}</td>
                             <td>{formatPrice(card.listingPrice)}</td>

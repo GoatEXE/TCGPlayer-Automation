@@ -1320,6 +1320,23 @@ body {
   color: var(--color-text-muted);
 }
 
+.review-row-updated {
+  background: #ecfdf5;
+}
+
+.review-updated-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  background: var(--color-success);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ───── Price History Modal ───── */
 .price-history-modal {
   max-width: 780px;
