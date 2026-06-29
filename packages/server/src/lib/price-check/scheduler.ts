@@ -10,8 +10,10 @@ import {
 import type { RunPriceCheckResult } from './run-price-check.js';
 import { runPriceCheck } from './run-price-check.js';
 import {
+  getRuntimeListedPriceAttentionMinDiffCents,
   getRuntimeListedPriceAttentionThresholdPercent,
   getRuntimePriceCheckIntervalHours,
+  setRuntimeListedPriceAttentionMinDiffCents,
   setRuntimeListedPriceAttentionThresholdPercent,
   setRuntimePriceCheckIntervalHours,
 } from './settings.js';
@@ -269,6 +271,16 @@ export async function updateListedPriceAttentionThresholdPercent(
   );
 }
 
+export async function updateListedPriceAttentionMinDiffCents(
+  minDiffCents: number,
+  logger: LoggerLike,
+): Promise<void> {
+  setRuntimeListedPriceAttentionMinDiffCents(minDiffCents);
+  logger.info(
+    `[price-check] updated listedPriceAttentionMinDiffCents=${getRuntimeListedPriceAttentionMinDiffCents()}`,
+  );
+}
+
 export async function startPriceCheckScheduler(logger: LoggerLike) {
   if (env.NODE_ENV === 'test') {
     return;
@@ -374,6 +386,8 @@ export function getPriceCheckSchedulerStatus() {
     thresholdPercent: env.PRICE_DRIFT_THRESHOLD_PERCENT,
     listedPriceAttentionThresholdPercent:
       getRuntimeListedPriceAttentionThresholdPercent(),
+    listedPriceAttentionMinDiffCents:
+      getRuntimeListedPriceAttentionMinDiffCents(),
     running,
     lastRun,
   };

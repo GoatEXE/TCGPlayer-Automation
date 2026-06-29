@@ -481,9 +481,11 @@ export function App() {
 
   const handleUpdateListedPriceAttentionThreshold = async (
     listedPriceAttentionThresholdPercent: number,
+    listedPriceAttentionMinDiffCents: number,
   ) => {
     const updated = await api.updatePriceCheckSettings({
       listedPriceAttentionThresholdPercent,
+      listedPriceAttentionMinDiffCents,
     });
     setPriceCheckStatus(updated);
   };

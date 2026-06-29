@@ -9,6 +9,7 @@ interface PriceCheckStatusCardProps {
   onUpdateInterval?: (intervalHours: number) => Promise<void>;
   onUpdateListedPriceAttentionThreshold?: (
     thresholdPercent: number,
+    minDiffCents: number,
   ) => Promise<void>;
 }
 
@@ -80,6 +81,7 @@ export function PriceCheckStatusCard({
               currentThresholdPercent={
                 status.listedPriceAttentionThresholdPercent
               }
+              currentMinDiffCents={status.listedPriceAttentionMinDiffCents}
               onSaved={onUpdateListedPriceAttentionThreshold}
             />
           ) : (
@@ -87,6 +89,10 @@ export function PriceCheckStatusCard({
               Listing attention ≥{' '}
               <strong>
                 {status.listedPriceAttentionThresholdPercent}%
+              </strong>{' '}
+              and{' '}
+              <strong>
+                ${(status.listedPriceAttentionMinDiffCents / 100).toFixed(2)}
               </strong>
             </span>
           )}

@@ -19,6 +19,7 @@ const {
     MAX_PRICE_DROP_PERCENT: 20,
     PRICE_DRIFT_THRESHOLD_PERCENT: 2,
     LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT: 5,
+    LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS: 5,
   },
   dbSelect: vi.fn(),
   dbFrom: vi.fn(),
@@ -68,6 +69,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     env.MAX_PRICE_DROP_PERCENT = 20;
     env.PRICE_DRIFT_THRESHOLD_PERCENT = 2;
     env.LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT = 5;
+    env.LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS = 5;
 
     dbSelect.mockReturnValue({ from: dbFrom });
     dbFrom.mockResolvedValue([]);
@@ -470,6 +472,125 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
       csvDiff: {
         rows: [],
       },
+    });
+  });
+
+  it('keeps listed cards listed when percent drift meets threshold but absolute diff stays below the minimum', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 16,
+        tcgProductId: 123,
+        productName: 'Tiny Diff Card',
+        condition: 'Near Mint',
+        marketPrice: '0.20',
+        listingPrice: '0.20',
+        status: 'listed',
+        attentionReason: null,
+        notes: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: 0.19,
+      status: 'matched',
+      reason: 'small cent-level drift',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 608 }]);
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        listingPrice: '0.20',
+        status: 'listed',
+        attentionReason: null,
+      }),
+    );
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 16,
+        adjustedToPrice: null,
+        previousStatus: 'listed',
+        newStatus: 'listed',
+        newListingPrice: '0.2',
+        driftPercent: '-5',
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 1,
+      drifted: 0,
+      driftedCards: [],
+      driftedHistoryIds: [],
+      needsAttentionCards: [],
+      needsAttentionHistoryIds: [],
+    });
+  });
+
+  it('marks listed cards as needs_attention when percent drift and absolute diff both meet threshold', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 17,
+        tcgProductId: 123,
+        productName: 'Big Diff Card',
+        condition: 'Near Mint',
+        marketPrice: '0.20',
+        listingPrice: '0.20',
+        status: 'listed',
+        attentionReason: null,
+        notes: null,
+      },
+    ]);
+    calculatePrice.mockReturnValue({
+      listingPrice: 0.15,
+      status: 'matched',
+      reason: 'big enough drift',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 609 }]);
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        listingPrice: '0.20',
+        status: 'needs_attention',
+        attentionReason: 'listed_price_drift',
+      }),
+    );
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 17,
+        adjustedToPrice: '0.15',
+        previousStatus: 'listed',
+        newStatus: 'needs_attention',
+        newListingPrice: '0.2',
+        driftPercent: '-25',
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 1,
+      drifted: 1,
+      driftedCards: [
+        {
+          cardId: 17,
+          productName: 'Big Diff Card',
+          previousListingPrice: 0.2,
+          newListingPrice: 0.15,
+          driftPercent: -25,
+        },
+      ],
+      driftedHistoryIds: [609],
+      needsAttentionCards: [
+        expect.objectContaining({
+          cardId: 17,
+          historyId: 609,
+          attentionReason: 'listed_price_drift',
+          previousStatus: 'listed',
+          newStatus: 'needs_attention',
+          currentListingPrice: 0.2,
+          recommendedListingPrice: 0.15,
+          driftPercent: -25,
+        }),
+      ],
+      needsAttentionHistoryIds: [609],
     });
   });
 

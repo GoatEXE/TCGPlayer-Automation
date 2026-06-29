@@ -2,27 +2,48 @@ import { useEffect, useState } from 'react';
 
 interface ListedPriceThresholdControlProps {
   currentThresholdPercent: number;
-  onSaved: (thresholdPercent: number) => Promise<void>;
+  currentMinDiffCents: number;
+  onSaved: (thresholdPercent: number, minDiffCents: number) => Promise<void>;
+}
+
+function centsToDollars(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
+function parseDollarsToCents(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return Math.round(parsed * 100);
 }
 
 export function ListedPriceThresholdControl({
   currentThresholdPercent,
+  currentMinDiffCents,
   onSaved,
 }: ListedPriceThresholdControlProps) {
-  const [value, setValue] = useState(currentThresholdPercent);
+  const [thresholdValue, setThresholdValue] = useState(currentThresholdPercent);
+  const [minDiffValue, setMinDiffValue] = useState(
+    centsToDollars(currentMinDiffCents),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setValue(currentThresholdPercent);
+    setThresholdValue(currentThresholdPercent);
   }, [currentThresholdPercent]);
 
-  const validate = (v: number): string | null => {
+  useEffect(() => {
+    setMinDiffValue(centsToDollars(currentMinDiffCents));
+  }, [currentMinDiffCents]);
+
+  const validateThreshold = (v: number): string | null => {
     if (!Number.isFinite(v)) {
-      return 'Must be a number';
+      return 'Percent threshold must be a number';
     }
     if (v < 0) {
-      return 'Must be a non-negative number';
+      return 'Percent threshold must be a non-negative number';
     }
     return null;
   };
@@ -31,15 +52,21 @@ export function ListedPriceThresholdControl({
     e.preventDefault();
     setError(null);
 
-    const validationError = validate(value);
+    const validationError = validateThreshold(thresholdValue);
     if (validationError) {
       setError(validationError);
       return;
     }
 
+    const minDiffCents = parseDollarsToCents(minDiffValue);
+    if (minDiffCents === null) {
+      setError('Minimum dollar difference must be a valid non-negative dollar amount');
+      return;
+    }
+
     setSaving(true);
     try {
-      await onSaved(value);
+      await onSaved(thresholdValue, minDiffCents);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -47,7 +74,9 @@ export function ListedPriceThresholdControl({
     }
   };
 
-  const unchanged = value === currentThresholdPercent;
+  const unchanged =
+    thresholdValue === currentThresholdPercent &&
+    parseDollarsToCents(minDiffValue) === currentMinDiffCents;
 
   return (
     <form
@@ -62,15 +91,34 @@ export function ListedPriceThresholdControl({
         <input
           id="listed-price-attention-threshold"
           type="number"
-          value={value}
+          value={thresholdValue}
           onChange={(e) => {
-            setValue(Number(e.target.value));
+            setThresholdValue(Number(e.target.value));
             setError(null);
           }}
           disabled={saving}
           className="interval-input"
           aria-invalid={!!error}
           step="0.1"
+        />
+      </div>
+
+      <div className="interval-field">
+        <label htmlFor="listed-price-attention-min-diff" className="interval-label">
+          Minimum dollar difference ($)
+        </label>
+        <input
+          id="listed-price-attention-min-diff"
+          type="number"
+          value={minDiffValue}
+          onChange={(e) => {
+            setMinDiffValue(e.target.value);
+            setError(null);
+          }}
+          disabled={saving}
+          className="interval-input"
+          aria-invalid={!!error}
+          step="0.01"
         />
         <button
           type="submit"
@@ -80,11 +128,7 @@ export function ListedPriceThresholdControl({
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
-      <p className="price-check-help">
-        Marks already-listed cards Needs Attention when persisted Listing differs
-        from current Rec&apos;d by at least this percent. This does not change
-        TCGPlayer listing prices.
-      </p>
+
       {error && (
         <span className="interval-error" role="alert">
           {error}
