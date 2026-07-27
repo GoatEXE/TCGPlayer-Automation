@@ -59,8 +59,8 @@ export function ImportUpload({ onImportComplete }: ImportUploadProps) {
   };
 
   return (
-    <div className="import-section">
-      <h2>Import Cards</h2>
+    <div className="import-section" aria-label="Import to selling inventory">
+      <h2>Import to Selling Inventory</h2>
       <div
         className={`dropzone ${dragActive ? 'active' : ''}`}
         onDrop={handleDrop}
@@ -83,7 +83,7 @@ export function ImportUpload({ onImportComplete }: ImportUploadProps) {
               📁 Drop CSV or TXT file here, or click to browse
             </p>
             <p className="dropzone-hint">
-              Accepts TCGPlayer collection exports (.csv, .txt)
+              Accepts TCGPlayer exports (.csv, .txt). This adds to selling/listing Inventory, not Owned Collection.
             </p>
           </>
         )}

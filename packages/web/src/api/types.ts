@@ -417,6 +417,216 @@ export interface GetNotificationEventsResponse {
   limit: number;
 }
 
+export type CollectionPurpose = 'owned' | 'to_be_sold' | string;
+
+export type CardKind =
+  | 'normal'
+  | 'legend'
+  | 'battlefield'
+  | 'rune'
+  | 'token'
+  | 'unknown';
+
+export interface CollectionSummary {
+  id: number;
+  name: string;
+  purpose?: CollectionPurpose;
+  isDefault?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GetCollectionsResponse {
+  collections: CollectionSummary[];
+}
+
+export interface CollectionSellabilityItemRef {
+  id?: number;
+  collectionItemId?: number;
+  finish?: string | null;
+  finishKind?: 'normal' | 'foil' | string | null;
+  quantity: number;
+  recommendedSellQuantity?: number;
+  condition?: string | null;
+  language?: string | null;
+}
+
+export interface CollectionSellabilityRow {
+  catalogCardId: number;
+  tcgProductId: number | null;
+  productName: string;
+  title: string | null;
+  setCode: string | null;
+  setName: string | null;
+  collectorNumber: string | null;
+  normalizedNumber: string | null;
+  rarity: string | null;
+  photoUrl: string | null;
+  kind: CardKind;
+  kindSource: 'explicit' | 'detected' | 'unknown';
+  normalQty: number;
+  foilQty: number;
+  totalQty: number;
+  keepTarget: number | null;
+  keepNormalQty: number;
+  keepFoilQty: number;
+  sellNormalQty: number;
+  sellFoilQty: number;
+  excluded: boolean;
+  excludedReason: string | null;
+  needsClassification: boolean;
+  reasons: string[];
+  reasonCodes: string[];
+  primaryReasonCode: string | null;
+  opportunityType: 'foil_swap' | 'over_cap' | null;
+  keepTargetSatisfiedByNormal: boolean;
+  sourceItems?: CollectionSellabilityItemRef[];
+  transferItems?: CollectionSellabilityItemRef[];
+  blockers?: string[];
+  items?: CollectionSellabilityItemRef[];
+}
+
+export interface GetCollectionSellabilityResponse {
+  collection: CollectionSummary;
+  summary: {
+    sellNormalQty: number;
+    sellFoilQty: number;
+    excludedCards: number;
+    needsClassificationCards: number;
+  };
+  rows: CollectionSellabilityRow[];
+}
+
+export interface UpdateCatalogCardMetadataRequest {
+  cardKind?: CardKind | null;
+}
+
+export type CollectionImportMode = 'set' | 'merge';
+
+export interface CollectionImportSummary {
+  totalRows: number;
+  parsedRows: number;
+  matchedCatalogRows: number;
+  createdCatalogRows: number;
+  unresolvedRows: number;
+  totalQuantity: number;
+  normalQuantity: number;
+  foilQuantity: number;
+  warnings: string[];
+}
+
+export interface CollectionImportPreviewRow {
+  rowNumber: number;
+  catalogCardId?: number | null;
+  tcgProductId?: number | null;
+  productName: string;
+  setName?: string | null;
+  number?: string | null;
+  condition?: string | null;
+  finish?: string | null;
+  quantity: number;
+  status: 'matched' | 'created' | 'unresolved';
+  warnings: string[];
+}
+
+export interface CollectionImportPreviewResponse {
+  collection?: CollectionSummary;
+  mode: CollectionImportMode | string;
+  source?: string;
+  summary: CollectionImportSummary;
+  rows: CollectionImportPreviewRow[];
+  warnings?: string[];
+  errors?: string[];
+}
+
+export interface CollectionImportCommitResponse extends CollectionImportPreviewResponse {
+  inserted: number;
+  updated: number;
+  items?: unknown[];
+}
+
+export interface CollectionTransferItemRequest {
+  collectionItemId: number;
+  quantity: number;
+}
+
+export interface CollectionTransferRequest {
+  items: CollectionTransferItemRequest[];
+}
+
+export type CollectionTransferMessage =
+  | string
+  | { collectionItemId?: number; warning?: string; blocker?: string; message?: string };
+
+export interface CollectionTransferSummary {
+  requestedItems?: number;
+  transferableItems?: number;
+  blockedItems?: number;
+  transferQuantity?: number;
+  createRows?: number;
+  updateRows?: number;
+  warnings: CollectionTransferMessage[];
+  blockers: CollectionTransferMessage[];
+}
+
+export interface CollectionTransferPreviewRow {
+  collectionItemId: number;
+  catalogCardId: number;
+  quantity: number;
+  availableQuantity?: number;
+  finish: 'Normal' | 'Foil' | 'normal' | 'foil' | string;
+  condition?: string | null;
+  inventoryCondition?: string | null;
+  action: 'create' | 'update' | 'blocked' | string;
+  targetCardId?: number | null;
+  status: 'matched' | 'needs_attention' | 'gift' | 'pending' | 'error' | null | string;
+  marketPrice?: number | string | null;
+  listingPrice?: number | string | null;
+  warnings: CollectionTransferMessage[];
+  blockers: CollectionTransferMessage[];
+  card?: {
+    productName?: string | null;
+    setName?: string | null;
+    setCode?: string | null;
+    number?: string | null;
+    collectorNumber?: string | null;
+  } | null;
+}
+
+export interface CollectionTransferPreviewResponse {
+  collection?: CollectionSummary;
+  summary: CollectionTransferSummary;
+  items: CollectionTransferPreviewRow[];
+  warnings?: CollectionTransferMessage[];
+  errors?: string[];
+}
+
+export interface CollectionTransferCommitResponse
+  extends CollectionTransferPreviewResponse {
+  transferredQuantity?: number;
+  inserted?: number;
+  updated?: number;
+}
+
+export interface BulkCollectionItemRequest {
+  catalogCardId: number | string;
+  quantity: number;
+  condition?: string;
+  finish?: string;
+  language?: string;
+  source?: string;
+}
+
+export interface BulkCollectionItemsRequest {
+  items: BulkCollectionItemRequest[];
+}
+
+export interface BulkCollectionItemsResponse {
+  added: number;
+  updated?: number;
+  errors?: string[];
+}
+
 export interface ApiError {
   error: string;
   message: string;

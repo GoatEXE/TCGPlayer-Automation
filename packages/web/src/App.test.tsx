@@ -19,6 +19,14 @@ const apiMocks = vi.hoisted(() => ({
   createShipment: vi.fn(),
   updateShipment: vi.fn(),
   getNotificationEvents: vi.fn(),
+  getCollections: vi.fn(),
+  getCollectionSellability: vi.fn(),
+  updateCatalogCardMetadata: vi.fn(),
+  previewCollectionImport: vi.fn(),
+  commitCollectionImport: vi.fn(),
+  previewCollectionTransferToInventory: vi.fn(),
+  commitCollectionTransferToInventory: vi.fn(),
+  importCards: vi.fn(),
   createSale: vi.fn(),
   createBulkOrder: vi.fn(),
   getExpenses: vi.fn(),
@@ -159,6 +167,54 @@ describe('App view tabs', () => {
       events: [],
       limit: 20,
     });
+    apiMocks.getCollections.mockResolvedValue({
+      collections: [{ id: 1, name: 'Default', purpose: 'owned' }],
+    });
+    apiMocks.getCollectionSellability.mockResolvedValue({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: 0,
+        sellFoilQty: 0,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows: [],
+    });
+    apiMocks.updateCatalogCardMetadata.mockResolvedValue({ card: {} });
+    apiMocks.previewCollectionImport.mockResolvedValue({});
+    apiMocks.commitCollectionImport.mockResolvedValue({});
+    apiMocks.previewCollectionTransferToInventory.mockResolvedValue({
+      summary: {
+        requestedItems: 0,
+        transferableItems: 0,
+        blockedItems: 0,
+        transferQuantity: 0,
+        createRows: 0,
+        updateRows: 0,
+        warnings: [],
+        blockers: [],
+      },
+      items: [],
+    });
+    apiMocks.commitCollectionTransferToInventory.mockResolvedValue({
+      summary: {
+        requestedItems: 0,
+        transferableItems: 0,
+        blockedItems: 0,
+        transferQuantity: 0,
+        createRows: 0,
+        updateRows: 0,
+        warnings: [],
+        blockers: [],
+      },
+      items: [],
+    });
+    apiMocks.importCards.mockResolvedValue({
+      imported: 0,
+      updated: 0,
+      errors: [],
+      cards: [],
+    });
     apiMocks.createBulkOrder.mockResolvedValue({ sales: [] });
     apiMocks.getExpenses.mockResolvedValue({
       expenses: [expenseFixture],
@@ -172,6 +228,37 @@ describe('App view tabs', () => {
     apiMocks.updateExpense.mockResolvedValue(expenseFixture);
     apiMocks.deleteExpense.mockResolvedValue(undefined);
     apiMocks.updateExpenseSettings.mockResolvedValue(expenseSettingsFixture);
+  });
+
+  it('switches to Scan / Add Cards mode without calling ingest APIs', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole('tab', { name: /scan \/ add cards/i }));
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Scan / Add Cards' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /start camera/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /capture frame/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /done/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /back to app/i })).toBeTruthy();
+    expect(screen.queryByText(/positioning guide/i)).toBeNull();
+    expect(screen.queryByText(/bottom-left horizontal/i)).toBeNull();
+    expect(screen.queryByText(/bottom-right vertical/i)).toBeNull();
+    expect(
+      screen.queryByRole('heading', { level: 1, name: /tcgplayer automation/i }),
+    ).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /back to app/i }));
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: /tcgplayer automation/i }),
+    ).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
+    expect(apiMocks.createSale).not.toHaveBeenCalled();
+    expect(apiMocks.createBulkOrder).not.toHaveBeenCalled();
   });
 
   it('switches to Notifications mode and requests notification history', async () => {
@@ -190,6 +277,80 @@ describe('App view tabs', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Notifications' }),
     ).toBeTruthy();
+  });
+
+  it('switches to Collection mode without mutating selling inventory', async () => {
+    const user = userEvent.setup();
+
+    apiMocks.getCollectionSellability.mockResolvedValue({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: 1,
+        sellFoilQty: 0,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows: [
+        {
+          catalogCardId: 500,
+          tcgProductId: 1500,
+          productName: 'Collection Sell Candidate',
+          title: null,
+          setCode: 'ORG',
+          setName: 'Origins',
+          collectorNumber: '010',
+          normalizedNumber: '010',
+          rarity: 'Common',
+          photoUrl: null,
+          kind: 'normal',
+          kindSource: 'explicit',
+          normalQty: 4,
+          foilQty: 0,
+          totalQty: 4,
+          keepTarget: 3,
+          keepNormalQty: 3,
+          keepFoilQty: 0,
+          sellNormalQty: 1,
+          sellFoilQty: 0,
+          excluded: false,
+          excludedReason: null,
+          needsClassification: false,
+          reasons: ['1 copy exceeds keep target.'],
+          reasonCodes: ['over_cap'],
+          primaryReasonCode: 'over_cap',
+          opportunityType: 'over_cap',
+          keepTargetSatisfiedByNormal: true,
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: /import to selling inventory/i,
+      }),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole('tab', { name: /collection/i }));
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Collection' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', {
+        level: 2,
+        name: /import to selling inventory/i,
+      }),
+    ).toBeNull();
+    expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
+    expect(screen.getByText(/never imports into selling inventory/i)).toBeTruthy();
+    expect(screen.getByText('Collection Sell Candidate')).toBeTruthy();
+    expect(apiMocks.getCollections).toHaveBeenCalled();
+    expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);
+    expect(apiMocks.createSale).not.toHaveBeenCalled();
+    expect(apiMocks.createBulkOrder).not.toHaveBeenCalled();
   });
 
   it('loads all Needs Attention cards for Review Pricing regardless of current table rows', async () => {

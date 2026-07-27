@@ -34,6 +34,17 @@ import type {
   CreateShipmentRequest,
   UpdateShipmentRequest,
   GetNotificationEventsResponse,
+  GetCollectionsResponse,
+  GetCollectionSellabilityResponse,
+  CollectionImportCommitResponse,
+  CollectionImportMode,
+  CollectionImportPreviewResponse,
+  CollectionTransferCommitResponse,
+  CollectionTransferRequest,
+  CollectionTransferPreviewResponse,
+  BulkCollectionItemsRequest,
+  BulkCollectionItemsResponse,
+  UpdateCatalogCardMetadataRequest,
 } from './types';
 
 const API_BASE = '/api';
@@ -336,6 +347,128 @@ class ApiClient {
     const query = params.toString();
     return this.request<GetNotificationEventsResponse>(
       `/notifications${query ? `?${query}` : ''}`,
+    );
+  }
+
+  async getCollections(): Promise<GetCollectionsResponse> {
+    return this.request<GetCollectionsResponse>('/collections');
+  }
+
+  async getCollectionSellability(
+    collectionId: number | string,
+  ): Promise<GetCollectionSellabilityResponse> {
+    return this.request<GetCollectionSellabilityResponse>(
+      `/collections/${encodeURIComponent(String(collectionId))}/sellability`,
+    );
+  }
+
+  async previewCollectionImport(
+    collectionId: number | string,
+    file: File,
+    mode: CollectionImportMode,
+  ): Promise<CollectionImportPreviewResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+
+    const response = await fetch(
+      `${API_BASE}/collections/${encodeURIComponent(String(collectionId))}/import/preview`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Collection import preview failed' }));
+      throw new Error(
+        error.error || error.message || `HTTP ${response.status}`,
+      );
+    }
+
+    return response.json();
+  }
+
+  async commitCollectionImport(
+    collectionId: number | string,
+    file: File,
+    mode: CollectionImportMode,
+  ): Promise<CollectionImportCommitResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+
+    const response = await fetch(
+      `${API_BASE}/collections/${encodeURIComponent(String(collectionId))}/import`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: 'Collection import failed' }));
+      throw new Error(
+        error.error || error.message || `HTTP ${response.status}`,
+      );
+    }
+
+    return response.json();
+  }
+
+  async previewCollectionTransferToInventory(
+    collectionId: number | string,
+    data: CollectionTransferRequest,
+  ): Promise<CollectionTransferPreviewResponse> {
+    return this.request<CollectionTransferPreviewResponse>(
+      `/collections/${encodeURIComponent(String(collectionId))}/transfer-to-inventory/preview`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async commitCollectionTransferToInventory(
+    collectionId: number | string,
+    data: CollectionTransferRequest,
+  ): Promise<CollectionTransferCommitResponse> {
+    return this.request<CollectionTransferCommitResponse>(
+      `/collections/${encodeURIComponent(String(collectionId))}/transfer-to-inventory`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async addCollectionItemsBulk(
+    collectionId: number | string,
+    data: BulkCollectionItemsRequest,
+  ): Promise<BulkCollectionItemsResponse> {
+    return this.request<BulkCollectionItemsResponse>(
+      `/collections/${encodeURIComponent(String(collectionId))}/items/bulk`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async updateCatalogCardMetadata(
+    catalogCardId: number | string,
+    data: UpdateCatalogCardMetadataRequest,
+  ): Promise<{ card: unknown }> {
+    return this.request<{ card: unknown }>(
+      `/catalog/cards/${encodeURIComponent(String(catalogCardId))}/metadata`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
     );
   }
 
