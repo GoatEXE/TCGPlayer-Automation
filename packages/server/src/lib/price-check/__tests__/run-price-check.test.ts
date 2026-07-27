@@ -94,6 +94,52 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
+  it('repairs non-listed null-market needs_attention rows when pricing is found', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 153,
+        tcgProductId: 684213,
+        productName: 'Inferna',
+        condition: 'Near Mint',
+        marketPrice: null,
+        listingPrice: null,
+        floorPriceCents: null,
+        status: 'needs_attention',
+        notes: 'Transferred from collection 1',
+      },
+    ]);
+    mockGetPricing.mockResolvedValueOnce({
+      prices: {
+        '684213': {
+          tcg: {
+            Normal: { low: 0.04, market: 0.09 },
+          },
+        },
+      },
+    });
+    calculatePrice.mockReturnValue({
+      listingPrice: 0.09,
+      status: 'matched',
+      reason: 'priced',
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 601 }]);
+
+    const result = await runPriceCheck({ source: 'manual' });
+
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.09 });
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tcgProductId: 684213,
+        marketPrice: '0.09',
+        listingPrice: '0.09',
+        status: 'matched',
+        isFoilPrice: false,
+      }),
+    );
+    expect(result.updated).toBe(1);
+    expect(result.notFound).toBe(0);
+  });
+
   it('marks cards as needs_attention when market price is missing', async () => {
     dbFrom.mockResolvedValueOnce([
       {

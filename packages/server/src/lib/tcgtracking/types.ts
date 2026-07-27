@@ -22,6 +22,37 @@ export interface TCGTrackingSetsResponse {
   sets: TCGTrackingSet[];
 }
 
+export interface TCGTrackingProduct {
+  id?: number;
+  product_id?: number;
+  tcgplayer_id?: number;
+  tcg_product_id?: number;
+  name?: string;
+  product_name?: string;
+  title?: string | null;
+  number?: string | null;
+  collector_number?: string | null;
+  card_number?: string | null;
+  rarity?: string | null;
+  image_url?: string | null;
+  photo_url?: string | null;
+  url?: string | null;
+  [key: string]: unknown;
+}
+
+export type TCGTrackingProductCollection =
+  | TCGTrackingProduct[]
+  | Record<string, TCGTrackingProduct>;
+
+export interface TCGTrackingProductsResponse {
+  set_id?: number;
+  updated?: string;
+  products?: TCGTrackingProductCollection;
+  data?: TCGTrackingProductCollection;
+  results?: TCGTrackingProductCollection;
+  cards?: TCGTrackingProductCollection;
+}
+
 export interface TCGTrackingConditionPrice {
   low?: number;
   market?: number;

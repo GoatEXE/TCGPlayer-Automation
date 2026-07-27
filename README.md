@@ -34,8 +34,8 @@ cp .env.example .env
 docker compose up
 ```
 
-- Dashboard: http://localhost:5173
-- API: http://localhost:3000
+- Dashboard: http://localhost:5173 (`VITE_HOST_PORT`)
+- API: http://localhost:3000 (`DEV_APP_HOST_PORT`)
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 
@@ -47,9 +47,37 @@ Set `COMPOSE_PROFILES=prod` in `.env`, then start the built app:
 docker compose up -d
 ```
 
-- App and dashboard: http://localhost:3000
-- API: http://localhost:3000/api/* and health check at http://localhost:3000/health
+- App and dashboard: http://localhost:3000 (`APP_HOST_PORT`)
+- API: http://localhost:3000/api/\* and health check at http://localhost:3000/health
 - PostgreSQL and Redis are internal to Docker Compose.
+
+Optional LAN HTTPS for mobile browser camera APIs:
+
+```bash
+# in .env: include every hostname/IP you will browse to, then enable the built-in cert
+LOCAL_HTTPS_CERT_SANS=DNS:localhost,IP:127.0.0.1,IP:192.168.1.50
+HTTPS_ENABLED=true
+HTTPS_CERT_FILE=/app/certs/local-cert.pem
+HTTPS_KEY_FILE=/app/certs/local-key.pem
+COMPOSE_PROFILES=prod
+# If the dev profile is still running on host port 3000, use 3001 for prod:
+# APP_HOST_PORT=3001
+
+docker compose build --no-cache app
+docker compose up -d
+```
+
+Then browse to `https://<matching-host-or-ip>:3000` (or `:3001` if you set `APP_HOST_PORT=3001`). HTTPS uses `APP_HOST_PORT` on the host instead of HTTP while `HTTPS_ENABLED=true`; set `HTTPS_ENABLED=false` for HTTP mode. The phone/browser must trust or explicitly accept the self-signed certificate, and the URL hostname/IP must be listed in `LOCAL_HTTPS_CERT_SANS` when the image is built.
+
+For scanner OCR testing, the Docker image includes Tesseract at `/usr/bin/tesseract`. Before scanning, populate the cached catalog explicitly; live scanner recognition only matches against cached cards and does not call TCGTracking per frame:
+
+```bash
+curl -k "https://<host-or-ip>:3000/api/scanner/status"
+curl -k "https://<host-or-ip>:3000/api/catalog/sets?sync=true"
+curl -k -X POST "https://<host-or-ip>:3000/api/catalog/sync" \
+  -H "Content-Type: application/json" \
+  -d '{"setCode":"UNL"}'
+```
 
 ### Local scripts
 

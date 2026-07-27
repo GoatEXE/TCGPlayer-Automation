@@ -1,4 +1,6 @@
 import type {
+  TCGTrackingProduct,
+  TCGTrackingProductsResponse,
   TCGTrackingSet,
   TCGTrackingSetsResponse,
   TCGTrackingPriceResponse,
@@ -41,6 +43,48 @@ export class TCGTrackingClient {
       return data.sets;
     } catch (error) {
       console.error('Error fetching sets from TCGTracking:', error);
+      return [];
+    }
+  }
+
+  async getProducts(setId: number): Promise<TCGTrackingProduct[]> {
+    const url = `${this.baseUrl}/${RIFTBOUND_CATEGORY_ID}/sets/${setId}`;
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.error(
+          `TCGTracking API error: ${response.status} ${response.statusText}`,
+        );
+        return [];
+      }
+
+      const data = (await response.json()) as
+        | TCGTrackingProductsResponse
+        | TCGTrackingProduct[];
+      const productCollection = Array.isArray(data)
+        ? data
+        : data.products || data.data || data.results || data.cards;
+      const products = Array.isArray(productCollection)
+        ? productCollection
+        : productCollection && typeof productCollection === 'object'
+          ? Object.values(productCollection)
+          : null;
+
+      if (!products) {
+        console.warn(
+          'TCGTracking getProducts returned unexpected format (missing products array/object)',
+        );
+        return [];
+      }
+
+      return products;
+    } catch (error) {
+      console.error(
+        `Error fetching products for set ${setId} from TCGTracking:`,
+        error,
+      );
       return [];
     }
   }

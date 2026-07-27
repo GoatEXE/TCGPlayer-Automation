@@ -50,6 +50,12 @@ const envSchema = z.object({
   TELEGRAM_NOTIFY_ORDER_SHIPPED: booleanEnv(true),
   SELLER_NAME: z.string().default(''),
   SELLER_ID: z.string().default(''),
+  TESSERACT_BIN: z.string().default('tesseract'),
+  IMAGEMAGICK_BIN: z.string().default('magick'),
+  SCANNER_OCR_DEBUG: booleanEnv(false),
+  HTTPS_ENABLED: booleanEnv(false),
+  HTTPS_CERT_FILE: z.string().default(''),
+  HTTPS_KEY_FILE: z.string().default(''),
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
   NODE_ENV: z

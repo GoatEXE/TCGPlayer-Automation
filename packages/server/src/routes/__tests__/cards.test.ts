@@ -1214,6 +1214,79 @@ describe('POST /api/cards/:id/reprice', () => {
     );
   });
 
+  it('repairs a null-market transferred row by fetching latest TCGTracking pricing', async () => {
+    const mockCard = {
+      id: 153,
+      tcgProductId: 684213,
+      productName: 'Inferna',
+      marketPrice: null,
+      listingPrice: null,
+      condition: 'Near Mint',
+      status: 'needs_attention' as const,
+      notes: 'Transferred from collection 1',
+      floorPriceCents: null,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([mockCard]),
+      }),
+    } as any);
+    mockGetSets.mockResolvedValueOnce([{ id: 24560, name: 'Unleashed' }]);
+    mockGetPricing.mockResolvedValueOnce({
+      set_id: 24560,
+      updated: '2026-07-26T00:00:00Z',
+      prices: {
+        '684213': { tcg: { Normal: { low: 0.04, market: 0.09 } } },
+      },
+    });
+    vi.mocked(calculatePrice).mockReturnValue({
+      listingPrice: 0.09,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market — ready to list',
+    });
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                ...mockCard,
+                marketPrice: '0.09',
+                listingPrice: '0.09',
+                status: 'matched',
+                updatedAt: new Date(),
+              },
+            ]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/153/reprice',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockGetPricing).toHaveBeenCalledWith(24560);
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: 0.09 });
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        marketPrice: '0.09',
+        listingPrice: '0.09',
+        status: 'matched',
+        isFoilPrice: false,
+        notes: 'Transferred from collection 1',
+      }),
+    );
+  });
+
   it('should return 404 for non-existent card', async () => {
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({

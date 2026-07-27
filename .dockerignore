@@ -3,6 +3,9 @@ dist
 .git
 .env
 .env.local
+certs/
+packages/server/certs/
+*.pem
 *.md
 docs/
 coverage/

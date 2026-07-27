@@ -17,6 +17,7 @@ import { cards, isListedOriginAttentionReason } from '../db/schema/cards.js';
 import { priceHistory } from '../db/schema/price-history.js';
 import { parseCsv, parseTxt } from '../lib/importers/index.js';
 import { applyFloorPriceCents, calculatePrice } from '../lib/pricing/index.js';
+import { TCGTrackingClient } from '../lib/tcgtracking/client.js';
 import {
   runPriceCheck,
   getPriceCheckSchedulerStatus,
@@ -143,6 +144,46 @@ function sanitizePriceHistoryEntry(entry: PriceHistory): PriceHistory {
     adjustedToPrice: sanitizeNumericString(entry.adjustedToPrice),
     driftPercent: sanitizeNumericString(entry.driftPercent),
   };
+}
+
+async function fetchLatestMarketPriceForCard(card: Card): Promise<{
+  marketPrice: number | null;
+  isFoilFallback: boolean;
+}> {
+  if (!card.tcgProductId) {
+    return { marketPrice: null, isFoilFallback: false };
+  }
+
+  const client = new TCGTrackingClient();
+  const sets = await client.getSets();
+  const productId = card.tcgProductId.toString();
+  const conditionKey = card.condition.toLowerCase().includes('foil')
+    ? 'Foil'
+    : 'Normal';
+
+  for (const set of sets) {
+    const pricing = await client.getPricing(set.id);
+    const productPricing = pricing?.prices?.[productId];
+    if (!productPricing) {
+      continue;
+    }
+
+    const conditionPricing = productPricing.tcg?.[conditionKey];
+    if (conditionPricing?.market) {
+      return { marketPrice: conditionPricing.market, isFoilFallback: false };
+    }
+
+    if (conditionKey === 'Normal') {
+      const foilPricing = productPricing.tcg?.Foil;
+      if (foilPricing?.market) {
+        return { marketPrice: foilPricing.market, isFoilFallback: true };
+      }
+    }
+
+    return { marketPrice: null, isFoilFallback: false };
+  }
+
+  return { marketPrice: null, isFoilFallback: false };
 }
 
 export async function cardsRoutes(fastify: FastifyInstance) {
@@ -553,10 +594,17 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         return reply.code(404).send({ error: 'Card not found' });
       }
 
-      // Calculate new price
-      const marketPrice = card.marketPrice
+      // Calculate new price. If this row has no local market price (for example
+      // an older collection transfer created before transfer pricing was fixed),
+      // fetch current TCGTracking pricing by product id before repricing.
+      const existingMarketPrice = card.marketPrice
         ? parseFloat(card.marketPrice)
         : null;
+      const latestPricing =
+        existingMarketPrice === null
+          ? await fetchLatestMarketPriceForCard(card)
+          : { marketPrice: existingMarketPrice, isFoilFallback: false };
+      const marketPrice = latestPricing.marketPrice;
       const pricingResult = calculatePrice({ marketPrice });
 
       const listingPrice = applyFloorPriceCents({
@@ -574,13 +622,23 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         : pricingResult.status;
 
       // Update card with new pricing
+      const notesValue = latestPricing.isFoilFallback
+        ? card.notes?.includes('Price from Foil (no Normal pricing available)')
+          ? card.notes
+          : card.notes
+            ? `${card.notes}\nPrice from Foil (no Normal pricing available)`
+            : 'Price from Foil (no Normal pricing available)'
+        : card.notes;
       const [updatedCard] = await db
         .update(cards)
         .set({
+          marketPrice: marketPrice?.toString() ?? null,
           listingPrice: isListedCard
             ? normalizedExistingListingPrice
             : listingPrice?.toString() ?? null,
           status: newStatus,
+          isFoilPrice: latestPricing.isFoilFallback,
+          notes: notesValue,
           updatedAt: new Date(),
         })
         .where(eq(cards.id, parseInt(id, 10)))

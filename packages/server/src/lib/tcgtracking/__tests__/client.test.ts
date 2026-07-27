@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TCGTrackingClient } from '../client';
 import type {
-  TCGTrackingSet,
+  TCGTrackingProduct,
   TCGTrackingSetsResponse,
   TCGTrackingPriceResponse,
 } from '../types';
@@ -121,6 +121,47 @@ describe('TCGTrackingClient', () => {
 
       // Should return empty array for unexpected format
       expect(sets).toEqual([]);
+
+      consoleWarnSpy.mockRestore();
+    });
+  });
+
+  describe('getProducts', () => {
+    it('should parse product catalog response correctly', async () => {
+      const mockProducts: TCGTrackingProduct[] = [
+        {
+          product_id: 123,
+          product_name: 'Inferna',
+          collector_number: '002/219',
+        },
+      ];
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ set_id: 24344, products: mockProducts }),
+      });
+
+      const products = await client.getProducts(24344);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://test.example.com/89/sets/24344',
+      );
+      expect(products).toEqual(mockProducts);
+    });
+
+    it('should handle unexpected product response shapes', async () => {
+      const consoleWarnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => {});
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ unexpected: 'format' }),
+      });
+
+      const products = await client.getProducts(24344);
+
+      expect(products).toEqual([]);
 
       consoleWarnSpy.mockRestore();
     });

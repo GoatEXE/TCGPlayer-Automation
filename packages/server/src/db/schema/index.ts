@@ -1,4 +1,6 @@
 export * from './cards.js';
+export * from './catalog.js';
+export * from './collections.js';
 export * from './expense-settings.js';
 export * from './expenses.js';
 export * from './notification-events.js';

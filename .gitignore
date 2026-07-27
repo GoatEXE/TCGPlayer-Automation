@@ -16,6 +16,11 @@ build/
 .env.local
 .env.*.local
 
+# Local TLS certificates
+certs/
+packages/server/certs/
+*.pem
+
 # Testing
 coverage/
 *.lcov

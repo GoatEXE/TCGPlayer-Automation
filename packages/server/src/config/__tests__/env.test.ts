@@ -89,4 +89,47 @@ describe('env config', () => {
     expect(env.LISTED_PRICE_ATTENTION_THRESHOLD_PERCENT).toBe(7.5);
     expect(env.LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS).toBe(9);
   });
+
+  it('defaults scanner OCR settings', async () => {
+    const nextEnv = { ...ORIGINAL_ENV };
+    delete nextEnv.TESSERACT_BIN;
+    delete nextEnv.IMAGEMAGICK_BIN;
+    delete nextEnv.SCANNER_OCR_DEBUG;
+    process.env = nextEnv;
+
+    const { env } = await loadEnvModule();
+
+    expect(env.TESSERACT_BIN).toBe('tesseract');
+    expect(env.IMAGEMAGICK_BIN).toBe('magick');
+    expect(env.SCANNER_OCR_DEBUG).toBe(false);
+  });
+
+  it('defaults local HTTPS settings to disabled with no certificate paths', async () => {
+    const nextEnv = { ...ORIGINAL_ENV };
+    delete nextEnv.HTTPS_ENABLED;
+    delete nextEnv.HTTPS_CERT_FILE;
+    delete nextEnv.HTTPS_KEY_FILE;
+    process.env = nextEnv;
+
+    const { env } = await loadEnvModule();
+
+    expect(env.HTTPS_ENABLED).toBe(false);
+    expect(env.HTTPS_CERT_FILE).toBe('');
+    expect(env.HTTPS_KEY_FILE).toBe('');
+  });
+
+  it('reads configured local HTTPS settings', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      HTTPS_ENABLED: 'true',
+      HTTPS_CERT_FILE: '/app/certs/local-cert.pem',
+      HTTPS_KEY_FILE: '/app/certs/local-key.pem',
+    };
+
+    const { env } = await loadEnvModule();
+
+    expect(env.HTTPS_ENABLED).toBe(true);
+    expect(env.HTTPS_CERT_FILE).toBe('/app/certs/local-cert.pem');
+    expect(env.HTTPS_KEY_FILE).toBe('/app/certs/local-key.pem');
+  });
 });
