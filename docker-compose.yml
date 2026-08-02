@@ -64,8 +64,6 @@ services:
     build:
       context: .
       target: production
-      args:
-        LOCAL_HTTPS_CERT_SANS: ${LOCAL_HTTPS_CERT_SANS:-DNS:localhost,IP:127.0.0.1,IP:::1}
     ports:
       - "${APP_HOST_PORT:-${PORT:-3000}}:3000"
     environment:
@@ -74,8 +72,6 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
-      TESSERACT_BIN: ${TESSERACT_BIN:-/usr/bin/tesseract}
-      IMAGEMAGICK_BIN: ${IMAGEMAGICK_BIN:-magick}
     env_file:
       - .env
     depends_on:
@@ -91,8 +87,6 @@ services:
     build:
       context: .
       target: deps
-      args:
-        LOCAL_HTTPS_CERT_SANS: ${LOCAL_HTTPS_CERT_SANS:-DNS:localhost,IP:127.0.0.1,IP:::1}
     ports:
       - "${DEV_APP_HOST_PORT:-${PORT:-3000}}:3000"
       - "${VITE_HOST_PORT:-5173}:5173"  # Vite dev server
@@ -102,8 +96,6 @@ services:
       NODE_ENV: development
       PORT: 3000
       HOST: 0.0.0.0
-      TESSERACT_BIN: ${TESSERACT_BIN:-/usr/bin/tesseract}
-      IMAGEMAGICK_BIN: ${IMAGEMAGICK_BIN:-magick}
     env_file:
       - .env
     volumes:
