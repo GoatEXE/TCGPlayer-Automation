@@ -420,6 +420,19 @@ class ApiClient {
     return response.json();
   }
 
+  async clearCollection(
+    collectionId: number | string,
+    confirmation: string,
+  ): Promise<{ deleted?: number; removed?: number; collection?: unknown }> {
+    return this.request<{ deleted?: number; removed?: number; collection?: unknown }>(
+      `/collections/${encodeURIComponent(String(collectionId))}/clear`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ confirmation }),
+      },
+    );
+  }
+
   async previewCollectionTransferToInventory(
     collectionId: number | string,
     data: CollectionTransferRequest,

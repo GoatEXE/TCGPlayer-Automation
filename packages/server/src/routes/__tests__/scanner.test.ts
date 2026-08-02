@@ -13,9 +13,6 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { db } from '../../db/index.js';
-import type { ScannerOcrService } from '../../lib/scanner/ocr.js';
-
-const pngDataUrl = `data:image/png;base64,${Buffer.from('image').toString('base64')}`;
 
 function queryRows(rows: unknown[]) {
   return {
@@ -24,6 +21,9 @@ function queryRows(rows: unknown[]) {
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(rows),
     orderBy: vi.fn().mockResolvedValue(rows),
+    then: vi.fn((resolve, reject) =>
+      Promise.resolve(rows).then(resolve, reject),
+    ),
   };
 }
 
@@ -31,35 +31,52 @@ function mockCatalogRows(rows: unknown[]) {
   vi.mocked(db.select).mockReturnValue(queryRows(rows) as any);
 }
 
-function mockOcr(
-  results: Array<{ rawText: string; confidence: number }>,
-): ScannerOcrService {
-  return {
-    recognize: vi
-      .fn()
-      .mockImplementation(() =>
-        Promise.resolve(results.shift() || { rawText: '', confidence: 0 }),
-      ),
-  };
-}
-
 describe('scanner routes', () => {
   let app: FastifyInstance;
 
-  async function register(ocrService: ScannerOcrService) {
+  async function register() {
     app = Fastify();
-    await app.register(scannerRoutes, {
-      prefix: '/api/scanner',
-      ocrService,
-    });
+    await app.register(scannerRoutes, { prefix: '/api/scanner' });
   }
 
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
+  it('reports native-client scanner status without requiring server OCR binaries', async () => {
+    await register();
+    const lastSyncedAt = new Date('2026-07-26T03:30:00.000Z');
+    vi.mocked(db.select)
+      .mockReturnValueOnce(
+        queryRows([
+          { count: 9, lastSyncedAt: new Date('2026-07-26T03:00:00.000Z') },
+        ]) as any,
+      )
+      .mockReturnValueOnce(queryRows([{ count: 321, lastSyncedAt }]) as any);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/scanner/status',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      ocr: {
+        engine: 'native-client',
+        available: true,
+        required: false,
+      },
+      catalog: {
+        sets: 9,
+        cards: 321,
+        lastSyncedAt: lastSyncedAt.toISOString(),
+        ready: true,
+      },
+    });
+  });
+
   it('resolves native OCR text against cached catalog cards', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([
       {
         id: 209,
@@ -126,7 +143,7 @@ describe('scanner routes', () => {
   });
 
   it('resolves full paired token collector numbers against cached catalog cards', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([
       {
         id: 696622,
@@ -182,7 +199,7 @@ describe('scanner routes', () => {
   });
 
   it('returns ambiguous alternatives for bare token face collector numbers', async () => {
-    await register(mockOcr([]));
+    await register();
     vi.mocked(db.select)
       .mockReturnValueOnce(queryRows([]) as any)
       .mockReturnValueOnce(
@@ -255,7 +272,7 @@ describe('scanner routes', () => {
   });
 
   it('resolves rune-style special collector numbers against cached catalog cards', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([
       {
         id: 696616,
@@ -307,7 +324,7 @@ describe('scanner routes', () => {
   });
 
   it('resolves rune-style special collector variants against cached catalog cards', async () => {
-    await register(mockOcr([]));
+    await register();
     vi.mocked(db.select)
       .mockReturnValueOnce(
         queryRows([
@@ -372,7 +389,7 @@ describe('scanner routes', () => {
   });
 
   it('returns unresolved for missing rune-style special collector numbers', async () => {
-    await register(mockOcr([]));
+    await register();
     vi.mocked(db.select)
       .mockReturnValueOnce(queryRows([]) as any)
       .mockReturnValueOnce(queryRows([{ id: 1 }]) as any);
@@ -400,7 +417,7 @@ describe('scanner routes', () => {
   });
 
   it('returns unresolved for missing bare token face collector numbers', async () => {
-    await register(mockOcr([]));
+    await register();
     vi.mocked(db.select)
       .mockReturnValueOnce(queryRows([]) as any)
       .mockReturnValueOnce(queryRows([]) as any)
@@ -429,7 +446,7 @@ describe('scanner routes', () => {
   });
 
   it('resolves noisy native OCR text with safe set-code correction', async () => {
-    await register(mockOcr([]));
+    await register();
     vi.mocked(db.select)
       .mockReturnValueOnce(queryRows([]) as any)
       .mockReturnValueOnce(queryRows([]) as any)
@@ -487,7 +504,7 @@ describe('scanner routes', () => {
   });
 
   it('falls back to an exact unambiguous catalog name from slash-delimited native OCR', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([
       {
         id: 100,
@@ -540,7 +557,7 @@ describe('scanner routes', () => {
   });
 
   it('returns ambiguous for duplicate exact catalog name fallback matches', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([
       {
         id: 100,
@@ -588,7 +605,7 @@ describe('scanner routes', () => {
   });
 
   it('returns slash-delimited name fallback debug without candidates when catalog has no exact name match', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([]);
 
     const response = await app.inject({
@@ -618,7 +635,7 @@ describe('scanner routes', () => {
   });
 
   it('returns ambiguous and unresolved native OCR text without mutating inventory', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([
       {
         id: 1,
@@ -684,7 +701,7 @@ describe('scanner routes', () => {
   });
 
   it('returns native OCR debug without candidates when text cannot be resolved', async () => {
-    await register(mockOcr([]));
+    await register();
     mockCatalogRows([]);
 
     const response = await app.inject({
@@ -714,7 +731,7 @@ describe('scanner routes', () => {
   });
 
   it('validates malformed native OCR resolve-text input', async () => {
-    await register(mockOcr([]));
+    await register();
 
     const missing = await app.inject({
       method: 'POST',
@@ -778,860 +795,15 @@ describe('scanner routes', () => {
     });
   });
 
-  it('recognizes and resolves scanner ROI images against cached catalog cards', async () => {
-    await register(mockOcr([{ rawText: 'UNL • 002/219', confidence: 0.88 }]));
-    mockCatalogRows([
-      {
-        id: 100,
-        productName: 'Inferna',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: 'https://example.com/inferna.jpg',
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
+  it('does not expose the removed server-side image OCR recognition endpoint', async () => {
+    await register();
 
     const response = await app.inject({
       method: 'POST',
       url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-left', dataUrl: pngDataUrl }],
-      },
+      payload: { images: [] },
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      candidates: [
-        {
-          rawText: 'UNL • 002/219',
-          region: 'bottom-left',
-          setCode: 'UNL',
-          number: '002/219',
-          key: 'UNL:2/219',
-          status: 'resolved',
-          confidence: 0.88,
-          resolvedBy: 'catalogCode',
-          match: {
-            catalogCardId: 100,
-            name: 'Inferna',
-            setCode: 'UNL',
-            number: '002/219',
-            imageUrl: 'https://example.com/inferna.jpg',
-          },
-        },
-      ],
-      errors: [],
-      debug: {
-        regions: [
-          {
-            index: 0,
-            region: 'bottom-left',
-            rawText: 'UNL • 002/219',
-            confidence: 0.88,
-            parsedAttempts: [
-              {
-                setCode: 'UNL',
-                number: '002/219',
-                normalizedNumber: '2/219',
-              },
-            ],
-            errors: [],
-          },
-        ],
-      },
-    });
-    expect(db.insert).not.toHaveBeenCalledWith(cards);
-    expect(db.update).not.toHaveBeenCalledWith(cards);
-  });
-
-  it('accepts bottom-left-strip ROI images and resolves them like bottom-left text', async () => {
-    const ocrService = mockOcr([{ rawText: 'UNL 002/219', confidence: 0.83 }]);
-    await register(ocrService);
-    mockCatalogRows([
-      {
-        id: 100,
-        productName: 'Inferna',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-left-strip', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'UNL 002/219',
-          region: 'bottom-left-strip',
-          setCode: 'UNL',
-          number: '002/219',
-          key: 'UNL:2/219',
-          status: 'resolved',
-          match: { catalogCardId: 100, name: 'Inferna' },
-        },
-      ],
-      errors: [],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            region: 'bottom-left-strip',
-            rawText: 'UNL 002/219',
-            parsedAttempts: [
-              {
-                setCode: 'UNL',
-                number: '002/219',
-                normalizedNumber: '2/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-    expect(ocrService.recognize).toHaveBeenCalledWith(
-      expect.objectContaining({ region: 'bottom-left-strip' }),
-    );
-  });
-
-  it('parses noisy small-ID OCR variants before cached catalog lookup', async () => {
-    await register(mockOcr([{ rawText: 'UNL©002/219', confidence: 0.61 }]));
-    mockCatalogRows([
-      {
-        id: 100,
-        productName: 'Inferna',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-left', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body).candidates[0]).toMatchObject({
-      rawText: 'UNL©002/219',
-      setCode: 'UNL',
-      number: '002/219',
-      key: 'UNL:2/219',
-      status: 'resolved',
-      match: { catalogCardId: 100, name: 'Inferna' },
-    });
-  });
-
-  it('parses and resolves ID-focused fallback OCR after punctuation-only primary text', async () => {
-    await register(
-      mockOcr([{ rawText: '-\nUNL • 209/219', confidence: 0.85 }]),
-    );
-    mockCatalogRows([
-      {
-        id: 209,
-        productName: 'Dusk Rose Lab',
-        collectorNumber: '209/219',
-        normalizedNumber: '209/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: '-\nUNL • 209/219',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          number: '209/219',
-          key: 'UNL:209/219',
-          status: 'resolved',
-          match: { catalogCardId: 209, name: 'Dusk Rose Lab' },
-        },
-      ],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            region: 'bottom-right',
-            rawText: '-\nUNL • 209/219',
-            parsedAttempts: [
-              {
-                setCode: 'UNL',
-                number: '209/219',
-                normalizedNumber: '209/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('resolves noisy battlefield OCR by preferring the attempt that safely corrects to a cached card', async () => {
-    await register(
-      mockOcr([
-        {
-          rawText: 'B E J . UN. 209/219 S . 5S UN. 209/215',
-          confidence: 0.71,
-        },
-      ]),
-    );
-    vi.mocked(db.select)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(
-        queryRows([
-          {
-            id: 209,
-            productName: 'Dusk Rose Lab',
-            collectorNumber: '209/219',
-            normalizedNumber: '209/219',
-            photoUrl: null,
-            set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-          },
-        ]) as any,
-      );
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'B E J . UN. 209/219 S . 5S UN. 209/215',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          correctedFromSetCode: 'UN',
-          number: '209/219',
-          key: 'UNL:209/219',
-          status: 'resolved',
-          match: { catalogCardId: 209, name: 'Dusk Rose Lab' },
-        },
-      ],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            rawText: 'B E J . UN. 209/219 S . 5S UN. 209/215',
-            parsedAttempts: [
-              {
-                setCode: 'UN',
-                number: '209/219',
-                normalizedNumber: '209/219',
-              },
-              {
-                setCode: 'UN',
-                number: '209/215',
-                normalizedNumber: '209/215',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('safely corrects single-edit noisy set codes when one cached card matches', async () => {
-    await register(mockOcr([{ rawText: 'JNL 209/219', confidence: 0.74 }]));
-    vi.mocked(db.select)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(
-        queryRows([
-          {
-            id: 209,
-            productName: 'Dusk Rose Lab',
-            collectorNumber: '209/219',
-            normalizedNumber: '209/219',
-            photoUrl: null,
-            set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-          },
-        ]) as any,
-      );
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'JNL 209/219',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          correctedFromSetCode: 'JNL',
-          number: '209/219',
-          key: 'UNL:209/219',
-          status: 'resolved',
-          match: { catalogCardId: 209, name: 'Dusk Rose Lab' },
-        },
-      ],
-    });
-  });
-
-  it('resolves exact noisy OCR examples when a later attempt safely corrects to a cached card', async () => {
-    await register(
-      mockOcr([
-        { rawText: '-1.T -JL 209/219 ... JNL 209/719', confidence: 0.68 },
-      ]),
-    );
-    vi.mocked(db.select)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(
-        queryRows([
-          {
-            id: 209,
-            productName: 'Dusk Rose Lab',
-            collectorNumber: '209/219',
-            normalizedNumber: '209/219',
-            photoUrl: null,
-            set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-          },
-        ]) as any,
-      );
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: '-1.T -JL 209/219 ... JNL 209/719',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          correctedFromSetCode: 'JNL',
-          number: '209/219',
-          key: 'UNL:209/219',
-          status: 'resolved',
-          match: { catalogCardId: 209, name: 'Dusk Rose Lab' },
-        },
-      ],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            rawText: '-1.T -JL 209/219 ... JNL 209/719',
-            parsedAttempts: [
-              {
-                setCode: 'JL',
-                number: '209/219',
-                normalizedNumber: '209/219',
-              },
-              {
-                setCode: 'JNL',
-                number: '209/719',
-                normalizedNumber: '209/719',
-              },
-              {
-                setCode: 'JNL',
-                number: '209/219',
-                normalizedNumber: '209/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('safely corrects a clipped leading set-code character when one cached suffix match exists', async () => {
-    await register(mockOcr([{ rawText: 'NL 209/219', confidence: 0.82 }]));
-    vi.mocked(db.select)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(
-        queryRows([
-          {
-            id: 209,
-            productName: 'Dusk Rose Lab',
-            collectorNumber: '209/219',
-            normalizedNumber: '209/219',
-            photoUrl: null,
-            set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-          },
-        ]) as any,
-      );
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'NL 209/219',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          correctedFromSetCode: 'NL',
-          number: '209/219',
-          key: 'UNL:209/219',
-          status: 'resolved',
-          match: { catalogCardId: 209, name: 'Dusk Rose Lab' },
-        },
-      ],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            region: 'bottom-right',
-            rawText: 'NL 209/219',
-            parsedAttempts: [
-              {
-                setCode: 'NL',
-                number: '209/219',
-                normalizedNumber: '209/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('does not correct a clipped set code when the OCR set code exists exactly', async () => {
-    await register(mockOcr([{ rawText: 'NL 209/219', confidence: 0.82 }]));
-    vi.mocked(db.select)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([{ id: 55 }]) as any);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'NL 209/219',
-          region: 'bottom-right',
-          setCode: 'NL',
-          number: '209/219',
-          key: 'NL:209/219',
-          status: 'unresolved',
-        },
-      ],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            parsedAttempts: [
-              {
-                setCode: 'NL',
-                number: '209/219',
-                normalizedNumber: '209/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('does not correct a clipped set code when suffix matches are ambiguous', async () => {
-    await register(mockOcr([{ rawText: 'NL 209/219', confidence: 0.82 }]));
-    vi.mocked(db.select)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(
-        queryRows([
-          {
-            id: 209,
-            productName: 'Dusk Rose Lab',
-            collectorNumber: '209/219',
-            normalizedNumber: '209/219',
-            photoUrl: null,
-            set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-          },
-          {
-            id: 999,
-            productName: 'Other Lab',
-            collectorNumber: '209/219',
-            normalizedNumber: '209/219',
-            photoUrl: null,
-            set: { id: 2, setCode: 'XNL', name: 'Other Set' },
-          },
-        ]) as any,
-      );
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'NL 209/219',
-          region: 'bottom-right',
-          setCode: 'NL',
-          number: '209/219',
-          key: 'NL:209/219',
-          status: 'unresolved',
-        },
-      ],
-    });
-  });
-
-  it('parses and resolves rotated-horizontal bottom-right battlefield IDs', async () => {
-    await register(mockOcr([{ rawText: 'UNL • 002/219', confidence: 0.78 }]));
-    mockCatalogRows([
-      {
-        id: 100,
-        productName: 'Battlefield',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'UNL • 002/219',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          number: '002/219',
-          key: 'UNL:2/219',
-          status: 'resolved',
-          match: { catalogCardId: 100, name: 'Battlefield' },
-        },
-      ],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            region: 'bottom-right',
-            rawText: 'UNL • 002/219',
-            parsedAttempts: [
-              {
-                setCode: 'UNL',
-                number: '002/219',
-                normalizedNumber: '2/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('parses and resolves vertical bottom-right battlefield IDs split over OCR lines', async () => {
-    await register(
-      mockOcr([{ rawText: 'U\nN\nL\n0\n0\n2\n/\n2\n1\n9', confidence: 0.64 }]),
-    );
-    mockCatalogRows([
-      {
-        id: 100,
-        productName: 'Battlefield',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          rawText: 'U\nN\nL\n0\n0\n2\n/\n2\n1\n9',
-          region: 'bottom-right',
-          setCode: 'UNL',
-          number: '002/219',
-          key: 'UNL:2/219',
-          status: 'resolved',
-          match: { catalogCardId: 100, name: 'Battlefield' },
-        },
-      ],
-      errors: [],
-      debug: {
-        regions: [
-          expect.objectContaining({
-            region: 'bottom-right',
-            rawText: 'U\nN\nL\n0\n0\n2\n/\n2\n1\n9',
-            parsedAttempts: [
-              {
-                setCode: 'UNL',
-                number: '002/219',
-                normalizedNumber: '2/219',
-              },
-            ],
-          }),
-        ],
-      },
-    });
-  });
-
-  it('returns ambiguous alternatives when multiple catalog cards match', async () => {
-    await register(mockOcr([{ rawText: 'UNL-002/219', confidence: 0.72 }]));
-    mockCatalogRows([
-      {
-        id: 100,
-        productName: 'Inferna A',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-      {
-        id: 101,
-        productName: 'Inferna B',
-        collectorNumber: '002/219',
-        normalizedNumber: '2/219',
-        photoUrl: null,
-        set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-      },
-    ]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-right', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toMatchObject({
-      candidates: [
-        {
-          status: 'ambiguous',
-          alternatives: [
-            { catalogCardId: 100, name: 'Inferna A' },
-            { catalogCardId: 101, name: 'Inferna B' },
-          ],
-        },
-      ],
-      errors: [],
-    });
-  });
-
-  it('filters OCR text that cannot be parsed as a card identifier', async () => {
-    await register(
-      mockOcr([
-        {
-          rawText:
-            'level page_num block_num par_num line_num word_num left top width height conf text 1 1 0 0 0 0',
-          confidence: 0,
-        },
-      ]),
-    );
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-left', dataUrl: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      candidates: [],
-      errors: [],
-      debug: {
-        regions: [
-          {
-            index: 0,
-            region: 'bottom-left',
-            rawText:
-              'level page_num block_num par_num line_num word_num left top width height conf text 1 1 0 0 0 0',
-            confidence: 0,
-            parsedAttempts: [],
-            errors: [],
-          },
-        ],
-      },
-    });
-    expect(db.select).not.toHaveBeenCalled();
-  });
-
-  it('handles multiple ROI images independently', async () => {
-    await register(
-      mockOcr([
-        { rawText: 'UNL • 002/219', confidence: 0.9 },
-        { rawText: 'UNL • 999/219', confidence: 0.4 },
-      ]),
-    );
-    vi.mocked(db.select)
-      .mockReturnValueOnce(
-        queryRows([
-          {
-            id: 100,
-            productName: 'Inferna',
-            collectorNumber: '002/219',
-            normalizedNumber: '2/219',
-            photoUrl: null,
-            set: { id: 1, setCode: 'UNL', name: 'Riftbound Origins' },
-          },
-        ]) as any,
-      )
-      .mockReturnValueOnce(queryRows([]) as any)
-      .mockReturnValueOnce(queryRows([{ id: 1 }]) as any);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [
-          { region: 'bottom-left', dataUrl: pngDataUrl },
-          { region: 'bottom-right', dataUrl: pngDataUrl },
-        ],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
-    expect(body.candidates).toHaveLength(2);
-    expect(body.candidates[0].status).toBe('resolved');
-    expect(body.candidates[1]).toMatchObject({
-      setCode: 'UNL',
-      number: '999/219',
-      status: 'unresolved',
-    });
-  });
-
-  it('accepts the legacy frontend image field as a dataUrl alias', async () => {
-    await register(mockOcr([{ rawText: 'UNL • 002/219', confidence: 0.88 }]));
-    mockCatalogRows([]);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'bottom-left', image: pngDataUrl }],
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body).candidates[0]).toMatchObject({
-      rawText: 'UNL • 002/219',
-      status: 'unresolved',
-    });
-  });
-
-  it('rejects malformed scanner recognition input safely', async () => {
-    await register(mockOcr([]));
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [{ region: 'center', dataUrl: 'not-a-data-url' }],
-      },
-    });
-
-    expect(response.statusCode).toBe(207);
-    expect(JSON.parse(response.body)).toEqual({
-      candidates: [],
-      errors: [
-        'images[0].region must be bottom-left, bottom-left-strip, or bottom-right',
-      ],
-      debug: {
-        regions: [
-          {
-            index: 0,
-            region: 'center',
-            rawText: '',
-            confidence: 0,
-            parsedAttempts: [],
-            errors: [
-              'images[0].region must be bottom-left, bottom-left-strip, or bottom-right',
-            ],
-          },
-        ],
-      },
-    });
-  });
-
-  it('rejects oversized data URLs before OCR', async () => {
-    const ocrService = mockOcr([]);
-    await register(ocrService);
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/scanner/recognize',
-      payload: {
-        images: [
-          {
-            region: 'bottom-left',
-            dataUrl: `data:image/png;base64,${'A'.repeat(1_500_000)}`,
-          },
-        ],
-      },
-    });
-
-    expect(response.statusCode).toBe(413);
-    expect(ocrService.recognize).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(404);
   });
 });

@@ -183,6 +183,12 @@ function isListedLikeCard(card: Pick<Card, 'status' | 'attentionReason'>) {
   );
 }
 
+function shouldPreserveExistingListingOnMissingPrice(
+  card: Pick<Card, 'status' | 'attentionReason' | 'listingPrice'>,
+) {
+  return isListedLikeCard(card) || card.status === 'needs_attention';
+}
+
 function getListedAttentionReason(params: {
   isThresholdDrift: boolean;
   pricingStatus: ReturnType<typeof calculatePrice>['status'];
@@ -361,10 +367,14 @@ export async function runPriceCheck(
       const previousListingPrice = parseDecimal(card.listingPrice);
       const previousStatus = card.status;
       const wasListedLike = isListedLikeCard(card);
-      const persistedListedListingPrice = wasListedLike
+      const preserveExistingListing =
+        shouldPreserveExistingListingOnMissingPrice(card);
+      const persistedListedListingPrice = preserveExistingListing
         ? card.listingPrice
         : null;
-      const historyListingPrice = wasListedLike ? previousListingPrice : null;
+      const historyListingPrice = preserveExistingListing
+        ? previousListingPrice
+        : null;
 
       await db
         .update(cards)
@@ -460,10 +470,14 @@ export async function runPriceCheck(
       const previousListingPrice = parseDecimal(card.listingPrice);
       const previousStatus = card.status;
       const wasListedLike = isListedLikeCard(card);
-      const persistedListedListingPrice = wasListedLike
+      const preserveExistingListing =
+        shouldPreserveExistingListingOnMissingPrice(card);
+      const persistedListedListingPrice = preserveExistingListing
         ? card.listingPrice
         : null;
-      const historyListingPrice = wasListedLike ? previousListingPrice : null;
+      const historyListingPrice = preserveExistingListing
+        ? previousListingPrice
+        : null;
 
       await db
         .update(cards)

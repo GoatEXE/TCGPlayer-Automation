@@ -26,6 +26,7 @@ const apiMocks = vi.hoisted(() => ({
   commitCollectionImport: vi.fn(),
   previewCollectionTransferToInventory: vi.fn(),
   commitCollectionTransferToInventory: vi.fn(),
+  clearCollection: vi.fn(),
   importCards: vi.fn(),
   createSale: vi.fn(),
   createBulkOrder: vi.fn(),
@@ -209,6 +210,7 @@ describe('App view tabs', () => {
       },
       items: [],
     });
+    apiMocks.clearCollection.mockResolvedValue({ deleted: 0 });
     apiMocks.importCards.mockResolvedValue({
       imported: 0,
       updated: 0,
@@ -230,35 +232,12 @@ describe('App view tabs', () => {
     apiMocks.updateExpenseSettings.mockResolvedValue(expenseSettingsFixture);
   });
 
-  it('switches to Scan / Add Cards mode without calling ingest APIs', async () => {
-    const user = userEvent.setup();
-
+  it('does not expose the retired web Scan / Add Cards workflow', () => {
     render(<App />);
 
-    await user.click(screen.getByRole('tab', { name: /scan \/ add cards/i }));
-
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Scan / Add Cards' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: /start camera/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /capture frame/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /done/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /back to app/i })).toBeTruthy();
-    expect(screen.queryByText(/positioning guide/i)).toBeNull();
-    expect(screen.queryByText(/bottom-left horizontal/i)).toBeNull();
-    expect(screen.queryByText(/bottom-right vertical/i)).toBeNull();
-    expect(
-      screen.queryByRole('heading', { level: 1, name: /tcgplayer automation/i }),
-    ).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: /back to app/i }));
-
-    expect(
-      screen.getByRole('heading', { level: 1, name: /tcgplayer automation/i }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /scan \/ add cards/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /start camera/i })).toBeNull();
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
-    expect(apiMocks.createSale).not.toHaveBeenCalled();
-    expect(apiMocks.createBulkOrder).not.toHaveBeenCalled();
   });
 
   it('switches to Notifications mode and requests notification history', async () => {

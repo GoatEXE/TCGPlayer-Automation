@@ -615,6 +615,10 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         ? parseFloat(card.listingPrice).toString()
         : null;
       const isListedCard = card.status === 'listed';
+      const preserveManualNeedsAttentionListing =
+        card.status === 'needs_attention' &&
+        normalizedExistingListingPrice !== null &&
+        marketPrice === null;
       const newStatus = isListedCard
         ? pricingResult.status === 'matched'
           ? 'listed'
@@ -633,9 +637,10 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         .update(cards)
         .set({
           marketPrice: marketPrice?.toString() ?? null,
-          listingPrice: isListedCard
-            ? normalizedExistingListingPrice
-            : listingPrice?.toString() ?? null,
+          listingPrice:
+            isListedCard || preserveManualNeedsAttentionListing
+              ? normalizedExistingListingPrice
+              : listingPrice?.toString() ?? null,
           status: newStatus,
           isFoilPrice: latestPricing.isFoilFallback,
           notes: notesValue,

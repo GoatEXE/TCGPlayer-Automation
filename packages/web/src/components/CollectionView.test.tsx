@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
   commitCollectionImport: vi.fn(),
   previewCollectionTransferToInventory: vi.fn(),
   commitCollectionTransferToInventory: vi.fn(),
+  clearCollection: vi.fn(),
   importCards: vi.fn(),
 }));
 
@@ -65,6 +66,7 @@ const baseRow = {
 describe('CollectionView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('confirm', vi.fn(() => true));
     apiMocks.getCollections.mockResolvedValue({
       collections: [
         { id: 1, name: 'Default', purpose: 'owned' },
@@ -258,7 +260,10 @@ describe('CollectionView', () => {
         transferQuantity: 2,
         createRows: 1,
         updateRows: 0,
-        warnings: [{ collectionItemId: 111, warning: 'Price looks stale' }],
+        warnings: [
+          { collectionItemId: 111, warning: 'listed_inventory_row_exists_not_merged' },
+          { collectionItemId: 122, warning: 'listed_inventory_row_exists_not_merged' },
+        ],
         blockers: [],
       },
       items: [
@@ -275,7 +280,7 @@ describe('CollectionView', () => {
           status: 'matched',
           marketPrice: 0.12,
           listingPrice: 0.12,
-          warnings: [{ collectionItemId: 111, warning: 'Near Mint price fallback used' }],
+          warnings: [{ collectionItemId: 111, warning: 'listed_inventory_row_exists_not_merged' }],
           blockers: [],
           card: { productName: 'Sell Extra Card', setName: 'Origins', number: '001' },
         },
@@ -298,6 +303,7 @@ describe('CollectionView', () => {
       inserted: 1,
       updated: 0,
     });
+    apiMocks.clearCollection.mockResolvedValue({ deleted: 5 });
   });
 
   it('renders collection recommendations with key states prioritized', async () => {
@@ -425,8 +431,13 @@ describe('CollectionView', () => {
     });
     const transferPreview = await screen.findByLabelText(/transfer preview/i);
     expect(transferPreview).toHaveTextContent('Ready to List');
-    expect(transferPreview).toHaveTextContent('Item 111: Price looks stale');
-    expect(transferPreview).toHaveTextContent('Item 111: Near Mint price fallback used');
+    expect(transferPreview).toHaveTextContent(
+      'Some selected cards already have listed inventory rows',
+    );
+    expect(transferPreview).toHaveTextContent(
+      'separate Ready-to-List staging rows',
+    );
+    expect(transferPreview).not.toHaveTextContent('listed_inventory_row_exists_not_merged');
     expect(transferPreview).not.toHaveTextContent('[object Object]');
     expect(apiMocks.importCards).not.toHaveBeenCalled();
 
@@ -440,6 +451,29 @@ describe('CollectionView', () => {
     expect(onInventoryChanged).toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/moved 2 card\(s\) to selling inventory/i)).toBeTruthy();
+  });
+
+  it('requires typed confirmation before clearing the selected collection and refreshes', async () => {
+    const user = userEvent.setup();
+    render(<CollectionView />);
+
+    const clearButton = await screen.findByRole('button', { name: /clear default/i });
+    expect(clearButton).toBeDisabled();
+    expect(screen.getByText(/does not delete catalog data/i)).toBeTruthy();
+
+    await user.type(screen.getByLabelText(/type clear collection/i), 'CLEAR COLLECTION');
+    expect(clearButton).toBeEnabled();
+    await user.click(clearButton);
+
+    await waitFor(() => {
+      expect(apiMocks.clearCollection).toHaveBeenCalledWith(
+        1,
+        'CLEAR COLLECTION',
+      );
+    });
+    expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
+    expect(apiMocks.importCards).not.toHaveBeenCalled();
+    expect(screen.getByText(/cleared 5 collection row/i)).toBeTruthy();
   });
 
   it('uses staging labels and disables zero-quantity rows in To Be Sold collection', async () => {

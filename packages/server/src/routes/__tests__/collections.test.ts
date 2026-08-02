@@ -439,6 +439,75 @@ describe('collection routes', () => {
     });
   });
 
+  it('clears only selected collection items with explicit confirmation', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(selectRows([{ id: 1, name: 'Default', purpose: 'owned' }]) as any)
+      .mockReturnValueOnce(
+        selectRows([
+          { id: 10, quantity: 3 },
+          { id: 11, quantity: 2 },
+        ]) as any,
+      );
+    mockDelete();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/collections/1/clear',
+      payload: { confirmation: 'CLEAR COLLECTION' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      deletedItems: 2,
+      deletedQuantity: 5,
+    });
+    expect(db.transaction).toHaveBeenCalled();
+    expect(db.delete).toHaveBeenCalledWith(collectionItems);
+    expect(db.delete).not.toHaveBeenCalledWith(cards);
+    expect(db.update).not.toHaveBeenCalledWith(cards);
+  });
+
+  it('rejects collection clear without exact confirmation', async () => {
+    vi.mocked(db.select).mockReturnValueOnce(
+      selectRows([{ id: 1, name: 'Default', purpose: 'owned' }]) as any,
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/collections/1/clear',
+      payload: { confirmation: 'clear' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toMatchObject({
+      error: 'confirmation must equal CLEAR COLLECTION',
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+    });
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalledWith(cards);
+  });
+
+  it('clears an already-empty collection as a no-op', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(selectRows([{ id: 3, name: 'Empty', purpose: 'owned' }]) as any)
+      .mockReturnValueOnce(selectRows([]) as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/collections/3/clear',
+      payload: { confirmation: 'CLEAR COLLECTION' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      collection: { id: 3, name: 'Empty', purpose: 'owned' },
+      deletedItems: 0,
+      deletedQuantity: 0,
+    });
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
   it('previews collection transfer to selling inventory without merging listed rows', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(selectRows([{ id: 2, name: 'To Be Sold', purpose: 'to_be_sold' }]) as any)

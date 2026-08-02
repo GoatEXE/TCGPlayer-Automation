@@ -1,24 +1,7 @@
-# Stage 0: Generate a local-only self-signed certificate for optional HTTPS
-FROM node:22-alpine AS tls-certs
-ARG LOCAL_HTTPS_CERT_SANS="DNS:localhost,IP:127.0.0.1,IP:::1"
-WORKDIR /app
-RUN apk add --no-cache openssl \
-  && mkdir -p /app/certs \
-  && openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 825 \
-    -keyout /app/certs/local-key.pem \
-    -out /app/certs/local-cert.pem \
-    -subj "/CN=tcgplayer-local" \
-    -addext "subjectAltName=${LOCAL_HTTPS_CERT_SANS}" \
-  && chmod 600 /app/certs/local-key.pem \
-  && chmod 644 /app/certs/local-cert.pem
-
 # Stage 1: Install all dependencies
 FROM node:22-alpine AS deps
-RUN apk add --no-cache imagemagick tesseract-ocr tesseract-ocr-data-eng \
-  && corepack enable && corepack prepare pnpm@10 --activate
-ENV TESSERACT_BIN=/usr/bin/tesseract
+RUN corepack enable && corepack prepare pnpm@10 --activate
 WORKDIR /app
-COPY --from=tls-certs /app/certs ./certs
 
 # Copy workspace config and package files
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -57,14 +40,11 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Stage 5: Production runtime
 FROM node:22-alpine AS production
-RUN apk add --no-cache imagemagick tesseract-ocr tesseract-ocr-data-eng \
-  && corepack enable && corepack prepare pnpm@10 --activate
-ENV TESSERACT_BIN=/usr/bin/tesseract
+RUN corepack enable && corepack prepare pnpm@10 --activate
 WORKDIR /app
 
 # Copy workspace config
 COPY package.json pnpm-workspace.yaml ./
-COPY --from=tls-certs /app/certs ./certs
 
 # Copy production dependencies
 COPY --from=prod-deps /app/node_modules ./node_modules

@@ -1,8 +1,7 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { env } from './config/env.js';
-import { loadHttpsOptions } from './config/https.js';
 import { registerRoutes } from './routes/index.js';
 import { registerStatic } from './plugins/static.js';
 import { runMigrations } from './db/migrate.js';
@@ -11,12 +10,7 @@ import {
   stopPriceCheckScheduler,
 } from './lib/price-check/index.js';
 
-const httpsOptions = await loadHttpsOptions();
-const app = (
-  httpsOptions
-    ? Fastify({ logger: true, https: httpsOptions })
-    : Fastify({ logger: true })
-) as FastifyInstance;
+const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: true });
 await app.register(multipart);

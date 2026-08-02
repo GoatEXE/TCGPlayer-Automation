@@ -122,6 +122,28 @@ Response shape:
 
 The import endpoint also returns `inserted`, `updated`, and written `items`.
 
+## Clear/reset a collection
+
+Clearing is intentionally destructive and requires exact confirmation. It deletes `collection_items` rows for the selected collection only; it does not delete the collection row, catalog rows, selling inventory (`cards`), price history, sales, or anything external.
+
+```bash
+curl -X POST http://localhost:3000/api/collections/1/clear \
+  -H "Content-Type: application/json" \
+  -d '{"confirmation":"CLEAR COLLECTION"}'
+```
+
+Response:
+
+```json
+{
+  "collection": { "id": 1, "name": "Default", "purpose": "owned" },
+  "deletedItems": 471,
+  "deletedQuantity": 827
+}
+```
+
+The response includes collection `name`/`purpose` so the UI can warn clearly when clearing a staging collection such as `To Be Sold`.
+
 ## Transfer collection rows to selling inventory
 
 Transfers are explicit user actions from a collection row into the existing selling inventory table (`cards`). They do not list externally on TCGPlayer and they do not merge into `listed` inventory rows.

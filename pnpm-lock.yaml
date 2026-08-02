@@ -90,9 +90,6 @@ importers:
 
   packages/web:
     dependencies:
-      '@techstark/opencv-js':
-        specifier: 5.0.0-release.1
-        version: 5.0.0-release.1
       react:
         specifier: ^19.2.4
         version: 19.2.4
@@ -923,9 +920,6 @@ packages:
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
-
-  '@techstark/opencv-js@5.0.0-release.1':
-    resolution: {integrity: sha512-PIm+eB0MFtieXoNC2GRao0dv/02sehG+Nv2nSW5D6pQm6J/4WqvDHm0RyoqOmGYQm67jdGiaOdIeTShCY3PIUg==}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -2802,8 +2796,6 @@ snapshots:
   '@rolldown/pluginutils@1.0.0-rc.7': {}
 
   '@standard-schema/spec@1.1.0': {}
-
-  '@techstark/opencv-js@5.0.0-release.1': {}
 
   '@testing-library/dom@10.4.1':
     dependencies:

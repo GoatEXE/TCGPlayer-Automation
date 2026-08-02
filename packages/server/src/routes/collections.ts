@@ -75,6 +75,10 @@ interface SplitScanBody extends ScanPreviewBody {
 
 type CollectionImportMode = 'merge' | 'set';
 
+interface ClearCollectionBody {
+  confirmation?: string;
+}
+
 interface CollectionImportResolvedRow {
   rowNumber: number;
   status: 'matched' | 'created' | 'unresolved';
@@ -1008,6 +1012,24 @@ async function buildTransferPlan(
   };
 }
 
+async function clearCollectionItems(collectionId: number, database = db) {
+  const rows = await database
+    .select({ id: collectionItems.id, quantity: collectionItems.quantity })
+    .from(collectionItems)
+    .where(eq(collectionItems.collectionId, collectionId));
+
+  if (rows.length > 0) {
+    await database
+      .delete(collectionItems)
+      .where(eq(collectionItems.collectionId, collectionId));
+  }
+
+  return {
+    deletedItems: rows.length,
+    deletedQuantity: rows.reduce((sum, row) => sum + row.quantity, 0),
+  };
+}
+
 async function commitTransferPlan(
   collectionId: number,
   plan: Awaited<ReturnType<typeof buildTransferPlan>>,
@@ -1203,6 +1225,35 @@ export async function collectionsRoutes(fastify: FastifyInstance) {
       },
       sell: sellResult,
       keep: keepResult,
+    };
+  });
+
+  fastify.post('/:id/clear', async (request, reply) => {
+    const collectionId = Number.parseInt((request.params as { id: string }).id, 10);
+    const collection = await getCollectionForImport(collectionId, reply);
+    if (!collection) {
+      return reply;
+    }
+
+    const body = (request.body || {}) as ClearCollectionBody;
+    if (body.confirmation !== 'CLEAR COLLECTION') {
+      return reply.code(400).send({
+        error: 'confirmation must equal CLEAR COLLECTION',
+        collection: {
+          id: collection.id,
+          name: collection.name,
+          purpose: collection.purpose,
+        },
+      });
+    }
+
+    const result = await runInDbTransaction((database) =>
+      clearCollectionItems(collectionId, database),
+    );
+
+    return {
+      collection,
+      ...result,
     };
   });
 

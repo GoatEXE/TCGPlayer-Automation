@@ -14,6 +14,7 @@ describe('ViewTabs', () => {
     expect(screen.getByRole('tab', { name: /notifications/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /sales history/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /performance/i })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /scan \/ add cards/i })).toBeNull();
   });
 
   it('marks Inventory tab as selected when activeView is inventory', () => {

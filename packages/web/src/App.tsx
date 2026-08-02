@@ -39,7 +39,6 @@ import { ExpenseTable } from './components/ExpenseTable';
 import { ExpenseFormModal } from './components/ExpenseFormModal';
 import { ViewTabs } from './components/ViewTabs';
 import type { ViewMode } from './components/ViewTabs';
-import { ScanAddCards } from './components/ScanAddCards';
 import { CollectionView } from './components/CollectionView';
 import './App.css';
 
@@ -668,7 +667,7 @@ export function App() {
       return;
     }
 
-    if (view === 'notifications' || view === 'scan-add') {
+    if (view === 'notifications') {
       setIsExpenseModalOpen(false);
       setSelectedExpenseForEdit(null);
       return;
@@ -748,17 +747,14 @@ export function App() {
   ];
 
   return (
-    <div className={`app ${activeView === 'scan-add' ? 'app-scan-mode' : ''}`}>
-      {activeView !== 'scan-add' && (
-        <header className="app-header">
+    <div className="app">
+      <header className="app-header">
         <h1>📦 TCGPlayer Automation</h1>
         <StatsBar stats={stats} loading={statsLoading} />
-        </header>
-      )}
+      </header>
 
       <main className="app-main">
-        {activeView !== 'scan-add' && (
-          <div className="actions-row">
+        <div className="actions-row">
           {activeView === 'inventory' && (
             <ImportUpload onImportComplete={handleImportComplete} />
           )}
@@ -771,12 +767,9 @@ export function App() {
               handleUpdateListedPriceAttentionThreshold
             }
           />
-          </div>
-        )}
+        </div>
 
-        {activeView !== 'scan-add' && (
-          <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
-        )}
+        <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
 
         {activeView === 'sales-history' ? (
           <section className="cards-section">
@@ -883,8 +876,6 @@ export function App() {
               error={notificationsError}
             />
           </section>
-        ) : activeView === 'scan-add' ? (
-          <ScanAddCards onExit={() => handleChangeView('inventory')} />
         ) : activeView === 'collection' ? (
           <CollectionView onInventoryChanged={fetchCards} />
         ) : activeView === 'performance' ? (
