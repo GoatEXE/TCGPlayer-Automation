@@ -5,7 +5,17 @@ import {
   normalizeCatalogNameForLookup,
 } from '../catalog/lookup.js';
 import { parseCatalogCodeAttempts } from '../catalog/normalize.js';
-import type { ScannerOcrRegion, ScannerOcrResult } from './ocr.js';
+
+export type ScannerOcrRegion =
+  | 'bottom-left'
+  | 'bottom-left-strip'
+  | 'bottom-right'
+  | 'native';
+
+export interface ScannerOcrResult {
+  rawText: string;
+  confidence: number;
+}
 
 export type ScannerRecognitionStatus = 'resolved' | 'ambiguous' | 'unresolved';
 

@@ -7,17 +7,11 @@ import {
   parseCatalogCodeAttempts,
   type ParsedCatalogCode,
 } from '../lib/catalog/normalize.js';
-import { decodeScannerImageDataUrl } from '../lib/scanner/data-url.js';
-import {
-  checkTesseractCliStatus,
-  getDefaultScannerOcrService,
-  type ScannerOcrRegion,
-  type ScannerOcrResult,
-  type ScannerOcrService,
-} from '../lib/scanner/ocr.js';
 import {
   extractScannerNameAttempts,
   resolveScannerOcrResult,
+  type ScannerOcrRegion,
+  type ScannerOcrResult,
 } from '../lib/scanner/recognize.js';
 
 const scannerRegionValues = [
@@ -27,25 +21,11 @@ const scannerRegionValues = [
 ] as const;
 type ScannerRegion = (typeof scannerRegionValues)[number];
 
-interface RecognizeImageInput {
-  region?: string;
-  dataUrl?: string;
-  image?: string;
-}
-
-interface RecognizeRequestBody {
-  images?: RecognizeImageInput[];
-}
-
 interface ResolveTextRequestBody {
   rawText?: unknown;
   region?: unknown;
   confidence?: unknown;
   setCodeHint?: unknown;
-}
-
-interface ScannerRoutesOptions {
-  ocrService?: ScannerOcrService;
 }
 
 interface ScannerRecognitionDebugRegion {
@@ -59,16 +39,6 @@ interface ScannerRecognitionDebugRegion {
 }
 
 const MAX_RAW_TEXT_LENGTH = 2_000;
-
-function isScannerRegion(value: string | undefined): value is ScannerRegion {
-  return scannerRegionValues.includes(value as ScannerRegion);
-}
-
-function getScannerImageDataUrl(
-  image: RecognizeImageInput,
-): string | undefined {
-  return image.dataUrl ?? image.image;
-}
 
 function isResolveTextRegion(value: unknown): value is ScannerOcrRegion {
   return (
@@ -152,24 +122,15 @@ async function getCatalogReadiness() {
   };
 }
 
-export async function scannerRoutes(
-  fastify: FastifyInstance,
-  options: ScannerRoutesOptions = {},
-) {
-  fastify.get('/status', async () => {
-    const [ocr, catalog] = await Promise.all([
-      checkTesseractCliStatus(),
-      getCatalogReadiness(),
-    ]);
-
-    return {
-      ocr: {
-        engine: 'tesseract-cli',
-        ...ocr,
-      },
-      catalog,
-    };
-  });
+export async function scannerRoutes(fastify: FastifyInstance) {
+  fastify.get('/status', async () => ({
+    ocr: {
+      engine: 'native-client',
+      available: true,
+      required: false,
+    },
+    catalog: await getCatalogReadiness(),
+  }));
 
   fastify.post('/resolve-text', async (request, reply) => {
     const body = (request.body || {}) as ResolveTextRequestBody;
@@ -229,100 +190,5 @@ export async function scannerRoutes(
         regions: [toDebugRegion(0, region, ocrResult)],
       },
     };
-  });
-
-  fastify.post('/recognize', async (request, reply) => {
-    const body = (request.body || {}) as RecognizeRequestBody;
-
-    if (!Array.isArray(body.images)) {
-      return reply.code(400).send({ error: 'images must be an array' });
-    }
-
-    if (body.images.length === 0) {
-      return reply
-        .code(400)
-        .send({ error: 'images must be a non-empty array' });
-    }
-
-    if (body.images.length > 4) {
-      return reply
-        .code(413)
-        .send({ error: 'a maximum of 4 images can be recognized at once' });
-    }
-
-    const ocrService = options.ocrService || getDefaultScannerOcrService();
-    const errors: string[] = [];
-    const candidates = [];
-    const debugRegions: ScannerRecognitionDebugRegion[] = [];
-
-    for (const [index, image] of body.images.entries()) {
-      const debugRegion: ScannerRecognitionDebugRegion = {
-        index,
-        region: image.region ?? null,
-        rawText: '',
-        confidence: 0,
-        parsedAttempts: [],
-        errors: [],
-      };
-      debugRegions.push(debugRegion);
-
-      if (!isScannerRegion(image.region)) {
-        const message = `images[${index}].region must be bottom-left, bottom-left-strip, or bottom-right`;
-        errors.push(message);
-        debugRegion.errors.push(message);
-        continue;
-      }
-
-      const dataUrl = getScannerImageDataUrl(image);
-
-      if (typeof dataUrl !== 'string' || dataUrl.trim() === '') {
-        const message = `images[${index}].dataUrl is required`;
-        errors.push(message);
-        debugRegion.errors.push(message);
-        continue;
-      }
-
-      try {
-        const decodedImage = decodeScannerImageDataUrl(dataUrl);
-        const ocrResult = await ocrService.recognize({
-          ...decodedImage,
-          region: image.region,
-        });
-        const parsedAttempts = parseCatalogCodeAttempts(ocrResult.rawText);
-        debugRegion.rawText = ocrResult.rawText;
-        debugRegion.confidence = ocrResult.confidence;
-        debugRegion.parsedAttempts = parsedAttempts;
-        const nameAttempts =
-          parsedAttempts.length === 0
-            ? extractScannerNameAttempts(ocrResult.rawText)
-            : [];
-        if (nameAttempts.length > 0) {
-          debugRegion.nameAttempts = nameAttempts;
-        }
-
-        const candidate = await resolveScannerOcrResult(
-          ocrResult,
-          image.region,
-          index,
-        );
-
-        if (candidate) {
-          candidates.push(candidate);
-        }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'recognition failed';
-        errors.push(`images[${index}]: ${message}`);
-        debugRegion.errors.push(message);
-      }
-    }
-
-    return reply.code(errors.length > 0 ? 207 : 200).send({
-      candidates,
-      errors,
-      debug: {
-        regions: debugRegions,
-      },
-    });
   });
 }
