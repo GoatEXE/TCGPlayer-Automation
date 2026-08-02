@@ -954,6 +954,137 @@ describe('CardTable row actions menu', () => {
     expect(onUpdateCard).not.toHaveBeenCalled();
   });
 
+  it('opens manual listing modal for Needs Attention cards and submits listing price', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(
+      makeCard({ id: 1, status: 'needs_attention', listingPrice: '1.25' }),
+    );
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            productName: 'Missing Foil Price',
+            marketPrice: null,
+            listingPrice: null,
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for missing foil price/i }));
+    await user.click(screen.getByRole('menuitem', { name: /set manual listing price/i }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: /set manual listing price for missing foil price/i,
+    });
+    expect(dialog).toHaveTextContent(/source market/i);
+
+    await user.type(within(dialog).getByLabelText(/listing price/i), '1.25');
+    await user.click(within(dialog).getByRole('button', { name: /save listing price/i }));
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 1.25 });
+    });
+  });
+
+  it('validates manual listing price is positive', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            status: 'needs_attention',
+            productName: 'Missing Foil Price',
+            marketPrice: null,
+            listingPrice: null,
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /actions for missing foil price/i }));
+    await user.click(screen.getByRole('menuitem', { name: /set manual listing price/i }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: /set manual listing price for missing foil price/i,
+    });
+    await user.click(within(dialog).getByRole('button', { name: /save listing price/i }));
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      /listing price must be a positive dollar amount/i,
+    );
+    expect(onUpdateCard).not.toHaveBeenCalled();
+  });
+
+  it('keeps status driven by returned card state after manual listing save', async () => {
+    const user = userEvent.setup();
+
+    function Harness() {
+      const [cards, setCards] = useState([
+        makeCard({
+          id: 1,
+          status: 'needs_attention',
+          productName: 'Missing Foil Price',
+          marketPrice: null,
+          listingPrice: null,
+        }),
+      ]);
+
+      return (
+        <CardTable
+          cards={cards}
+          onReprice={() => {}}
+          onDelete={() => {}}
+          onMarkListed={() => {}}
+          onUnlist={() => {}}
+          onUpdateCard={async (id, data) => {
+            const updated = makeCard({
+              ...cards[0],
+              ...data,
+              id,
+              status: 'needs_attention',
+              listingPrice: '1.25',
+            });
+            setCards([updated]);
+            return updated;
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: /actions for missing foil price/i }));
+    await user.click(screen.getByRole('menuitem', { name: /set manual listing price/i }));
+    const dialog = screen.getByRole('dialog', {
+      name: /set manual listing price for missing foil price/i,
+    });
+    await user.type(within(dialog).getByLabelText(/listing price/i), '1.25');
+    await user.click(within(dialog).getByRole('button', { name: /save listing price/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Needs Attention')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '$1.25' })).toBeInTheDocument();
+  });
+
   it('triggers Re-price from the row actions menu', async () => {
     const user = userEvent.setup();
     const onReprice = vi.fn().mockResolvedValue(undefined);

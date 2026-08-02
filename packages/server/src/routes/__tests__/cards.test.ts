@@ -1287,6 +1287,76 @@ describe('POST /api/cards/:id/reprice', () => {
     );
   });
 
+  it('preserves a manual listing price on generic needs_attention cards when live repricing still has no market price', async () => {
+    const mockCard = {
+      id: 154,
+      tcgProductId: 707679,
+      productName: 'Ruthless Strike',
+      marketPrice: null,
+      listingPrice: '0.50',
+      condition: 'Near Mint Foil',
+      status: 'needs_attention' as const,
+      attentionReason: null,
+      notes: null,
+      floorPriceCents: null,
+      importedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([mockCard]),
+      }),
+    } as any);
+    mockGetSets.mockResolvedValueOnce([{ id: 24698, name: 'Vendetta' }]);
+    mockGetPricing.mockResolvedValueOnce({
+      set_id: 24698,
+      updated: '2026-08-01T00:00:00Z',
+      prices: {
+        '707679': { tcg: { Normal: { low: 0.08, market: 0.25 } } },
+      },
+    });
+    vi.mocked(calculatePrice).mockReturnValue({
+      listingPrice: null,
+      status: 'needs_attention' as const,
+      reason: 'No market price available',
+    });
+
+    let updateArgs: any = null;
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockImplementation((args) => {
+        updateArgs = args;
+        return {
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                ...mockCard,
+                updatedAt: new Date(),
+              },
+            ]),
+          }),
+        };
+      }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/154/reprice',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockGetPricing).toHaveBeenCalledWith(24698);
+    expect(calculatePrice).toHaveBeenCalledWith({ marketPrice: null });
+    expect(updateArgs).toEqual(
+      expect.objectContaining({
+        marketPrice: null,
+        listingPrice: '0.5',
+        status: 'needs_attention',
+        isFoilPrice: false,
+      }),
+    );
+  });
+
   it('should return 404 for non-existent card', async () => {
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({

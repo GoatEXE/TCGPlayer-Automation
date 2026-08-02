@@ -277,6 +277,68 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
+  it('preserves manual listing prices for generic needs_attention cards when source pricing is still missing', async () => {
+    dbFrom.mockResolvedValueOnce([
+      {
+        id: 18,
+        tcgProductId: 123,
+        productName: 'Manual Missing Card',
+        condition: 'Near Mint Foil',
+        marketPrice: null,
+        listingPrice: '0.50',
+        status: 'needs_attention',
+        attentionReason: null,
+        notes: null,
+      },
+    ]);
+
+    mockGetPricing.mockResolvedValueOnce({
+      prices: {
+        '123': {
+          tcg: {
+            Normal: { market: 0.25 },
+          },
+        },
+      },
+    });
+    dbReturning.mockResolvedValueOnce([{ id: 503 }]);
+
+    const result = await runPriceCheck({ source: 'scheduled' });
+
+    expect(calculatePrice).not.toHaveBeenCalled();
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketPrice: null,
+        listingPrice: '0.50',
+        status: 'needs_attention',
+        attentionReason: null,
+      }),
+    );
+    expect(dbValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardId: 18,
+        previousStatus: 'needs_attention',
+        newStatus: 'needs_attention',
+        previousListingPrice: '0.5',
+        newListingPrice: '0.5',
+      }),
+    );
+    expect(result).toMatchObject({
+      updated: 0,
+      notFound: 1,
+      needsAttentionCards: [
+        expect.objectContaining({
+          cardId: 18,
+          historyId: 503,
+          currentListingPrice: 0.5,
+          previousStatus: 'needs_attention',
+          newStatus: 'needs_attention',
+        }),
+      ],
+      needsAttentionHistoryIds: [503],
+    });
+  });
+
   it('repairs only explicit legacy misaligned collection rows by treating tcgplayerId as product id', async () => {
     dbFrom.mockResolvedValueOnce([
       {

@@ -183,6 +183,10 @@ export function CardTable({
   const [editDetailsCondition, setEditDetailsCondition] = useState<string>('');
   const [editDetailsSaving, setEditDetailsSaving] = useState(false);
   const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
+  const [manualListingCardId, setManualListingCardId] = useState<number | null>(null);
+  const [manualListingValue, setManualListingValue] = useState<string>('');
+  const [manualListingSaving, setManualListingSaving] = useState(false);
+  const [manualListingError, setManualListingError] = useState<string | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
   const [preparingBulkSell, setPreparingBulkSell] = useState(false);
   const [needsAttentionReviewQueue, setNeedsAttentionReviewQueue] = useState<ReviewPricingGroup[] | null>(null);
@@ -321,6 +325,38 @@ export function CardTable({
       setEditDetailsError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setEditDetailsSaving(false);
+    }
+  };
+
+  const handleOpenManualListing = (card: Card) => {
+    setManualListingCardId(card.id);
+    const listingPrice = parsePriceValue(card.listingPrice);
+    setManualListingValue(listingPrice !== null ? listingPrice.toFixed(2) : '');
+    setManualListingError(null);
+  };
+
+  const handleCloseManualListing = () => {
+    if (manualListingSaving) return;
+    setManualListingCardId(null);
+    setManualListingError(null);
+  };
+
+  const handleSaveManualListing = async (id: number) => {
+    setManualListingError(null);
+    const listingPrice = Number.parseFloat(manualListingValue);
+    if (!Number.isFinite(listingPrice) || listingPrice <= 0) {
+      setManualListingError('Listing price must be a positive dollar amount');
+      return;
+    }
+
+    setManualListingSaving(true);
+    try {
+      await onUpdateCard(id, { listingPrice } as unknown as Partial<Card>);
+      setManualListingCardId(null);
+    } catch (err) {
+      setManualListingError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setManualListingSaving(false);
     }
   };
 
@@ -825,6 +861,18 @@ export function CardTable({
                         >
                           Edit details
                         </button>
+                        {card.status === 'needs_attention' && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setOpenActionMenuId(null);
+                              handleOpenManualListing(card);
+                            }}
+                          >
+                            Set manual listing price
+                          </button>
+                        )}
                         {isListed ? (
                           <>
                             <button
@@ -1149,6 +1197,85 @@ export function CardTable({
           </div>
         </div>
       )}
+      {manualListingCardId !== null && (() => {
+        const card = cards.find((c) => c.id === manualListingCardId);
+        if (!card) return null;
+        return (
+          <div
+            className="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Set manual listing price for ${card.title || card.productName}`}
+            onClick={handleCloseManualListing}
+          >
+            <form
+              className="modal-content edit-details-modal"
+              onClick={(event) => event.stopPropagation()}
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSaveManualListing(card.id);
+              }}
+            >
+              <div className="modal-header">
+                <h2>Set manual listing price</h2>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={handleCloseManualListing}
+                  aria-label="Close"
+                  disabled={manualListingSaving}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="edit-details-body">
+                <p className="edit-details-card-name">
+                  {card.title || card.productName}
+                </p>
+                <p className="form-help">
+                  Use this to mirror a TCGPlayer listing even when source Market
+                  and Rec’d prices are missing. This saves only your local Listing
+                  price and does not create Market or Rec’d pricing.
+                </p>
+                <label className="edit-details-field">
+                  <span>Listing price ($)</span>
+                  <input
+                    type="number"
+                    value={manualListingValue}
+                    onChange={(event) => setManualListingValue(event.target.value)}
+                    min="0.01"
+                    step="0.01"
+                    disabled={manualListingSaving}
+                    autoFocus
+                  />
+                </label>
+                {manualListingError && (
+                  <span className="interval-error" role="alert">
+                    {manualListingError}
+                  </span>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={handleCloseManualListing}
+                  disabled={manualListingSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button-primary"
+                  disabled={manualListingSaving}
+                >
+                  {manualListingSaving ? 'Saving…' : 'Save listing price'}
+                </button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
       {editDetailsCardId !== null && (() => {
         const card = cards.find((c) => c.id === editDetailsCardId);
         if (!card) return null;
