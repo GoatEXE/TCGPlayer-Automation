@@ -2,7 +2,6 @@ export type ViewMode =
   | 'inventory'
   | 'collection'
   | 'notifications'
-  | 'scan-add'
   | 'sales-history'
   | 'performance';
 
@@ -15,7 +14,6 @@ const tabs: { value: ViewMode; label: string }[] = [
   { value: 'inventory', label: '📦 Inventory' },
   { value: 'collection', label: '🗂️ Collection' },
   { value: 'notifications', label: '🔔 Notifications' },
-  { value: 'scan-add', label: '📷 Scan / Add Cards' },
   { value: 'sales-history', label: '💰 Sales History' },
   { value: 'performance', label: '📊 Performance' },
 ];

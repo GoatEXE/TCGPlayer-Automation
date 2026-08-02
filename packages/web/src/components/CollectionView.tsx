@@ -53,15 +53,29 @@ function rowMoveQuantity(row: CollectionSellabilityRow, isToBeSold: boolean) {
   );
 }
 
-function formatTransferMessage(message: CollectionTransferMessage) {
+const TRANSFER_WARNING_COPY: Record<string, string> = {
+  listed_inventory_row_exists_not_merged:
+    'Some selected cards already have listed inventory rows. To avoid changing live listing quantities, this move will create separate Ready-to-List staging rows instead of merging into listed rows.',
+};
+
+function transferMessageCode(message: CollectionTransferMessage) {
   if (typeof message === 'string') return message;
-  const text = message.warning ?? message.blocker ?? message.message ?? '';
-  return message.collectionItemId ? `Item ${message.collectionItemId}: ${text}` : text;
+  return message.warning ?? message.blocker ?? message.message ?? '';
+}
+
+function formatTransferMessage(message: CollectionTransferMessage) {
+  const code = transferMessageCode(message);
+  const text = TRANSFER_WARNING_COPY[code] ?? code;
+  if (!text) return '';
+  if (TRANSFER_WARNING_COPY[code]) return text;
+  return typeof message === 'object' && message.collectionItemId
+    ? `Item ${message.collectionItemId}: ${text}`
+    : text;
 }
 
 function formatTransferMessages(messages: CollectionTransferMessage[] | undefined) {
   const formatted = (messages ?? []).map(formatTransferMessage).filter(Boolean);
-  return formatted.join('; ');
+  return [...new Set(formatted)].join('; ');
 }
 
 function recommendationLabel(row: CollectionSellabilityRow) {
@@ -175,6 +189,10 @@ export function CollectionView({
     useState<CollectionTransferPreviewResponse | null>(null);
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState('');
+  const [clearLoading, setClearLoading] = useState(false);
+  const [clearSuccess, setClearSuccess] = useState<string | null>(null);
+  const [collectionRefreshKey, setCollectionRefreshKey] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -314,6 +332,38 @@ export function CollectionView({
     }
   };
 
+  const handleClearCollection = async () => {
+    if (selectedCollectionId === null || clearConfirmText !== 'CLEAR COLLECTION') return;
+
+    const collectionName = selectedCollection?.name ?? 'this collection';
+    if (
+      !confirm(
+        `Clear ${collectionName}? This removes rows from this collection only and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setClearLoading(true);
+    setError(null);
+    setClearSuccess(null);
+    try {
+      const response = await api.clearCollection(
+        selectedCollectionId,
+        clearConfirmText,
+      );
+      const removed = response.deleted ?? response.removed ?? 0;
+      setClearSuccess(`Cleared ${removed} collection row(s) from ${collectionName}.`);
+      setClearConfirmText('');
+      setCollectionRefreshKey((key) => key + 1);
+      await loadSellability(selectedCollectionId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear collection');
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
   const handleKindChange = async (
     row: CollectionSellabilityRow,
     nextKind: CardKind,
@@ -347,6 +397,7 @@ export function CollectionView({
       </div>
 
       <CollectionImportUpload
+        key={collectionRefreshKey}
         collectionId={selectedCollectionId}
         onImportCommitted={async () => {
           if (selectedCollectionId !== null) {
@@ -380,6 +431,38 @@ export function CollectionView({
           </div>
         )}
       </div>
+
+      {selectedCollection && (
+        <div className="collection-clear-panel" aria-label="Clear selected collection">
+          <div>
+            <h3>Clear {selectedIsToBeSold ? 'To Be Sold Collection' : 'Owned Collection'}</h3>
+            <p>
+              Destructive: removes rows from {selectedCollection.name} only. It does not delete catalog data, Selling Inventory, listed cards, sales, or TCGPlayer listings.
+            </p>
+          </div>
+          <div className="collection-clear-controls">
+            <label htmlFor="collection-clear-confirm">
+              Type <strong>CLEAR COLLECTION</strong> to enable clearing
+            </label>
+            <input
+              id="collection-clear-confirm"
+              className="shipment-input"
+              value={clearConfirmText}
+              onChange={(event) => setClearConfirmText(event.target.value)}
+              placeholder="CLEAR COLLECTION"
+            />
+            <button
+              type="button"
+              className="button-danger"
+              disabled={clearConfirmText !== 'CLEAR COLLECTION' || clearLoading}
+              onClick={handleClearCollection}
+            >
+              {clearLoading ? 'Clearing…' : `Clear ${selectedCollection.name}`}
+            </button>
+          </div>
+          {clearSuccess && <div className="import-result success">{clearSuccess}</div>}
+        </div>
+      )}
 
       {sellability && (
         <div className="collection-summary-grid" aria-label="Sellability summary">
