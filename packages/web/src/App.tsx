@@ -121,6 +121,9 @@ export function App() {
 
   const itemsPerPage = 50;
 
+  const shouldHideFromActiveInventory = (card: Card) =>
+    card.status === 'sold' || card.status === 'gifted';
+
   const fetchCards = async () => {
     setLoading(true);
     try {
@@ -132,7 +135,11 @@ export function App() {
         sortField: cardSortField ?? undefined,
         sortDirection: cardSortDirection,
       });
-      setCards(response.cards);
+      const visibleCards =
+        statusFilter === 'all'
+          ? response.cards.filter((card) => !shouldHideFromActiveInventory(card))
+          : response.cards;
+      setCards(visibleCards);
       setTotalItems(response.total);
     } catch (err) {
       console.error('Failed to fetch cards:', err);
@@ -743,6 +750,7 @@ export function App() {
     { value: 'pending', label: 'Pending' },
     { value: 'matched', label: 'Ready to List' },
     { value: 'sold', label: 'Sold' },
+    { value: 'gifted', label: 'Gifted' },
     { value: 'error', label: 'Error' },
   ];
 

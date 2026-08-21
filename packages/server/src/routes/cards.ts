@@ -342,8 +342,10 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     try {
       // Build where conditions
       const conditions = [];
-      if (status) {
+      if (status && status !== 'all') {
         conditions.push(eq(cards.status, status as any));
+      } else {
+        conditions.push(sql`${cards.status} not in ('sold', 'gifted')`);
       }
       if (search) {
         conditions.push(ilike(cards.productName, `%${search}%`));

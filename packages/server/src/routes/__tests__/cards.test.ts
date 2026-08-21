@@ -45,6 +45,48 @@ const containsColumnName = (
   return false;
 };
 
+const containsText = (
+  value: unknown,
+  needle: string,
+  seen = new Set<unknown>(),
+): boolean => {
+  if (typeof value === 'string') {
+    return value.includes(needle);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsText(item, needle, seen));
+  }
+
+  if (
+    'value' in value &&
+    typeof (value as { value?: unknown }).value === 'string' &&
+    (value as { value: string }).value.includes(needle)
+  ) {
+    return true;
+  }
+
+  if (
+    'queryChunks' in value &&
+    Array.isArray((value as { queryChunks?: unknown[] }).queryChunks)
+  ) {
+    return (value as { queryChunks: unknown[] }).queryChunks.some((item) =>
+      containsText(item, needle, seen),
+    );
+  }
+
+  return Object.values(value).some((item) => containsText(item, needle, seen));
+};
+
 // Mock the database
 vi.mock('../../db/index.js', () => ({
   db: {
@@ -362,13 +404,17 @@ describe('GET /api/cards', () => {
       selectCallCount++;
       if (selectCallCount === 1) {
         return {
-          from: vi.fn().mockResolvedValue([{ count: 2 }]),
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: 2 }]),
+          }),
         } as any;
       }
 
       return {
         from: vi.fn().mockReturnValue({
-          orderBy: mockOrderBy,
+          where: vi.fn().mockReturnValue({
+            orderBy: mockOrderBy,
+          }),
         }),
       } as any;
     });
@@ -393,6 +439,68 @@ describe('GET /api/cards', () => {
     expect(body.cards[1].attentionReason).toBe('listed_price_drift');
   });
 
+  it('excludes sold and gifted cards by default when no status filter is provided', async () => {
+    const countWhere = vi.fn().mockResolvedValue([{ count: 1 }]);
+    const mockOffset = vi.fn().mockResolvedValue([]);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+    const dataWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockReturnValue({ where: countWhere }),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({ where: dataWhere }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(countWhere).toHaveBeenCalledTimes(1);
+    expect(dataWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats status=all like the default active inventory filter', async () => {
+    const countWhere = vi.fn().mockResolvedValue([{ count: 1 }]);
+    const mockOffset = vi.fn().mockResolvedValue([]);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+    const dataWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockReturnValue({ where: countWhere }),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({ where: dataWhere }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards?status=all',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(countWhere).toHaveBeenCalledTimes(1);
+    expect(dataWhere).toHaveBeenCalledTimes(1);
+  });
+
   it('should apply requested sort before pagination', async () => {
     const mockOffset = vi.fn().mockResolvedValue([]);
     const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
@@ -403,13 +511,17 @@ describe('GET /api/cards', () => {
       selectCallCount++;
       if (selectCallCount === 1) {
         return {
-          from: vi.fn().mockResolvedValue([{ count: 0 }]),
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: 0 }]),
+          }),
         } as any;
       }
 
       return {
         from: vi.fn().mockReturnValue({
-          orderBy: mockOrderBy,
+          where: vi.fn().mockReturnValue({
+            orderBy: mockOrderBy,
+          }),
         }),
       } as any;
     });
@@ -451,13 +563,17 @@ describe('GET /api/cards', () => {
       selectCallCount++;
       if (selectCallCount === 1) {
         return {
-          from: vi.fn().mockResolvedValue([{ count: 1 }]),
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: 1 }]),
+          }),
         } as any;
       }
 
       return {
         from: vi.fn().mockReturnValue({
-          orderBy: mockOrderBy,
+          where: vi.fn().mockReturnValue({
+            orderBy: mockOrderBy,
+          }),
         }),
       } as any;
     });
@@ -471,6 +587,39 @@ describe('GET /api/cards', () => {
     const body = JSON.parse(response.body);
     expect(body.cards[0].marketPrice).toBeNull();
     expect(body.cards[0].listingPrice).toBeNull();
+  });
+
+  it('treats status=all like the default active inventory view and excludes sold/gifted rows', async () => {
+    const countWhere = vi.fn().mockResolvedValue([{ count: 1 }]);
+    const mockOffset = vi.fn().mockResolvedValue([]);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+    const dataWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockReturnValue({ where: countWhere }),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({ where: dataWhere }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards?status=all',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(containsText(countWhere.mock.calls[0][0], 'sold')).toBe(true);
+    expect(containsText(countWhere.mock.calls[0][0], 'gifted')).toBe(true);
+    expect(containsText(dataWhere.mock.calls[0][0], 'sold')).toBe(true);
+    expect(containsText(dataWhere.mock.calls[0][0], 'gifted')).toBe(true);
   });
 
   it('should filter cards by status', async () => {
@@ -519,6 +668,98 @@ describe('GET /api/cards', () => {
     const body = JSON.parse(response.body);
     expect(body.cards).toBeDefined();
     expect(body.cards[0].lastCheckedAt).toBeNull();
+  });
+
+  it('allows explicit status=sold queries', async () => {
+    const mockCards = [
+      {
+        id: 9,
+        productName: 'Sold Card',
+        quantity: 0,
+        status: 'sold' as const,
+        importedAt: new Date(),
+        lastCheckedAt: null,
+      },
+    ];
+
+    const mockOffset = vi.fn().mockResolvedValue(mockCards);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockWhere = vi.fn().mockReturnValue({
+      orderBy: mockOrderBy,
+    });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: 1 }]),
+          }),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({
+          where: mockWhere,
+        }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards?status=sold',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).cards[0].status).toBe('sold');
+  });
+
+  it('allows explicit status=gifted queries', async () => {
+    const mockCards = [
+      {
+        id: 10,
+        productName: 'Gifted Card',
+        quantity: 0,
+        status: 'gifted' as const,
+        importedAt: new Date(),
+        lastCheckedAt: null,
+      },
+    ];
+
+    const mockOffset = vi.fn().mockResolvedValue(mockCards);
+    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockWhere = vi.fn().mockReturnValue({
+      orderBy: mockOrderBy,
+    });
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: 1 }]),
+          }),
+        } as any;
+      }
+
+      return {
+        from: vi.fn().mockReturnValue({
+          where: mockWhere,
+        }),
+      } as any;
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards?status=gifted',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).cards[0].status).toBe('gifted');
   });
 
   it('should search cards by productName', async () => {

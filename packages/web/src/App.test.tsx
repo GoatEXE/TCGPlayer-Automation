@@ -652,6 +652,120 @@ describe('App view tabs', () => {
     });
   });
 
+  it('hides terminal cards from the default Inventory All view', async () => {
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          tcgProductId: null,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Consumed Card',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'sold',
+          marketPrice: '1.00',
+          listingPrice: '0.98',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          tcgplayerId: 101,
+          tcgProductId: null,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Active Card',
+          title: null,
+          number: '002',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'listed',
+          marketPrice: '2.00',
+          listingPrice: '1.96',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('Active Card')).toBeTruthy();
+    expect(screen.queryByText('Consumed Card')).toBeNull();
+  });
+
+  it('shows terminal zero-quantity cards when their explicit status filter is selected', async () => {
+    const user = userEvent.setup();
+    const consumedCard = {
+      id: 1,
+      tcgplayerId: 100,
+      tcgProductId: null,
+      productLine: 'Riftbound',
+      setName: 'Origins',
+      productName: 'Consumed Card',
+      title: null,
+      number: '001',
+      rarity: 'Common',
+      condition: 'Near Mint',
+      quantity: 0,
+      status: 'sold',
+      marketPrice: '1.00',
+      listingPrice: '0.98',
+      floorPriceCents: null,
+      isFoilPrice: false,
+      photoUrl: null,
+      notes: null,
+      lastCheckedAt: null,
+      importedAt: '2026-04-01T00:00:00Z',
+      updatedAt: '2026-04-01T00:00:00Z',
+    };
+    apiMocks.getCards.mockImplementation((params) => {
+      if (params?.status === 'sold') {
+        return Promise.resolve({ cards: [consumedCard], total: 1, page: 1, limit: 50 });
+      }
+      return Promise.resolve({ cards: [], total: 0, page: 1, limit: 50 });
+    });
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Sold' }));
+
+    expect(await screen.findByText('Consumed Card')).toBeTruthy();
+  });
+
+  it('renders Gifted filter pill and clicking it fetches cards with status=gifted', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Gifted' }));
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'gifted' }),
+      );
+    });
+  });
+
   it('refreshes sales and pipeline after shipment save', async () => {
     const user = userEvent.setup();
     apiMocks.getSales.mockResolvedValue({
