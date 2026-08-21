@@ -839,6 +839,69 @@ describe('sales routes', () => {
       });
     });
 
+    it('marks a paid bulk line card as sold when the last quantity is consumed', async () => {
+      mockCardSelectResult([
+        {
+          id: 125,
+          productName: 'Sold Out Paid Card',
+          status: 'needs_attention',
+          attentionReason: 'listed_price_drift',
+          quantity: 1,
+        },
+      ]);
+
+      const updateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+      vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 212,
+                cardId: 125,
+                quantitySold: 1,
+                lineItemType: 'sale',
+                salePriceCents: 250,
+                shippingCollectedCents: 149,
+                buyerName: null,
+                tcgplayerOrderId: 'ORDER-BULK-SOLD',
+                orderStatus: 'confirmed',
+              },
+            ]),
+          }),
+        } as any)
+        .mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales/bulk',
+        payload: {
+          tcgplayerOrderId: 'ORDER-BULK-SOLD',
+          lines: [
+            {
+              cardId: 125,
+              quantitySold: 1,
+              salePriceCents: 250,
+              lineItemType: 'sale',
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(updateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 0,
+          status: 'sold',
+          attentionReason: null,
+          updatedAt: expect.any(Date),
+        }),
+      );
+    });
+
     it('accepts an explicit bulk shippingCollectedCents override', async () => {
       mockCardSelectResult([
         {

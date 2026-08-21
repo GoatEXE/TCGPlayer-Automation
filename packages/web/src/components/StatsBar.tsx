@@ -51,6 +51,14 @@ export function StatsBar({ stats, loading }: StatsBarProps) {
           </span>
         </>
       )}
+      {(stats.gifted ?? 0) > 0 && (
+        <>
+          <span className="stat-divider">·</span>
+          <span className="stat-item stat-sold">
+            <strong>{stats.gifted}</strong> gifted
+          </span>
+        </>
+      )}
       {stats.needs_attention > 0 && (
         <>
           <span className="stat-divider">·</span>

@@ -43,6 +43,7 @@ export interface CardStats {
   gift: number;
   needs_attention: number;
   sold: number;
+  gifted?: number;
   error: number;
 }
 
