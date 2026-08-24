@@ -131,7 +131,8 @@ release_deploy() (
 )
 
 main() {
-  (($# == 2 && "$1" == "deploy")) || die 'usage: release deploy REVISION'
+  [[ "$#" -eq 2 && "${1:-}" == deploy && -n "${2:-}" ]] ||
+    die 'usage: release deploy REVISION'
   [[ "${TCGPLAYER_RELEASE_DISPATCHED:-}" == 1 ]] ||
     die 'release implementation must be invoked through the installed deploy wrapper'
   require_root
