@@ -63,6 +63,19 @@ describe('env config', () => {
     expect(env.TELEGRAM_NOTIFY_ORDER_SHIPPED).toBe(false);
   });
 
+  it('runs startup migrations by default and allows an explicit migration-job override', async () => {
+    const nextEnv = { ...ORIGINAL_ENV };
+    delete nextEnv.RUN_MIGRATIONS_ON_START;
+    process.env = nextEnv;
+
+    let loaded = await loadEnvModule();
+    expect(loaded.env.RUN_MIGRATIONS_ON_START).toBe(true);
+
+    process.env = { ...ORIGINAL_ENV, RUN_MIGRATIONS_ON_START: 'false' };
+    loaded = await loadEnvModule();
+    expect(loaded.env.RUN_MIGRATIONS_ON_START).toBe(false);
+  });
+
   it('defaults price check runtime settings when unset', async () => {
     const nextEnv = { ...ORIGINAL_ENV };
     delete nextEnv.PRICE_CHECK_INTERVAL_HOURS;

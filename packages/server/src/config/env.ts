@@ -50,6 +50,7 @@ const envSchema = z.object({
   TELEGRAM_NOTIFY_ORDER_SHIPPED: booleanEnv(true),
   SELLER_NAME: z.string().default(''),
   SELLER_ID: z.string().default(''),
+  RUN_MIGRATIONS_ON_START: booleanEnv(true),
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
   NODE_ENV: z

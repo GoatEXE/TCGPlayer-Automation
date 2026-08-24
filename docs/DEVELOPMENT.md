@@ -37,9 +37,10 @@ Production mode starts the built `app` service on `localhost:3000` (`APP_HOST_PO
 The server listens on container port `3000` in both Docker profiles. The host-side ports are configurable so dev and prod can avoid collisions:
 
 ```dotenv
-APP_HOST_PORT=3000      # prod app host port
-DEV_APP_HOST_PORT=3000  # dev API host port
-VITE_HOST_PORT=5173     # dev dashboard host port
+APP_BIND_ADDRESS=0.0.0.0 # prod bind; restrict with host firewall rules
+APP_HOST_PORT=3000       # prod app host port
+DEV_APP_HOST_PORT=3000   # dev API host port
+VITE_HOST_PORT=5173      # dev dashboard host port
 ```
 
 If the dev profile is already running and you want to start prod for Android scanner testing, either stop dev first:
@@ -147,8 +148,7 @@ Docker helpers:
 ```bash
 docker compose up                 # Start with logs in foreground
 docker compose up -d              # Start in background
-docker compose down               # Stop and remove containers
-docker compose down -v            # Stop and remove volumes, including database data
+docker compose down               # Stop and remove containers, preserving data
 docker compose logs -f app        # Follow production app logs
 docker compose logs -f app-dev    # Follow development app logs
 docker compose build              # Rebuild images
@@ -156,9 +156,16 @@ docker compose build              # Rebuild images
 
 ## Migrations
 
-The server runs Drizzle migrations during startup before registering API routes. This applies in both Docker profiles. If migrations fail, startup fails fast and the error appears in container logs.
+The server runs Drizzle migrations during startup before registering API routes by default. This preserves local/dev behavior. If migrations fail, startup fails fast and the error appears in container logs.
 
-Manual migration commands are still available through the server package scripts when needed.
+Managed production deployment sets `RUN_MIGRATIONS_ON_START=false` and runs the image's dedicated one-shot migration command before replacing the app. Local/manual migration commands remain available through the server package scripts:
+
+```bash
+pnpm --filter server db:migrate       # development Drizzle CLI
+pnpm --filter server migrate:run      # compiled production migration entrypoint
+```
+
+The named volumes are shared by the existing profile design and are explicitly preserved as `tcgplayer-automation_pgdata` and `tcgplayer-automation_redisdata`. Never use `docker compose down -v` against this project.
 
 ## Configuration
 
