@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Node checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d # v4.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Run Vitest
+        run: pnpm test
+      - name: Type-check and build
+        run: pnpm build
+
+  android:
+    name: Android checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/scanner-android
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Java
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@41ad77ca97e46ee2e825d5e6b9a95d8169fcc44c # v4.4.2
+      - name: Unit test and assemble
+        run: bash ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+  host-ops:
+    name: Host operations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check shell syntax
+        run: find ops/host -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - name: Run host operation tests
+        run: bash ops/host/tests/host-ops.test.sh
+      - name: Run ShellCheck
+        run: shellcheck --severity=warning ops/host/*.sh ops/host/lib/*.sh ops/host/tests/*.sh
+
+  container:
+    name: Compose integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Prepare safe CI environment
+        run: |
+          cp .env.example .env
+          sed -i 's/^RUN_MIGRATIONS_ON_START=true$/RUN_MIGRATIONS_ON_START=false/' .env
+      - name: Validate Compose profiles
+        run: |
+          COMPOSE_PROFILES=dev docker compose config --quiet
+          COMPOSE_PROFILES=prod APP_IMAGE=tcgplayer-automation:ci docker compose config --quiet
+      - name: Build production image
+        run: docker build --target production --tag tcgplayer-automation:ci .
+      - name: Run migrations and smoke-test production
+        env:
+          APP_IMAGE: tcgplayer-automation:ci
+          APP_BIND_ADDRESS: 127.0.0.1
+          APP_HOST_PORT: 3000
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker compose --profile prod --profile ops down --remove-orphans
+          }
+          trap cleanup EXIT
+
+          docker compose --profile prod up -d db redis --wait --wait-timeout 120
+          docker compose --profile prod --profile ops run --rm migrate
+          docker compose --profile prod up -d --no-build app --wait --wait-timeout 120
+          curl --fail --silent --show-error http://127.0.0.1:3000/health
+          curl --fail --silent --show-error http://127.0.0.1:3000/ready

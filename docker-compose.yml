@@ -1,3 +1,26 @@
+name: tcgplayer-automation
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db:5432/${POSTGRES_DB:-tcgplayer}
+  REDIS_URL: redis://redis:6379
+  NODE_ENV: production
+  PORT: 3000
+  HOST: 0.0.0.0
+
+x-app-runtime: &app-runtime
+  image: ${APP_IMAGE:-tcgplayer-automation:local}
+  env_file:
+    - ${APP_ENV_FILE:-.env}
+  environment: *app-environment
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
 services:
   # Production database (no exposed ports)
   db:
@@ -13,6 +36,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    stop_grace_period: 30s
     profiles: ["prod"]
 
   # Development database (port exposed for local tools)
@@ -31,6 +56,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    stop_grace_period: 30s
     profiles: ["dev"]
 
   redis:
@@ -43,6 +69,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    stop_grace_period: 30s
     profiles: ["prod"]
 
   redis-dev:
@@ -57,30 +85,47 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    stop_grace_period: 30s
     profiles: ["dev"]
 
-  # Production app (built image, serves frontend)
+  # Production app. APP_IMAGE accepts an immutable GHCR image@sha256 reference.
   app:
+    <<: *app-runtime
     build:
       context: .
       target: production
     ports:
-      - "${APP_HOST_PORT:-${PORT:-3000}}:3000"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db:5432/${POSTGRES_DB:-tcgplayer}
-      REDIS_URL: redis://redis:6379
-      NODE_ENV: production
-      PORT: 3000
-      HOST: 0.0.0.0
-    env_file:
-      - .env
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_HOST_PORT:-${PORT:-3000}}:3000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     restart: unless-stopped
+    stop_grace_period: 30s
     profiles: ["prod"]
+
+  # Explicit migration job used by host deployment automation.
+  migrate:
+    <<: *app-runtime
+    command: ["node", "packages/server/dist/migrate-only.js"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["ops"]
 
   # Development app (hot reload, source mounts)
   app-dev:
@@ -89,7 +134,7 @@ services:
       target: deps
     ports:
       - "${DEV_APP_HOST_PORT:-${PORT:-3000}}:3000"
-      - "${VITE_HOST_PORT:-5173}:5173"  # Vite dev server
+      - "${VITE_HOST_PORT:-5173}:5173" # Vite dev server
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-tcgplayer}:${POSTGRES_PASSWORD:-tcgplayer}@db-dev:5432/${POSTGRES_DB:-tcgplayer}
       REDIS_URL: redis://redis-dev:6379
@@ -109,8 +154,12 @@ services:
       redis-dev:
         condition: service_healthy
     restart: "no"
+    stop_grace_period: 30s
     profiles: ["dev"]
 
 volumes:
+  # Explicit names preserve the existing production volume contract.
   pgdata:
+    name: tcgplayer-automation_pgdata
   redisdata:
+    name: tcgplayer-automation_redisdata

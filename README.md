@@ -12,7 +12,7 @@ Self-hosted dashboard for managing duplicate **Riftbound: League of Legends Trad
 
 ## Runs on
 
-- Node.js 20, TypeScript, pnpm workspaces
+- Node.js 22, TypeScript, pnpm workspaces
 - Fastify API in `packages/server`
 - Vite + React dashboard in `packages/web`
 - PostgreSQL 16 and Redis
@@ -73,12 +73,14 @@ pnpm lint            # Run ESLint
 pnpm format:check    # Check formatting
 ```
 
-Server startup runs Drizzle migrations automatically before registering routes. See [.env.example](.env.example) for configuration.
+Server startup runs Drizzle migrations automatically by default; managed deployments use the one-shot migration job. See [.env.example](.env.example) for configuration.
 
 ## Documentation
 
 - [Project plan](docs/PROJECT_PLAN.md): architecture, workflow decisions, phase history, and implementation status
 - [Development guide](docs/DEVELOPMENT.md): Docker profiles, local scripts, migrations, and operational commands
+- [CI/CD](docs/operations/CI-CD.md): GitHub checks, immutable releases, and protected deployment gates
+- [Host operations](docs/operations/HOST-OPERATIONS.md): restricted deploy account, backups, rollback, and production safeguards
 - [Phase 2 docs](docs/phase2/): scheduler, price history, safeguards, floor-price backend, notifications, CSV diffs
 - [Phase 3 docs](docs/phase3/): active listings, sales history, order status, shipments, invoices, packing slips
 - [Implementation plans](docs/plans/): sell workflow and expense tracking plans

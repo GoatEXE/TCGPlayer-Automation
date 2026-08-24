@@ -1,0 +1,4 @@
+# Non-secret operational settings. Use the lowercase GHCR package path created
+# by the repository release workflow.
+GHCR_IMAGE_REPOSITORY=ghcr.io/owner/tcgplayer-automation
+BACKUP_RETENTION_DAYS=30

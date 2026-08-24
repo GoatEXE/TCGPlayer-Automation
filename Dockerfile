@@ -1,6 +1,6 @@
 # Stage 1: Install all dependencies
 FROM node:22-alpine AS deps
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 # Copy workspace config and package files
@@ -28,7 +28,7 @@ RUN pnpm --filter server build
 
 # Stage 4: Production dependencies
 FROM node:22-alpine AS prod-deps
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -40,8 +40,8 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Stage 5: Production runtime
 FROM node:22-alpine AS production
-RUN corepack enable && corepack prepare pnpm@10 --activate
 WORKDIR /app
+ENV NODE_ENV=production
 
 # Copy workspace config
 COPY package.json pnpm-workspace.yaml ./
@@ -64,4 +64,6 @@ COPY --from=build-web /app/packages/web/dist ./packages/web/dist
 
 EXPOSE 3000
 
-CMD ["pnpm", "--filter", "server", "start"]
+USER node
+
+CMD ["node", "packages/server/dist/index.js"]
