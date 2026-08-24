@@ -26,6 +26,10 @@ case "$#" in
     release_state='pre-adoption'
     ;;
 esac
+# Refuse to run a recorded backup with another revision's Compose file. The
+# release flow temporarily selects this checkout before invoking us.
+assert_checkout_at_revision "$revision" ||
+  die 'managed checkout does not match recorded backup release'
 export RELEASE_REVISION_FOR_COMPOSE="$revision"
 
 mkdir -p "$BACKUP_DIR"

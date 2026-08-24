@@ -35,7 +35,11 @@ protected production deployment job is explicitly approved.
   PostgreSQL and Redis, creates a PostgreSQL backup, runs migrations from that
   image, replaces the app, verifies `/ready`, then advances release state.
   The revision's own `docker-compose.yml` is used throughout, so Compose
-  changes deploy with the reviewed commit.
+  changes deploy with the reviewed commit. On any unsuccessful deployment with
+  recorded state, the host returns the checkout and app to that recorded
+  revision before control returns; status, logs, and recorded backups refuse a
+  mismatched checkout rather than combining old metadata with new Compose.
+  Release files change only after a ready deployment.
 
 ## Prerequisites
 
@@ -96,10 +100,21 @@ containers until an approved deployment:
    checkout's Compose file but does not start or replace containers.
 4. Inspect `sudo /usr/local/libexec/tcgplayer-automation/status` and retain an
    independent database backup. Do **not** run `docker compose down -v` and do
-   not remove the named volumes.
-5. Approve one protected production deployment. The first server-build release
-   backs up PostgreSQL before migration and records it as `pre-adoption`.
-   Verify the action log, the local image tag in `status`, and
+   not remove the named volumes. If `current-release`/`previous-release` still
+   contain the old digest records, do not delete those files or prune their
+   locally retained images before the first approved deployment.
+5. Approve one protected production deployment. Before it builds the target,
+   the release performs its one-time adoption only when every legacy record is
+   exactly the prior project format: the repository-derived
+   `ghcr.io/<lowercase-owner>/<lowercase-repository>@sha256:<64-lowercase-hex>`
+   value plus a 40-character revision. It verifies that each referenced image
+   is already local and has the matching revision label, verifies revision
+   ancestry, copies the original files to a mode-0700
+   `legacy-release-adoption.*` directory under the state directory, then tags
+   that local image as `tcgplayer-automation:revision-<sha>` and writes local
+   metadata. It never pulls from GHCR. Missing images, wrong labels, mixed,
+   corrupt, or arbitrary state fail closed without changing release files.
+   Verify the action log, the local image tag in `status`, the archive, and
    `http://127.0.0.1:3001/ready` from the host.
 
 The stable files under `/usr/local/libexec/tcgplayer-automation` are the SSH
@@ -144,7 +159,9 @@ sudo /usr/local/libexec/tcgplayer-automation/deploy \
 
 It still verifies the current public `origin/master`, so it cannot deploy an
 old SHA or a branch/tag. Do not use a mutable image tag as an input; deployment
-has no image input. Do not use `docker compose down -v` in production.
+has no image input. A host with no recorded release gets a `pre-adoption`
+backup; an adopted legacy host uses the recorded old revision's Compose file
+for its pre-deploy backup. Do not use `docker compose down -v` in production.
 
 ## Rollback
 

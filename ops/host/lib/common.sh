@@ -65,6 +65,29 @@ local_image_for_revision() {
   printf '%s:revision-%s\n' "$PROJECT_NAME" "$revision"
 }
 
+# The prior deploy path wrote this exact repository-derived GHCR digest format.
+# It is intentionally only accepted during the one-time local-image adoption;
+# ordinary release state accepts deterministic local tags only.
+legacy_ghcr_image_repository() {
+  local repository_path
+
+  validate_repository_url "${REPOSITORY_URL:-}" || return 1
+  repository_path="${REPOSITORY_URL#https://github.com/}"
+  repository_path="${repository_path%.git}"
+  printf 'ghcr.io/%s\n' "$(printf '%s' "$repository_path" | tr '[:upper:]' '[:lower:]')"
+}
+
+validate_legacy_release_metadata() {
+  local image_ref="${1:-}"
+  local revision="${2:-}"
+  local expected_repository
+
+  expected_repository="$(legacy_ghcr_image_repository)" || return 1
+  validate_revision "$revision" || return 1
+  [[ "$image_ref" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._-]+@sha256:[0-9a-f]{64}$ ]] || return 1
+  [[ "$image_ref" == "$expected_repository"@sha256:* ]]
+}
+
 validate_release_metadata() {
   local image_ref="${1:-}"
   local revision="${2:-}"
@@ -81,18 +104,43 @@ validate_service_name() {
   esac
 }
 
-read_release_file() {
+read_release_file_lines() {
   local release_file="$1"
   local -n image_output="$2"
   local -n revision_output="$3"
   local -a release_lines=()
 
-  [[ -r "$release_file" ]] || return 1
+  # Release state is root-owned regular data, never a symlink. This also keeps
+  # adoption from treating arbitrary filesystem objects as trusted metadata.
+  [[ -f "$release_file" && ! -L "$release_file" && -r "$release_file" ]] || return 1
   mapfile -t release_lines < "$release_file"
   [[ "${#release_lines[@]}" -eq 2 ]] || return 1
   image_output="${release_lines[0]}"
   revision_output="${release_lines[1]}"
-  validate_release_metadata "$image_output" "$revision_output"
+}
+
+read_release_file() {
+  local release_file="$1"
+  local -n image_output="$2"
+  local -n revision_output="$3"
+  local parsed_image parsed_revision
+
+  read_release_file_lines "$release_file" parsed_image parsed_revision || return 1
+  validate_release_metadata "$parsed_image" "$parsed_revision" || return 1
+  image_output="$parsed_image"
+  revision_output="$parsed_revision"
+}
+
+read_legacy_release_file() {
+  local release_file="$1"
+  local -n image_output="$2"
+  local -n revision_output="$3"
+  local parsed_image parsed_revision
+
+  read_release_file_lines "$release_file" parsed_image parsed_revision || return 1
+  validate_legacy_release_metadata "$parsed_image" "$parsed_revision" || return 1
+  image_output="$parsed_image"
+  revision_output="$parsed_revision"
 }
 
 write_release_file() {
@@ -241,22 +289,141 @@ validate_deployment_progression() {
   }
 }
 
+image_has_revision_label() {
+  local image_ref="$1"
+  local revision="$2"
+  local image_revision
+
+  validate_revision "$revision" || return 1
+  image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_ref" 2>/dev/null)" || return 1
+  [[ "$image_revision" == "$revision" ]]
+}
+
+archive_legacy_release_files() {
+  local archive_dir
+
+  archive_dir="$(mktemp -d "$STATE_DIR/legacy-release-adoption.XXXXXX")" || return 1
+  chmod 0700 "$archive_dir" || return 1
+  cp --no-dereference --preserve=mode,timestamps -- "$CURRENT_RELEASE_FILE" "$archive_dir/current-release" || return 1
+  if [[ -e "$PREVIOUS_RELEASE_FILE" ]]; then
+    cp --no-dereference --preserve=mode,timestamps -- "$PREVIOUS_RELEASE_FILE" "$archive_dir/previous-release" || return 1
+  fi
+  printf '%s\n' "$archive_dir"
+}
+
+# Convert only the old project-owned GHCR digest records. All validation,
+# including local image labels and revision ancestry, happens before files are
+# archived or tags/state are changed. This path never pulls from a registry.
+adopt_legacy_release_state() {
+  local target_revision="$1"
+  local legacy_current_image legacy_current_revision
+  local legacy_previous_image='' legacy_previous_revision=''
+  local local_current_image local_previous_image archive_dir
+  local has_previous=false
+
+  validate_revision "$target_revision" || return 1
+  read_legacy_release_file "$CURRENT_RELEASE_FILE" legacy_current_image legacy_current_revision || {
+    log 'current release state is neither valid local metadata nor exact legacy GHCR metadata'
+    return 1
+  }
+  if [[ -e "$PREVIOUS_RELEASE_FILE" ]]; then
+    read_legacy_release_file "$PREVIOUS_RELEASE_FILE" legacy_previous_image legacy_previous_revision || {
+      log 'previous release state is not exact legacy GHCR metadata'
+      return 1
+    }
+    has_previous=true
+  fi
+
+  git_in_checkout merge-base --is-ancestor "$legacy_current_revision" "$target_revision" || {
+    log 'legacy current revision is not an ancestor of the deployment revision'
+    return 1
+  }
+  if [[ "$has_previous" == true ]]; then
+    git_in_checkout merge-base --is-ancestor "$legacy_previous_revision" "$legacy_current_revision" || {
+      log 'legacy previous revision is not an ancestor of legacy current revision'
+      return 1
+    }
+  fi
+  image_has_revision_label "$legacy_current_image" "$legacy_current_revision" || {
+    log 'legacy current image is missing locally or has an unexpected revision label'
+    return 1
+  }
+  if [[ "$has_previous" == true ]]; then
+    image_has_revision_label "$legacy_previous_image" "$legacy_previous_revision" || {
+      log 'legacy previous image is missing locally or has an unexpected revision label'
+      return 1
+    }
+  fi
+
+  local_current_image="$(local_image_for_revision "$legacy_current_revision")" || return 1
+  if [[ "$has_previous" == true ]]; then
+    local_previous_image="$(local_image_for_revision "$legacy_previous_revision")" || return 1
+  fi
+  archive_dir="$(archive_legacy_release_files)" || {
+    log 'could not safely archive legacy release state; refusing adoption'
+    return 1
+  }
+
+  docker tag "$legacy_current_image" "$local_current_image" || return 1
+  if [[ "$has_previous" == true ]]; then
+    docker tag "$legacy_previous_image" "$local_previous_image" || return 1
+    write_release_file "$PREVIOUS_RELEASE_FILE" "$local_previous_image" "$legacy_previous_revision"
+  fi
+  write_release_file "$CURRENT_RELEASE_FILE" "$local_current_image" "$legacy_current_revision"
+  log "adopted legacy GHCR release state; originals archived in $archive_dir"
+}
+
+load_deployment_release_state() {
+  local target_revision="$1"
+  local -n has_current_output="$2"
+  local -n current_image_output="$3"
+  local -n current_revision_output="$4"
+  local previous_image previous_revision
+
+  has_current_output=false
+  current_image_output=''
+  current_revision_output=''
+  [[ -e "$CURRENT_RELEASE_FILE" ]] || return 0
+
+  if ! read_release_file "$CURRENT_RELEASE_FILE" current_image_output current_revision_output; then
+    adopt_legacy_release_state "$target_revision" || return 1
+    read_release_file "$CURRENT_RELEASE_FILE" current_image_output current_revision_output || return 1
+  fi
+  has_current_output=true
+
+  # A partially converted or otherwise mixed state is not safe to roll back.
+  if [[ -e "$PREVIOUS_RELEASE_FILE" ]]; then
+    read_release_file "$PREVIOUS_RELEASE_FILE" previous_image previous_revision || {
+      log 'previous release state is invalid or not fully adopted'
+      return 1
+    }
+  fi
+}
+
 build_local_image() {
   local image_ref="$1"
   local revision="$2"
   local image_revision
 
-  validate_release_metadata "$image_ref" "$revision" || die 'invalid local release metadata'
-  assert_checkout_at_revision "$revision" || die 'managed checkout changed before local build'
+  validate_release_metadata "$image_ref" "$revision" || {
+    log 'invalid local release metadata'
+    return 1
+  }
+  assert_checkout_at_revision "$revision" || {
+    log 'managed checkout changed before local build'
+    return 1
+  }
   log "building local production image for revision $revision"
   docker build \
     --target production \
     --build-arg "VCS_REF=$revision" \
     --tag "$image_ref" \
-    "$INSTALL_DIR"
-  image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_ref")"
-  [[ "$image_revision" == "$revision" ]] ||
-    die 'locally built image revision label does not match the requested revision'
+    "$INSTALL_DIR" || return 1
+  image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_ref")" || return 1
+  [[ "$image_revision" == "$revision" ]] || {
+    log 'locally built image revision label does not match the requested revision'
+    return 1
+  }
 }
 
 ensure_local_image() {
@@ -264,10 +431,13 @@ ensure_local_image() {
   local revision="$2"
   local image_revision=''
 
-  validate_release_metadata "$image_ref" "$revision" || die 'invalid local release metadata'
+  validate_release_metadata "$image_ref" "$revision" || {
+    log 'invalid local release metadata'
+    return 1
+  }
   image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_ref" 2>/dev/null || true)"
   if [[ "$image_revision" != "$revision" ]]; then
-    build_local_image "$image_ref" "$revision"
+    build_local_image "$image_ref" "$revision" || return 1
   fi
 }
 
@@ -275,10 +445,18 @@ compose_for_release() {
   local image_ref="$1"
   shift
 
-  validate_release_metadata "$image_ref" "${RELEASE_REVISION_FOR_COMPOSE:-}" ||
-    die 'invalid local image reference'
-  [[ -r "$ENV_FILE" ]] || die "missing application environment: $ENV_FILE"
-  [[ -r "$COMPOSE_FILE" ]] || die "missing versioned Compose file: $COMPOSE_FILE"
+  validate_release_metadata "$image_ref" "${RELEASE_REVISION_FOR_COMPOSE:-}" || {
+    log 'invalid local image reference'
+    return 1
+  }
+  [[ -r "$ENV_FILE" ]] || {
+    log "missing application environment: $ENV_FILE"
+    return 1
+  }
+  [[ -r "$COMPOSE_FILE" ]] || {
+    log "missing versioned Compose file: $COMPOSE_FILE"
+    return 1
+  }
 
   APP_IMAGE="$image_ref" \
     APP_ENV_FILE="$ENV_FILE" \

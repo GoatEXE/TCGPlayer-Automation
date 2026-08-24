@@ -19,5 +19,7 @@ image_ref=''
 _revision=''
 read_release_file "$CURRENT_RELEASE_FILE" image_ref _revision ||
   die 'no valid current release is recorded'
+assert_checkout_at_revision "$_revision" ||
+  die 'managed checkout does not match recorded release state'
 export RELEASE_REVISION_FOR_COMPOSE="$_revision"
 compose_for_release "$image_ref" --profile prod logs --tail "$lines" "$service"
