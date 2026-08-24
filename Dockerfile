@@ -1,5 +1,5 @@
 # Stage 1: Install all dependencies
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
@@ -27,7 +27,7 @@ COPY packages/server/src ./packages/server/src
 RUN pnpm --filter server build
 
 # Stage 4: Production dependencies
-FROM node:22-alpine AS prod-deps
+FROM node:26-alpine AS prod-deps
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
@@ -39,7 +39,7 @@ COPY packages/web/package.json ./packages/web/
 RUN pnpm install --frozen-lockfile --prod
 
 # Stage 5: Production runtime
-FROM node:22-alpine AS production
+FROM node:26-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
