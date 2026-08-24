@@ -85,6 +85,7 @@ jobs:
         run: |
           COMPOSE_PROFILES=dev docker compose config --quiet
           COMPOSE_PROFILES=prod APP_IMAGE=tcgplayer-automation:ci docker compose config --quiet
+          bash ops/host/tests/deploy-compose-profile.test.sh
       - name: Build production image
         run: docker build --target production --tag tcgplayer-automation:ci .
       - name: Run migrations and smoke-test production
@@ -92,6 +93,7 @@ jobs:
           APP_IMAGE: tcgplayer-automation:ci
           APP_BIND_ADDRESS: 127.0.0.1
           APP_HOST_PORT: 3000
+          COMPOSE_PROFILES: prod
         run: |
           set -euo pipefail
           cleanup() {
@@ -100,7 +102,7 @@ jobs:
           trap cleanup EXIT
 
           docker compose --profile prod up -d db redis --wait --wait-timeout 120
-          docker compose --profile prod --profile ops run --rm migrate
+          docker compose --profile ops run --rm migrate
           docker compose --profile prod up -d --no-build app --wait --wait-timeout 120
           curl --fail --silent --show-error http://127.0.0.1:3000/health
           curl --fail --silent --show-error http://127.0.0.1:3000/ready
