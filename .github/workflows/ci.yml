@@ -66,7 +66,11 @@ jobs:
       - name: Check shell syntax
         run: find ops/host -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
       - name: Run host operation tests
-        run: bash ops/host/tests/host-ops.test.sh
+        run: |
+          set -euo pipefail
+          for test_file in ops/host/tests/*.test.sh; do
+            bash "$test_file"
+          done
       - name: Run ShellCheck
         run: shellcheck --severity=warning ops/host/*.sh ops/host/lib/*.sh ops/host/tests/*.sh
 

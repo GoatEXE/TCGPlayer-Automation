@@ -15,7 +15,10 @@ if ! read_release_file "$CURRENT_RELEASE_FILE" image_ref revision; then
   die 'no valid current release is recorded; deploy a release first'
 fi
 
+assert_checkout_at_revision "$revision" ||
+  die 'managed checkout does not match recorded release state'
 printf 'release_revision=%s\nrelease_image=%s\n' "$revision" "$image_ref"
+export RELEASE_REVISION_FOR_COMPOSE="$revision"
 compose_for_release "$image_ref" --profile prod ps
 if ! smoke_release; then
   exit 1

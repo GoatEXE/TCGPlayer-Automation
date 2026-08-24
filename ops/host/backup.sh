@@ -5,6 +5,7 @@ SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/common.sh" 2>/dev/null || source "$SCRIPT_DIR/lib/common.sh"
 
+(($# == 0 || $# == 2)) || die 'usage: backup [LOCAL_IMAGE REVISION]'
 require_root
 require_command docker
 require_command sha256sum
@@ -24,10 +25,12 @@ case "$#" in
     validate_release_metadata "$image_ref" "$revision" || die 'invalid release metadata'
     release_state='pre-adoption'
     ;;
-  *)
-    die 'usage: backup [IMAGE@sha256:DIGEST REVISION]'
-    ;;
 esac
+# Refuse to run a recorded backup with another revision's Compose file. The
+# release flow temporarily selects this checkout before invoking us.
+assert_checkout_at_revision "$revision" ||
+  die 'managed checkout does not match recorded backup release'
+export RELEASE_REVISION_FOR_COMPOSE="$revision"
 
 mkdir -p "$BACKUP_DIR"
 chmod 0700 "$BACKUP_DIR"

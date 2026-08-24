@@ -72,7 +72,8 @@ services:
       retries: 5
     restart: unless-stopped
     stop_grace_period: 30s
-    profiles: ["prod"]
+    # The one-shot migration job waits for the same production Redis service.
+    profiles: ["prod", "ops"]
 
   redis-dev:
     image: redis:7-alpine
@@ -89,7 +90,7 @@ services:
     stop_grace_period: 30s
     profiles: ["dev"]
 
-  # Production app. APP_IMAGE accepts an immutable GHCR image@sha256 reference.
+  # Production app. Managed hosts supply a revision-specific local APP_IMAGE.
   app:
     <<: *app-runtime
     build:
@@ -124,6 +125,8 @@ services:
     command: ["node", "packages/server/dist/migrate-only.js"]
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: "no"
     profiles: ["ops"]
