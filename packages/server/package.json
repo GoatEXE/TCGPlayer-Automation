@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
-    "@fastify/multipart": "^9.4.0",
+    "@fastify/multipart": "^10.1.1",
     "@fastify/static": "^9.0.0",
     "bullmq": "^5.71.1",
     "drizzle-orm": "^0.45.2",
