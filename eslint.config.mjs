@@ -28,6 +28,16 @@ export default tseslint.config(
     },
   },
   {
+    // PackingSlipData intentionally names a shared document shape.
+    files: ['packages/server/src/lib/invoices/types.ts'],
+    rules: {
+      '@typescript-eslint/no-empty-object-type': [
+        'error',
+        { allowInterfaces: 'with-single-extends' },
+      ],
+    },
+  },
+  {
     files: ['packages/web/**/*.{ts,tsx}'],
     languageOptions: {
       globals: {
