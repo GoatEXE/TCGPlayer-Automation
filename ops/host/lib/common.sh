@@ -207,9 +207,9 @@ checkout_exact_revision() {
 }
 
 # This is used only for the dispatcher path. It performs all rejecting checks
-# before fetching or checking out, so stale/invalid requests cannot mutate the
-# working tree or its origin/master tracking ref.
-prepare_checkout_for_deploy() {
+# before checking out, so stale/invalid requests cannot replace the working
+# tree. Fetching the tracked public branch is safe before the final checkout.
+prepare_deploy_target_revision() {
   local revision="$1"
   local remote_revision fetched_revision
 
@@ -232,7 +232,13 @@ prepare_checkout_for_deploy() {
     log 'fetched origin/master does not match the requested revision'
     return 1
   }
-  checkout_exact_revision "$revision" || return 1
+}
+
+prepare_checkout_for_deploy() {
+  local revision="$1"
+
+  prepare_deploy_target_revision "$revision" || return 1
+  checkout_exact_revision "$revision"
 }
 
 # Recorded releases may be older than the current master tip, so rollback uses
@@ -269,6 +275,74 @@ assert_checkout_at_revision() {
     return 1
   }
   checkout_is_safe
+}
+
+# Read enough complete, immutable release state to recover the checkout after
+# the stable wrapper has selected a target but before versioned release logic
+# can arm its own finalizer. Legacy records are accepted only in their exact
+# project-owned form; this function never adopts, retags, or writes state.
+load_recorded_checkout_restore_state() {
+  local target_revision="$1"
+  local -n has_current_output="$2"
+  local -n current_revision_output="$3"
+  local recorded_current_image recorded_current_revision
+  local recorded_previous_image='' recorded_previous_revision=''
+
+  has_current_output=false
+  current_revision_output=''
+  validate_revision "$target_revision" || return 1
+  if [[ ! -e "$CURRENT_RELEASE_FILE" ]]; then
+    [[ ! -e "$PREVIOUS_RELEASE_FILE" ]] || {
+      log 'previous release state exists without current release state'
+      return 1
+    }
+    return 0
+  fi
+
+  if read_release_file "$CURRENT_RELEASE_FILE" recorded_current_image recorded_current_revision; then
+    if [[ -e "$PREVIOUS_RELEASE_FILE" ]]; then
+      read_release_file "$PREVIOUS_RELEASE_FILE" recorded_previous_image recorded_previous_revision || {
+        log 'previous release state is invalid or not fully adopted'
+        return 1
+      }
+    fi
+  elif read_legacy_release_file "$CURRENT_RELEASE_FILE" recorded_current_image recorded_current_revision; then
+    image_has_revision_label "$recorded_current_image" "$recorded_current_revision" || {
+      log 'legacy current image is missing locally or has an unexpected revision label'
+      return 1
+    }
+    if [[ -e "$PREVIOUS_RELEASE_FILE" ]]; then
+      read_legacy_release_file "$PREVIOUS_RELEASE_FILE" recorded_previous_image recorded_previous_revision || {
+        log 'previous release state is not exact legacy GHCR metadata'
+        return 1
+      }
+      image_has_revision_label "$recorded_previous_image" "$recorded_previous_revision" || {
+        log 'legacy previous image is missing locally or has an unexpected revision label'
+        return 1
+      }
+    fi
+  else
+    log 'current release state is neither valid local metadata nor exact legacy GHCR metadata'
+    return 1
+  fi
+
+  git_in_checkout cat-file -e "${recorded_current_revision}^{commit}" 2>/dev/null || {
+    log 'recorded current release revision is not available locally'
+    return 1
+  }
+  git_in_checkout merge-base --is-ancestor "$recorded_current_revision" "$target_revision" || {
+    log 'recorded current release revision is not reachable from the deployment revision'
+    return 1
+  }
+  if [[ -n "$recorded_previous_revision" ]]; then
+    git_in_checkout merge-base --is-ancestor "$recorded_previous_revision" "$recorded_current_revision" || {
+      log 'recorded previous release revision is not an ancestor of current release'
+      return 1
+    }
+  fi
+
+  has_current_output=true
+  current_revision_output="$recorded_current_revision"
 }
 
 validate_deployment_progression() {
