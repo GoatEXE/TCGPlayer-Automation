@@ -14,80 +14,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish immutable image
+  deploy:
+    name: Deploy through Tailscale
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'master'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image: ${{ steps.metadata.outputs.image }}
-      digest: ${{ steps.build.outputs.digest }}
-      reference: ${{ steps.release.outputs.reference }}
-      revision: ${{ steps.metadata.outputs.revision }}
-    steps:
-      - name: Check out the verified revision
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          persist-credentials: false
-      - name: Validate release metadata
-        id: metadata
-        env:
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          repository="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
-          image="ghcr.io/${repository}"
-          [[ "$image" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._-]+$ ]]
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "revision=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - name: Log in to GHCR
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and publish immutable image
-        id: build
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          target: production
-          push: true
-          tags: ${{ steps.metadata.outputs.image }}:sha-${{ steps.metadata.outputs.revision }}
-          labels: |
-            org.opencontainers.image.revision=${{ steps.metadata.outputs.revision }}
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
-      - name: Record digest-pinned release
-        id: release
-        env:
-          IMAGE: ${{ steps.metadata.outputs.image }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          set -euo pipefail
-          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          reference="${IMAGE}@${DIGEST}"
-          echo "reference=$reference" >> "$GITHUB_OUTPUT"
-          printf 'Published digest-pinned image: %s\n' "$reference" >> "$GITHUB_STEP_SUMMARY"
-
-  deploy:
-    name: Deploy through Tailscale
-    needs: publish
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment:
       name: production
     permissions:
@@ -104,7 +38,7 @@ jobs:
           persist-credentials: false
       - name: Reject an out-of-order deployment
         env:
-          RELEASE_REVISION: ${{ needs.publish.outputs.revision }}
+          RELEASE_REVISION: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
@@ -118,8 +52,7 @@ jobs:
           SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT }}
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           SSH_HOST_KEYS: ${{ secrets.PRODUCTION_SSH_HOST_KEYS }}
-          RELEASE_REFERENCE: ${{ needs.publish.outputs.reference }}
-          RELEASE_REVISION: ${{ needs.publish.outputs.revision }}
+          RELEASE_REVISION: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           test -n "$TS_CLIENT_ID"
@@ -131,7 +64,6 @@ jobs:
           [[ "$SSH_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
           [[ "${SSH_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
           (( ${SSH_PORT:-22} >= 1 && ${SSH_PORT:-22} <= 65535 ))
-          [[ "$RELEASE_REFERENCE" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]
           [[ "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
       - name: Join the tailnet
         uses: tailscale/github-action@84a3f23bb4d843bcf4da6cf824ec1be473daf4de # v3.2.3
@@ -151,12 +83,11 @@ jobs:
           chmod 0600 "$RUNNER_TEMP/ssh/deploy_key" "$RUNNER_TEMP/ssh/known_hosts"
           ssh-keygen -y -f "$RUNNER_TEMP/ssh/deploy_key" >/dev/null
           ssh-keygen -l -f "$RUNNER_TEMP/ssh/known_hosts" >/dev/null
-      - name: Dispatch digest-pinned deployment
+      - name: Dispatch exact revision deployment
         env:
           SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT }}
-          RELEASE_REFERENCE: ${{ needs.publish.outputs.reference }}
-          RELEASE_REVISION: ${{ needs.publish.outputs.revision }}
+          RELEASE_REVISION: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           ssh -T \
@@ -168,5 +99,5 @@ jobs:
             -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
             -o ConnectTimeout=15 \
             -- "deploy@${SSH_HOST}" \
-            "deploy ${RELEASE_REFERENCE} ${RELEASE_REVISION}"
-          printf 'Deployed digest-pinned image: %s\n' "$RELEASE_REFERENCE" >> "$GITHUB_STEP_SUMMARY"
+            "deploy ${RELEASE_REVISION}"
+          printf 'Deployed exact revision: %s\n' "$RELEASE_REVISION" >> "$GITHUB_STEP_SUMMARY"

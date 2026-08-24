@@ -40,8 +40,10 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Stage 5: Production runtime
 FROM node:22-alpine AS production
+ARG VCS_REF=unknown
 WORKDIR /app
 ENV NODE_ENV=production
+LABEL org.opencontainers.image.revision=$VCS_REF
 
 # Copy workspace config
 COPY package.json pnpm-workspace.yaml ./

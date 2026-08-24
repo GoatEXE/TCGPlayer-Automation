@@ -1,19 +1,48 @@
 # Production host operations
 
-These files are a scaffold for an operator-controlled Ubuntu host. Repository automation does not connect to, bootstrap, or otherwise mutate the server by itself.
+These files are an operator-controlled Ubuntu host scaffold. Repository
+workflows do not bootstrap, mutate, or otherwise access the server until the
+protected production deployment job is explicitly approved.
 
 ## Design and invariants
 
 - Docker Compose always uses project name `tcgplayer-automation`.
-- Existing production data remains in `tcgplayer-automation_pgdata` and `tcgplayer-automation_redisdata`. Production operations never run `docker compose down -v`.
-- `/opt/tcgplayer-automation` contains the root-owned Compose definition, `/etc/tcgplayer-automation` contains root-owned configuration, `/var/lib/tcgplayer-automation` contains release state/backups, and `/usr/local/libexec/tcgplayer-automation` contains root-owned commands.
-- The app is published directly to a configurable host port for LAN use. There is no public ingress or reverse proxy. Host firewall rules must restrict that port to the intended LAN/tailnet; `APP_BIND_ADDRESS=0.0.0.0` alone is not a firewall policy.
-- GitHub reaches SSH through Tailscale. OpenSSH forces user `deploy` through a validator that accepts only `deploy IMAGE@sha256:DIGEST REVISION`; the restricted account can sudo only the root-owned deploy command.
-- Deployments pull by digest, verify the image revision label, start PostgreSQL/Redis, take a pre-deploy PostgreSQL backup, run the one-shot migration container, replace the app, and wait for `/ready` before advancing release state.
+- Existing production data remains in `tcgplayer-automation_pgdata` and
+  `tcgplayer-automation_redisdata`. Production operations never run
+  `docker compose down -v`.
+- `/opt/tcgplayer-automation` is a root-owned public Git checkout,
+  `/etc/tcgplayer-automation` holds root-owned configuration,
+  `/var/lib/tcgplayer-automation` holds release state/backups, and
+  `/usr/local/libexec/tcgplayer-automation` holds the small root-owned SSH
+  boundary and operator wrappers.
+- The managed production endpoint remains host port **3001** by default in
+  `ops/host/config/app.env.example`. It is LAN/tailnet only: host firewall
+  rules must restrict it to the intended networks. `APP_BIND_ADDRESS=0.0.0.0`
+  is not a firewall policy.
+- Runtime containers stay non-root, read-only, capability-dropped, and
+  `no-new-privileges`; production settings remain in the root-owned external
+  environment file rather than the checkout.
+- GitHub reaches SSH through Tailscale. OpenSSH forces user `deploy` through a
+  validator that accepts only `deploy REVISION`, where `REVISION` is exactly
+  40 lowercase hexadecimal characters. The restricted account can sudo only
+  the root-owned deploy wrapper.
+- The wrapper verifies a clean checkout and the configured public repository,
+  reads `origin/master` without changing the checkout, and rejects anything
+  except the exact current master revision. Only then does it fetch, detached
+  checkout that revision, and invoke `ops/host/release.sh` from the revision.
+- The versioned release builds
+  `tcgplayer-automation:revision-<40-character-sha>` locally, waits for
+  PostgreSQL and Redis, creates a PostgreSQL backup, runs migrations from that
+  image, replaces the app, verifies `/ready`, then advances release state.
+  The revision's own `docker-compose.yml` is used throughout, so Compose
+  changes deploy with the reviewed commit.
 
 ## Prerequisites
 
-Install supported Docker Engine + Compose v2, Tailscale, OpenSSH server, `curl`, and `sudo` using their vendor/Ubuntu guidance. Enroll the host in the tailnet and establish firewall/tailnet ACLs before bootstrap. Do not expose the application or SSH broadly to the internet.
+Install supported Docker Engine + Compose v2, Git, Tailscale, OpenSSH server,
+`curl`, and `sudo` using vendor/Ubuntu guidance. Enroll the host in the
+tailnet and establish firewall/tailnet ACLs before bootstrap. Do not expose the
+application or SSH broadly to the internet.
 
 Prepare both configuration files outside the repository:
 
@@ -21,12 +50,17 @@ Prepare both configuration files outside the repository:
 cp ops/host/config/app.env.example /secure/operator/path/app.env
 cp ops/host/config/host.conf.example /secure/operator/path/host.conf
 # Replace every placeholder; use a long random PostgreSQL password.
-# Set GHCR_IMAGE_REPOSITORY to the lowercase package path.
+# Keep REPOSITORY_URL pointed at the reviewed public repository.
 ```
 
-The populated files can contain secrets and must never be committed. Keep the GHCR package public when possible; otherwise registry login is a separate root-owned host concern and credentials must not be passed by the deploy workflow.
+The populated environment file can contain secrets and must never be committed.
+The host fetches the public source and builds it locally, so no image registry
+credential is configured or passed through deployment.
 
-Create a dedicated SSH key, retain its private half only in the protected GitHub `production` Environment, and verify the host public-key fingerprint through a trusted console. Then, from a reviewed repository checkout on the host, run:
+Create a dedicated SSH key, retain its private half only in the protected
+GitHub `production` Environment, and verify the host public-key fingerprint
+through a trusted console. Then, from a reviewed checkout after these host
+scripts have reached `master`, run:
 
 ```bash
 sudo ./ops/host/bootstrap.sh \
@@ -35,13 +69,53 @@ sudo ./ops/host/bootstrap.sh \
   --host-config /secure/operator/path/host.conf
 ```
 
-Bootstrap validates installed prerequisites and Tailscale state, installs files, creates/locks the `deploy` password, installs the public key, validates the sudoers fragment and `sshd` configuration, then reloads SSH. It does not enroll Tailscale or alter firewall rules. Keep an independent root/console recovery path and test it before ending the bootstrap session.
+Bootstrap validates installed prerequisites and Tailscale state, creates the
+root-owned repository checkout, installs stable wrappers, creates/locks the
+`deploy` password, installs the public key, validates the sudoers fragment and
+`sshd` configuration, then reloads SSH. It does not enroll Tailscale or alter
+firewall rules. Keep an independent root/console recovery path and test it
+before ending the bootstrap session.
 
-To update only repository-owned scripts/Compose later, run `sudo ./ops/host/install.sh` from the reviewed checkout. Pass `--env-file` or `--host-config` only when intentionally replacing those root-owned files. Install does not start or replace containers.
+## Host transition from the prior release mechanism
+
+Do this in a maintenance window before approving the first server-build
+release. These steps preserve data volumes and do not change running
+containers until an approved deployment:
+
+1. Confirm `master` contains this server-build flow and that the production
+   Environment, branch protection, Tailscale ACL, SSH key, and host key values
+   described in [CI/CD](CI-CD.md) are present.
+2. Back up the existing external app environment and host configuration. Create
+   a new `host.conf` from the current example with `REPOSITORY_URL` and retain
+   `BACKUP_RETENTION_DAYS`; remove the old image-repository setting. Ensure
+   `APP_HOST_PORT=3001` in the external `app.env` unless the operator has an
+   explicitly documented alternate LAN port.
+3. From the reviewed checkout, run `sudo ./ops/host/install.sh` with both
+   configuration files. It creates or validates the root-owned public checkout
+   and installs the stable forced-command dispatcher/wrapper. It validates the
+   checkout's Compose file but does not start or replace containers.
+4. Inspect `sudo /usr/local/libexec/tcgplayer-automation/status` and retain an
+   independent database backup. Do **not** run `docker compose down -v` and do
+   not remove the named volumes.
+5. Approve one protected production deployment. The first server-build release
+   backs up PostgreSQL before migration and records it as `pre-adoption`.
+   Verify the action log, the local image tag in `status`, and
+   `http://127.0.0.1:3001/ready` from the host.
+
+The stable files under `/usr/local/libexec/tcgplayer-automation` are the SSH
+trust boundary. Re-run `sudo ./ops/host/install.sh` after changes to
+`ops/host/bootstrap.sh`, `install.sh`, `dispatch.sh`, `deploy.sh`, or
+`ops/host/lib/common.sh` (and after changes to installed operator wrappers).
+Normal application, Dockerfile, migration, Compose, backup implementation, or
+`release.sh` changes do **not** require an installed Compose copy: the next
+approved revision uses those versioned files automatically. Bootstrap itself
+must be rerun only when intentionally rotating the deploy public key or
+repairing the OpenSSH/sudo setup.
 
 ## Root/operator commands
 
-Installed commands are intentionally not on the restricted deploy account's general command path:
+Installed commands are intentionally not on the restricted deploy account's
+general command path:
 
 ```bash
 sudo /usr/local/libexec/tcgplayer-automation/status
@@ -52,18 +126,36 @@ sudo /usr/local/libexec/tcgplayer-automation/smoke
 sudo /usr/local/libexec/tcgplayer-automation/rollback
 ```
 
-`logs` accepts only `app`, `db`, or `redis`. `backup` writes a PostgreSQL custom-format dump, release metadata, and checksum under the mode-0700 backup directory, then applies configured retention. Backups contain business data: copy them to protected storage, encrypt them at rest, and periodically test `pg_restore` on an isolated instance. Redis persists scheduler/queue state in its named volume but is not included in the logical PostgreSQL backup; use a separately reviewed stopped-volume backup if queue-state recovery is required.
+`logs` accepts only `app`, `db`, or `redis`. `backup` writes a PostgreSQL
+custom-format dump, release metadata, and checksum under the mode-0700 backup
+directory, then applies configured retention. Backups contain business data:
+copy them to protected storage, encrypt them at rest, and periodically test
+`pg_restore` on an isolated instance. Redis persists scheduler/queue state in
+its named volume but is not included in the logical PostgreSQL backup; use a
+separately reviewed stopped-volume backup if queue-state recovery is required.
 
-Rollback swaps to the previously recorded digest without reversing database migrations. Each release must therefore preserve one-release backward schema compatibility. It takes another database backup and restores the current app automatically if the previous image fails readiness.
-
-## First release and normal dispatch
-
-The first deployment also backs up PostgreSQL before migration; its sidecar metadata marks the dump `pre-adoption` because no managed release was recorded yet. Normal deployments are dispatched only by the protected GitHub Environment. For break-glass root use, the same validated command is available locally:
+For break-glass root use, use the same restricted wrapper and exact revision
+shape as CI:
 
 ```bash
 sudo /usr/local/libexec/tcgplayer-automation/deploy \
-  ghcr.io/owner/repository@sha256:<64-lowercase-hex> \
-  <40-lowercase-hex-revision>
+  <40-lowercase-hex-master-revision>
 ```
 
-Do not use mutable tags (`latest`, branch tags, or SHA tags) as deploy input. Do not use `docker compose down -v` in production. A failed deploy leaves recorded current/previous release state unchanged and attempts to restore the former app image; migrations are not automatically reversed.
+It still verifies the current public `origin/master`, so it cannot deploy an
+old SHA or a branch/tag. Do not use a mutable image tag as an input; deployment
+has no image input. Do not use `docker compose down -v` in production.
+
+## Rollback
+
+Rollback takes a pre-rollback database backup, changes the root-owned checkout
+to the previously recorded revision, and starts that revision's Compose/app
+with its deterministic local image tag. If Docker's local image was pruned,
+the host safely rebuilds it from the recorded revision after confirming it is
+reachable from `origin/master`. If readiness fails, it checks out/rebuilds the
+former current release and restores it; release state changes only after a
+ready rollback.
+
+Database migrations are not reversed. Every release must preserve one-release
+backward schema compatibility. A failed deployment similarly keeps recorded
+current/previous state unchanged and attempts to restore the former app.

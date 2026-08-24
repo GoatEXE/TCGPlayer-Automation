@@ -1,4 +1,4 @@
-# Non-secret operational settings. Use the lowercase GHCR package path created
-# by the repository release workflow.
-GHCR_IMAGE_REPOSITORY=ghcr.io/owner/tcgplayer-automation
+# Non-secret operational settings. The host fetches this public repository and
+# builds the approved revision locally; no registry credentials are required.
+REPOSITORY_URL=https://github.com/GoatEXE/TCGPlayer-Automation.git
 BACKUP_RETENTION_DAYS=30

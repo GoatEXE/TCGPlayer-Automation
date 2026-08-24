@@ -82,7 +82,7 @@ chmod 0644 /home/deploy/.ssh/authorized_keys
 
 sudoers_file=/etc/sudoers.d/tcgplayer-automation-deploy
 cat > "$sudoers_file" <<EOF
-# The forced SSH dispatcher validates repository, digest, revision, and argument count.
+# The forced SSH dispatcher and root wrapper validate one exact master revision.
 deploy ALL=(root) NOPASSWD: $DEFAULT_LIBEXEC_DIR/deploy *
 EOF
 chown root:root "$sudoers_file"
