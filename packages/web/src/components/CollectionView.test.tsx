@@ -546,7 +546,9 @@ describe('CollectionView', () => {
     expect(
       await screen.findByText(/to be sold staging cards ready to move/i),
     ).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: /available/i })).toBeTruthy();
+    expect(
+      await screen.findByRole('columnheader', { name: /available/i }),
+    ).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /move qty/i })).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: /keep target/i })).toBeNull();
     expect(screen.getByText('Ready to move')).toBeTruthy();
