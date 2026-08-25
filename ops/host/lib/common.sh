@@ -542,15 +542,101 @@ compose_for_release() {
       "$@"
 }
 
+# This implementation deliberately lives in the currently loaded shared
+# library, rather than a versioned backup.sh process. Deployments temporarily
+# select a recorded release only to use its reviewed Compose file; invoking its
+# old helper scripts would also revive obsolete host-config contracts.
 backup_for_release() {
-  local script="$INSTALL_DIR/ops/host/backup.sh"
+  local image_ref="${1:-}"
+  local revision="${2:-}"
+  local release_state="${3:-recorded}"
+  local timestamp backup_file metadata_file temp_file
 
-  [[ -r "$script" ]] || die "missing versioned backup script: $script"
-  bash "$script" "$@"
+  [[ "$#" -eq 2 || "$#" -eq 3 ]] || {
+    log 'usage: backup_for_release LOCAL_IMAGE REVISION [recorded|pre-adoption]'
+    return 1
+  }
+  validate_release_metadata "$image_ref" "$revision" || {
+    log 'invalid local release metadata for backup'
+    return 1
+  }
+  case "$release_state" in
+    recorded | pre-adoption) ;;
+    *)
+      log 'invalid backup release state'
+      return 1
+      ;;
+  esac
+
+  # The caller has selected the Compose definition reviewed with this release.
+  # Keep the revision/image pairing strict while continuing to use the external
+  # app environment, project name, and persistent volumes through compose_for_release.
+  assert_checkout_at_revision "$revision" || {
+    log 'managed checkout does not match backup release metadata'
+    return 1
+  }
+  export RELEASE_REVISION_FOR_COMPOSE="$revision"
+
+  mkdir -p "$BACKUP_DIR" || return 1
+  chmod 0700 "$BACKUP_DIR" || return 1
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)" || return 1
+  backup_file="$BACKUP_DIR/postgres-${timestamp}-${revision:0:12}.dump"
+  metadata_file="$backup_file.release"
+  temp_file="$(mktemp "$BACKUP_DIR/.postgres.XXXXXX")" || return 1
+
+  log 'creating a PostgreSQL custom-format backup'
+  if ! compose_for_release "$image_ref" --profile prod exec -T db sh -ec \
+    'exec pg_dump --format=custom --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
+    > "$temp_file"; then
+    rm -f "$temp_file"
+    return 1
+  fi
+  if [[ ! -s "$temp_file" ]]; then
+    rm -f "$temp_file"
+    log 'database backup is empty'
+    return 1
+  fi
+  chmod 0600 "$temp_file" || {
+    rm -f "$temp_file"
+    return 1
+  }
+  mv "$temp_file" "$backup_file" || {
+    rm -f "$temp_file"
+    return 1
+  }
+  printf 'created_at=%s\nrelease_state=%s\nrevision=%s\nimage=%s\n' \
+    "$timestamp" "$release_state" "$revision" "$image_ref" > "$metadata_file" || return 1
+  chmod 0600 "$metadata_file" || return 1
+  sha256sum "$backup_file" > "$backup_file.sha256" || return 1
+  chmod 0600 "$backup_file.sha256" || return 1
+
+  find "$BACKUP_DIR" -maxdepth 1 -type f -mtime "+$BACKUP_RETENTION_DAYS" \
+    \( -name 'postgres-*.dump' -o -name 'postgres-*.dump.release' -o -name 'postgres-*.dump.sha256' \) \
+    -delete || return 1
+  log "backup complete: $backup_file"
 }
 
 backup_recorded_release() {
-  backup_for_release "$@"
+  local image_ref revision
+
+  case "$#" in
+    0)
+      read_release_file "$CURRENT_RELEASE_FILE" image_ref revision || {
+        log 'no valid current release is recorded'
+        return 1
+      }
+      ;;
+    2)
+      image_ref="$1"
+      revision="$2"
+      ;;
+    *)
+      log 'usage: backup_recorded_release [LOCAL_IMAGE REVISION]'
+      return 1
+      ;;
+  esac
+
+  backup_for_release "$image_ref" "$revision" recorded
 }
 
 read_env_integer() {
