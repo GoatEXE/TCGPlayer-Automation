@@ -38,10 +38,24 @@ assert_line_before() {
     fail "expected $first before $second in $file"
 }
 
-for revision in "$TARGET_REVISION" "$RECORDED_REVISION"; do
-  git -C "$REPO_ROOT" cat-file -e "${revision}^{commit}" 2>/dev/null ||
-    fail "required historical revision is unavailable: $revision"
-done
+ensure_historical_transition() {
+  # actions/checkout intentionally uses a shallow clone. Fetch the public,
+  # immutable target's bounded ancestry only when the two fixture commits (and
+  # their ancestor relationship) are not already available locally.
+  if git -C "$REPO_ROOT" cat-file -e "${TARGET_REVISION}^{commit}" 2>/dev/null &&
+    git -C "$REPO_ROOT" cat-file -e "${RECORDED_REVISION}^{commit}" 2>/dev/null &&
+    git -C "$REPO_ROOT" merge-base --is-ancestor "$RECORDED_REVISION" "$TARGET_REVISION"; then
+    return 0
+  fi
+  git -C "$REPO_ROOT" fetch --quiet --no-tags --depth=100 origin "$TARGET_REVISION" ||
+    fail 'could not fetch the required historical transition'
+  git -C "$REPO_ROOT" cat-file -e "${RECORDED_REVISION}^{commit}" 2>/dev/null ||
+    fail "required historical revision is unavailable: $RECORDED_REVISION"
+  git -C "$REPO_ROOT" merge-base --is-ancestor "$RECORDED_REVISION" "$TARGET_REVISION" ||
+    fail 'required historical transition has an unexpected ancestry'
+}
+
+ensure_historical_transition
 
 export TCGPLAYER_INSTALL_DIR="$test_root/checkout"
 export TCGPLAYER_CONFIG_DIR="$test_root/config"
@@ -73,6 +87,12 @@ fi
 # network checks are deliberately stubbed below, but all Git checkout/ancestry
 # behavior remains real.
 git clone --quiet "$REPO_ROOT" "$TCGPLAYER_INSTALL_DIR"
+# The local clone inherits only advertised refs, so copy the target's bounded
+# ancestry directly from the source checkout before making origin production-shaped.
+git -C "$TCGPLAYER_INSTALL_DIR" fetch --quiet --no-tags --depth=100 \
+  "$REPO_ROOT" "$TARGET_REVISION" || fail 'could not copy the historical transition'
+git -C "$TCGPLAYER_INSTALL_DIR" cat-file -e "${RECORDED_REVISION}^{commit}" 2>/dev/null ||
+  fail 'copied historical transition is missing the recorded revision'
 git -C "$TCGPLAYER_INSTALL_DIR" remote set-url origin "$REPOSITORY_URL_VALUE"
 git -C "$TCGPLAYER_INSTALL_DIR" checkout --quiet --detach "$TARGET_REVISION"
 git -C "$TCGPLAYER_INSTALL_DIR" show "$RECORDED_REVISION:ops/host/lib/common.sh" >"$test_root/historical-common.sh"
