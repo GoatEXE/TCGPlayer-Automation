@@ -14,23 +14,17 @@ import { TCGTrackingClient } from '../lib/tcgtracking/client.js';
 import {
   classifyCatalogCard,
   computeCollectionSellability,
-  computeScanSessionPreview,
   DEFAULT_CONDITION,
   DEFAULT_FINISH,
   DEFAULT_KEEP_COLLECTION_NAME,
   DEFAULT_LANGUAGE,
   DEFAULT_SELL_COLLECTION_NAME,
   normalizeFinishKind,
-  type ScanPreviewAllocation,
-  type ScanSessionItemInput,
-  type SellabilityCatalogCardInput,
   type SellabilityCollectionItemInput,
 } from '../lib/collections/sellability.js';
 
 const DEFAULT_OWNED_PURPOSE = 'owned';
 const DEFAULT_TO_BE_SOLD_PURPOSE = 'to_be_sold';
-const DEFAULT_SOURCE = 'scanner';
-const SPLIT_SOURCE = 'scanner_split';
 const COLLECTION_IMPORT_SOURCE = 'tcgplayer_collection_csv';
 const PRODUCT_LINE = 'Riftbound';
 
@@ -46,7 +40,7 @@ const SET_CODE_BY_NAME: Record<string, string> = {
   'riftbound worlds bundle 2025': 'RWB',
 };
 
-interface BulkCollectionItemInput {
+interface CollectionItemInput {
   catalogCardId?: number | string;
   quantity?: number;
   condition?: string;
@@ -54,23 +48,6 @@ interface BulkCollectionItemInput {
   language?: string;
   source?: string;
   notes?: string | null;
-}
-
-interface BulkCollectionItemsBody {
-  items?: BulkCollectionItemInput[];
-}
-
-interface ScanPreviewBody {
-  items?: BulkCollectionItemInput[];
-}
-
-interface SplitScanBody extends ScanPreviewBody {
-  allocations?: Array<
-    Pick<
-      ScanPreviewAllocation,
-      'catalogCardId' | 'quantity' | 'finish' | 'condition' | 'language' | 'action'
-    >
-  >;
 }
 
 type CollectionImportMode = 'merge' | 'set';
@@ -107,7 +84,7 @@ interface CollectionImportPlan {
   mode: CollectionImportMode;
   parseErrors: string[];
   rows: CollectionImportResolvedRow[];
-  items: Array<ReturnType<typeof normalizeBulkItem>>;
+  items: Array<ReturnType<typeof normalizeCollectionItem>>;
   summary: {
     totalRows: number;
     parsedRows: number;
@@ -152,43 +129,16 @@ function toPositiveInteger(value: unknown): number | null {
   return null;
 }
 
-function normalizeBulkItem(input: BulkCollectionItemInput) {
-  const catalogCardId = toPositiveInteger(input.catalogCardId);
-  const quantity = input.quantity ?? 1;
-
+function normalizeCollectionItem(input: CollectionItemInput) {
   return {
-    catalogCardId,
-    quantity,
+    catalogCardId: toPositiveInteger(input.catalogCardId),
+    quantity: input.quantity ?? 1,
     condition: input.condition?.trim() || DEFAULT_CONDITION,
     finish: input.finish?.trim() || DEFAULT_FINISH,
     language: input.language?.trim().toUpperCase() || DEFAULT_LANGUAGE,
-    source: input.source?.trim() || DEFAULT_SOURCE,
+    source: input.source?.trim() || COLLECTION_IMPORT_SOURCE,
     notes: input.notes ?? null,
   };
-}
-
-function validateItems(items: BulkCollectionItemInput[] | undefined) {
-  const errors: string[] = [];
-  const validItems: Array<ReturnType<typeof normalizeBulkItem>> = [];
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return { errors: ['items must be a non-empty array'], validItems };
-  }
-
-  for (const [index, input] of items.entries()) {
-    const item = normalizeBulkItem(input);
-    if (item.catalogCardId === null) {
-      errors.push(`items[${index}].catalogCardId must be a positive integer`);
-      continue;
-    }
-    if (!positiveInteger(item.quantity)) {
-      errors.push(`items[${index}].quantity must be a positive integer`);
-      continue;
-    }
-    validItems.push(item);
-  }
-
-  return { errors, validItems };
 }
 
 async function insertCollectionIfMissing(name: string, purpose: string) {
@@ -240,7 +190,7 @@ async function getCollectionById(collectionId: number) {
 
 async function addItemsToCollection(
   collectionId: number,
-  inputs: Array<ReturnType<typeof normalizeBulkItem>>,
+  inputs: Array<ReturnType<typeof normalizeCollectionItem>>,
   mode: CollectionImportMode = 'merge',
   database = db,
 ) {
@@ -313,40 +263,6 @@ async function addItemsToCollection(
   return { inserted, updated, items };
 }
 
-function uniqueCatalogIds(items: Array<{ catalogCardId: number | null }>) {
-  return [...new Set(items.flatMap((item) => (item.catalogCardId ? [item.catalogCardId] : [])))];
-}
-
-async function selectCatalogCardsByIds(
-  catalogCardIds: number[],
-): Promise<SellabilityCatalogCardInput[]> {
-  if (catalogCardIds.length === 0) {
-    return [];
-  }
-
-  return db
-    .select({
-      catalogCardId: catalogCards.id,
-      tcgProductId: catalogCards.tcgProductId,
-      productName: catalogCards.productName,
-      title: catalogCards.title,
-      collectorNumber: catalogCards.collectorNumber,
-      normalizedNumber: catalogCards.normalizedNumber,
-      rarity: catalogCards.rarity,
-      photoUrl: catalogCards.photoUrl,
-      cardKind: catalogCards.cardKind,
-      raw: catalogCards.raw,
-      set: {
-        id: catalogSets.id,
-        setCode: catalogSets.setCode,
-        name: catalogSets.name,
-      },
-    })
-    .from(catalogCards)
-    .innerJoin(catalogSets, eq(catalogCards.catalogSetId, catalogSets.id))
-    .where(inArray(catalogCards.id, catalogCardIds));
-}
-
 async function selectCollectionItemsWithCatalog(
   collectionId: number,
 ): Promise<SellabilityCollectionItemInput[]> {
@@ -383,84 +299,6 @@ async function selectCollectionItemsWithCatalog(
       ),
     )
     .orderBy(catalogSets.setCode, catalogCards.normalizedNumber, catalogCards.productName);
-}
-
-async function selectExistingOwnedCounts(catalogCardIds: number[]) {
-  const owned = await ensureCollectionByName(
-    DEFAULT_KEEP_COLLECTION_NAME,
-    DEFAULT_OWNED_PURPOSE,
-  );
-  const counts = new Map<number, { normalQty: number; foilQty: number }>();
-
-  if (!owned || catalogCardIds.length === 0) {
-    return counts;
-  }
-
-  const rows = await db
-    .select({
-      catalogCardId: collectionItems.catalogCardId,
-      quantity: collectionItems.quantity,
-      finish: collectionItems.finish,
-    })
-    .from(collectionItems)
-    .where(
-      and(
-        eq(collectionItems.collectionId, owned.id),
-        inArray(collectionItems.catalogCardId, catalogCardIds),
-        gt(collectionItems.quantity, 0),
-      ),
-    );
-
-  for (const row of rows) {
-    const existing = counts.get(row.catalogCardId) ?? { normalQty: 0, foilQty: 0 };
-    if (normalizeFinishKind(row.finish) === 'foil') {
-      existing.foilQty += row.quantity;
-    } else {
-      existing.normalQty += row.quantity;
-    }
-    counts.set(row.catalogCardId, existing);
-  }
-
-  return counts;
-}
-
-async function buildScanPreview(rawItems: BulkCollectionItemInput[]) {
-  const { errors, validItems } = validateItems(rawItems);
-  if (errors.length > 0) {
-    return { errors, preview: null };
-  }
-
-  const catalogCardIds = uniqueCatalogIds(validItems);
-  const [catalogRows, existingCounts] = await Promise.all([
-    selectCatalogCardsByIds(catalogCardIds),
-    selectExistingOwnedCounts(catalogCardIds),
-  ]);
-  const foundCatalogIds = new Set(catalogRows.map((row) => row.catalogCardId));
-  const missingIds = catalogCardIds.filter((id) => !foundCatalogIds.has(id));
-
-  if (missingIds.length > 0) {
-    return {
-      errors: [`catalog card not found: ${missingIds.join(', ')}`],
-      preview: null,
-    };
-  }
-
-  const scannedItems: ScanSessionItemInput[] = validItems.map((item) => ({
-    catalogCardId: item.catalogCardId as number,
-    quantity: item.quantity,
-    finish: item.finish,
-    condition: item.condition,
-    language: item.language,
-  }));
-
-  return {
-    errors: [],
-    preview: computeScanSessionPreview({
-      scannedItems,
-      catalogCards: catalogRows,
-      existingCountsByCatalogCardId: existingCounts,
-    }),
-  };
 }
 
 function normalizeSetName(value: string) {
@@ -611,7 +449,7 @@ async function buildCollectionImportPlan(
 ): Promise<CollectionImportPlan> {
   const parsed = parseTcgplayerCollectionCsv(content);
   const resolvedRows: CollectionImportResolvedRow[] = [];
-  const items: Array<ReturnType<typeof normalizeBulkItem>> = [];
+  const items: Array<ReturnType<typeof normalizeCollectionItem>> = [];
 
   for (const row of parsed.rows) {
     const warnings = [...row.warnings];
@@ -651,7 +489,7 @@ async function buildCollectionImportPlan(
 
     if (catalogCardId) {
       items.push(
-        normalizeBulkItem({
+        normalizeCollectionItem({
           catalogCardId,
           quantity: row.quantity,
           condition: row.condition,
@@ -1114,33 +952,6 @@ async function commitTransferPlan(
   return transferredCards;
 }
 
-function allocationsToBulkItems(
-  allocations: SplitScanBody['allocations'],
-  action: 'sell' | 'keep',
-) {
-  if (!Array.isArray(allocations)) {
-    return [];
-  }
-
-  return allocations
-    .filter((allocation) =>
-      action === 'sell'
-        ? allocation.action === 'sell'
-        : allocation.action !== 'sell',
-    )
-    .map((allocation) =>
-      normalizeBulkItem({
-        catalogCardId: allocation.catalogCardId,
-        quantity: allocation.quantity,
-        finish: allocation.finish,
-        condition: allocation.condition,
-        language: allocation.language,
-        source: SPLIT_SOURCE,
-      }),
-    )
-    .filter((item) => item.catalogCardId !== null && positiveInteger(item.quantity));
-}
-
 export async function collectionsRoutes(fastify: FastifyInstance) {
   fastify.get('/', async () => {
     await ensureDefaultCollections();
@@ -1156,76 +967,6 @@ export async function collectionsRoutes(fastify: FastifyInstance) {
     ]);
 
     return { owned, toBeSold };
-  });
-
-  fastify.post('/scan-preview', async (request, reply) => {
-    const body = (request.body || {}) as ScanPreviewBody;
-    const { errors, preview } = await buildScanPreview(body.items || []);
-
-    if (errors.length > 0 || !preview) {
-      return reply.code(400).send({ errors });
-    }
-
-    return preview;
-  });
-
-  fastify.post('/split-scan', async (request, reply) => {
-    const body = (request.body || {}) as SplitScanBody;
-    let allocations = body.allocations;
-
-    if (!allocations) {
-      const { errors, preview } = await buildScanPreview(body.items || []);
-      if (errors.length > 0 || !preview) {
-        return reply.code(400).send({ errors });
-      }
-      allocations = preview.items;
-    }
-
-    if (!Array.isArray(allocations) || allocations.length === 0) {
-      return reply
-        .code(400)
-        .send({ errors: ['allocations or items must be a non-empty array'] });
-    }
-
-    const owned = await ensureCollectionByName(
-      DEFAULT_KEEP_COLLECTION_NAME,
-      DEFAULT_OWNED_PURPOSE,
-    );
-    const toBeSold = await ensureCollectionByName(
-      DEFAULT_SELL_COLLECTION_NAME,
-      DEFAULT_TO_BE_SOLD_PURPOSE,
-    );
-
-    if (!owned || !toBeSold) {
-      return reply.code(500).send({ error: 'default collections could not be resolved' });
-    }
-
-    const sellItems = allocationsToBulkItems(allocations, 'sell');
-    const keepItems = allocationsToBulkItems(allocations, 'keep');
-    const { sellResult, keepResult } = await runInDbTransaction(async (database) => ({
-      sellResult: await addItemsToCollection(
-        toBeSold.id,
-        sellItems,
-        'merge',
-        database,
-      ),
-      keepResult: await addItemsToCollection(
-        owned.id,
-        keepItems,
-        'merge',
-        database,
-      ),
-    }));
-
-    return {
-      collections: { owned, toBeSold },
-      summary: {
-        sellQuantity: sellItems.reduce((sum, item) => sum + item.quantity, 0),
-        keepQuantity: keepItems.reduce((sum, item) => sum + item.quantity, 0),
-      },
-      sell: sellResult,
-      keep: keepResult,
-    };
   });
 
   fastify.post('/:id/clear', async (request, reply) => {
@@ -1438,38 +1179,4 @@ export async function collectionsRoutes(fastify: FastifyInstance) {
     };
   });
 
-  fastify.post('/:id/items/bulk', async (request, reply) => {
-    const collectionId = Number.parseInt(
-      (request.params as { id: string }).id,
-      10,
-    );
-
-    if (!positiveInteger(collectionId)) {
-      return reply
-        .code(400)
-        .send({ error: 'collection id must be a positive integer' });
-    }
-
-    const existingCollection = await getCollectionById(collectionId);
-
-    if (!existingCollection) {
-      return reply.code(404).send({ error: 'collection not found' });
-    }
-
-    const body = (request.body || {}) as BulkCollectionItemsBody;
-    const { errors, validItems } = validateItems(body.items);
-
-    if (errors.length > 0 && validItems.length === 0) {
-      return reply.code(400).send({ error: errors[0], errors });
-    }
-
-    const result = await addItemsToCollection(collectionId, validItems);
-
-    return reply.code(errors.length > 0 ? 207 : 200).send({
-      inserted: result.inserted,
-      updated: result.updated,
-      errors,
-      items: result.items,
-    });
-  });
 }

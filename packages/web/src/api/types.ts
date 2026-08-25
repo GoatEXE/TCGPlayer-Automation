@@ -609,25 +609,6 @@ export interface CollectionTransferCommitResponse
   updated?: number;
 }
 
-export interface BulkCollectionItemRequest {
-  catalogCardId: number | string;
-  quantity: number;
-  condition?: string;
-  finish?: string;
-  language?: string;
-  source?: string;
-}
-
-export interface BulkCollectionItemsRequest {
-  items: BulkCollectionItemRequest[];
-}
-
-export interface BulkCollectionItemsResponse {
-  added: number;
-  updated?: number;
-  errors?: string[];
-}
-
 export interface ApiError {
   error: string;
   message: string;

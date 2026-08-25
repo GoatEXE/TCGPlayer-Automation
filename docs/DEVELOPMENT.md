@@ -43,7 +43,7 @@ DEV_APP_HOST_PORT=3000   # dev API host port
 VITE_HOST_PORT=5173      # dev dashboard host port
 ```
 
-If the dev profile is already running and you want to start prod for Android scanner testing, either stop dev first:
+If the dev profile is already running and you need the production profile at the same time, either stop dev first:
 
 ```bash
 docker compose down
@@ -56,50 +56,18 @@ COMPOSE_PROFILES=prod
 APP_HOST_PORT=3001
 ```
 
-Then use `http://<host-or-ip>:3001` for prod HTTP instead of port `3000`.
+Then use `http://<host-or-ip>:3001` for production HTTP instead of port `3000`.
 
-### Android scanner catalog readiness
+### Owned collection CSV workflow
 
-The scanner backend no longer performs server-side image OCR. Android/native clients perform OCR on-device and use the backend only for cached catalog resolution.
+The retained collection workflow is web/CSV based:
 
-To verify catalog readiness from the phone/LAN URL:
+1. Open the dashboard **Collection** view and choose the owned collection.
+2. Preview a TCGPlayer collection CSV, then commit it with **Set quantities** for a current export or **Add to existing quantities** for incremental acquisitions.
+3. Review sellability recommendations. Tokens/runes stay excluded, and unknown classifications stay safe until reviewed.
+4. Preview and explicitly move selected rows to Selling Inventory. Transfers create Ready-to-List staging rows and never modify existing listed inventory or create TCGPlayer listings.
 
-```bash
-curl "http://<host-or-ip>:3000/api/scanner/status"
-```
-
-The status response includes `catalog` readiness plus a compatibility `ocr` object with `engine: "native-client"` and `required: false`.
-
-Native companion scanners can ask the cached catalog resolver to resolve on-device OCR text:
-
-```bash
-curl -X POST "http://<host-or-ip>:3000/api/scanner/resolve-text" \
-  -H "Content-Type: application/json" \
-  -d '{"rawText":"UNL • 209/219","region":"bottom-right","confidence":0.91}'
-```
-
-Optional `setCodeHint` can narrow exact-name fallback when ML Kit reads a clear card name but misses the printed ID. Special printed IDs such as rune IDs (`UNL - R02`) resolve by exact cached catalog number; token face IDs such as `UNL - T07` are supported but may return `status: "ambiguous"` with selectable `alternatives` when the cached catalog has multiple products for the same printed token face. The response uses the scanner candidate shape (`candidates`, `errors`) plus `debug.regions[0].rawText` and `debug.regions[0].parsedAttempts`; it is read-only and does not mutate inventory or collections.
-
-`catalog.ready` is `false` until catalog cards are cached in the database. Scanner recognition intentionally resolves against the cached catalog only, so populate it explicitly before live scanning instead of syncing during each frame:
-
-```bash
-# Refresh known Riftbound sets and inspect their set codes.
-curl "http://<host-or-ip>:3000/api/catalog/sets?sync=true"
-
-# Cache cards for every currently exposed Riftbound set (recommended before scanning).
-curl -X POST "http://<host-or-ip>:3000/api/catalog/sync" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# Or refresh only one set (example: UNL).
-curl -X POST "http://<host-or-ip>:3000/api/catalog/sync" \
-  -H "Content-Type: application/json" \
-  -d '{"setCode":"UNL"}'
-```
-
-`POST /api/catalog/sync` without `setCode` refreshes the Riftbound set list first, then syncs cards for every cached set. The response includes `status`, `syncedSets`, `attemptedSets`, total `syncedCards`, and per-set `results`; if one set fails, successful sets remain synced and the response returns `status: "partial"` with per-set errors. If refreshing the set list fails, the response can include `setListError` while still syncing previously cached sets.
-
-For Android testing, open the native scanner, sync the catalog if status is not ready, scan cards with on-device OCR, review rows, then add/transfer through the collection APIs. The web app no longer exposes a browser camera/image-OCR scanning workflow.
+The import path resolves by `Product ID` when possible and can create a local catalog snapshot from a sufficiently identified CSV row. General catalog APIs remain available for catalog inspection and refreshes; use `POST /api/catalog/sync` to refresh Riftbound set/card data when needed. See [collection-sellability.md](collection-sellability.md) for endpoint details, CSV matching behavior, and clear/transfer safeguards.
 
 ### Switching profiles
 

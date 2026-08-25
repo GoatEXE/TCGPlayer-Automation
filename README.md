@@ -4,7 +4,7 @@ Self-hosted dashboard for managing duplicate **Riftbound: League of Legends Trad
 
 ## What it does
 
-- Imports duplicate cards from TCGPlayer mobile app CSV/TXT exports.
+- Imports TCGPlayer collection CSVs through the web dashboard into Owned Collection and supports CSV/TXT imports into Selling Inventory.
 - Fetches Riftbound market prices from the TCGTracking API.
 - Calculates recommended listing prices and flags cards that need attention.
 - Tracks inventory, order recording, sales, shipments, invoices, and packing slips.
@@ -51,16 +51,9 @@ docker compose up -d
 - API: http://localhost:3000/api/\* and health check at http://localhost:3000/health
 - PostgreSQL and Redis are internal to Docker Compose.
 
-For Android scanner testing, use the local HTTP backend and populate the cached catalog explicitly; native OCR text resolution only matches against cached cards and does not call TCGTracking per frame:
+## Owned collection workflow
 
-```bash
-# If the dev profile is still running on host port 3000, use 3001 for prod:
-# APP_HOST_PORT=3001
-curl "http://<host-or-ip>:3000/api/scanner/status"
-curl -X POST "http://<host-or-ip>:3000/api/catalog/sync" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
+Use the dashboard's **Collection** view to preview and import a TCGPlayer collection CSV into Owned Collection. Review the retained sellability recommendations, then explicitly move selected rows to Selling Inventory as Ready-to-List staging rows. Imports and transfers never modify existing listed inventory or create marketplace listings. See [Collection sellability](docs/collection-sellability.md) for the API contract and safeguards.
 
 ### Local scripts
 
@@ -80,6 +73,7 @@ Server startup runs Drizzle migrations automatically by default; managed deploym
 - [Project plan](docs/PROJECT_PLAN.md): architecture, workflow decisions, phase history, and implementation status
 - [Development guide](docs/DEVELOPMENT.md): Docker profiles, local scripts, migrations, and operational commands
 - [CI/CD](docs/operations/CI-CD.md): one-time approval cutover and automatic protected-`master`, exact-revision production releases
+- [Collection sellability](docs/collection-sellability.md): Owned Collection CSV import, sellability review, and protected transfer to Selling Inventory
 - [Host operations](docs/operations/HOST-OPERATIONS.md): fresh/current host setup, restricted deploy boundary, preflight, backups, and rollback
 - [Phase 2 docs](docs/phase2/): scheduler, price history, safeguards, floor-price backend, notifications, CSV diffs
 - [Phase 3 docs](docs/phase3/): active listings, sales history, order status, shipments, invoices, packing slips

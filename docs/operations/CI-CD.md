@@ -13,9 +13,8 @@ reviewer prompt. The authorization is deliberately moved to the protected
 `master` merge:
 
 1. GitHub branch protection accepts a change to `master` only through a pull
-   request with the six required checks: `Node checks`, `Android checks`, `Host
-   operations`, `Compose integration`, `Analyze (javascript-typescript)`, and
-   `Analyze (java-kotlin)`.
+   request with the four required checks: `Node checks`, `Host operations`,
+   `Compose integration`, and `Analyze (javascript-typescript)`.
 2. The `production` Environment permits deployment from the custom branch
    policy containing **only** `master`. Its required-reviewer rule is removed
    only after the audit and typed confirmation succeed.
@@ -38,18 +37,18 @@ production secrets changes that authorization boundary. Limit administrator and
 bypass access accordingly; the audit cannot prove GitHub's human access model
 or tailnet ACLs.
 
-The required CodeQL contexts are produced by the separate `CodeQL` workflow;
+The required CodeQL context is produced by the separate `CodeQL` workflow;
 the `CI` workflow is the workflow that triggers release. Branch protection,
-not a claim that all six checks belong to one workflow file, is what requires
-all six before a pull request can merge.
+not a claim that all four checks belong to one workflow file, is what requires
+all four before a pull request can merge.
 
 ## Recurring deployment flow
 
 For every eligible protected `master` merge after cutover:
 
-1. GitHub starts the `CI` push run. It validates Node, Android, host-operation,
-   and Compose work. A successful push run on `master` meets the
-   `workflow_run` condition in `.github/workflows/release-production.yml`.
+1. GitHub starts the `CI` push run. It validates Node, host-operation, and
+   Compose work. A successful push run on `master` meets the `workflow_run`
+   condition in `.github/workflows/release-production.yml`.
 2. `Release production` checks out `master` and rejects the run if its checkout
    no longer equals `github.event.workflow_run.head_sha`. It validates the
    exact SHA and nonempty production Environment configuration before network
@@ -90,7 +89,7 @@ merge the recurring approval.
 Before running the GitHub audit, an administrator must confirm all of the
 following:
 
-- `master` is protected with pull requests required and all six exact check
+- `master` is protected with pull requests required and all four exact check
   names listed in [Trust chain](#trust-chain-why-an-eligible-master-merge-authorizes-production).
 - The `production` Environment exists, has one active required-reviewer rule,
   and uses **custom** deployment branch policies with exactly one policy:
@@ -198,7 +197,7 @@ restore a tested backup manually when application rollback alone is insufficient
 
 Before treating protected merges as automatic production authorization, verify:
 
-- [ ] GitHub branch protection requires pull requests and all six exact checks.
+- [ ] GitHub branch protection requires pull requests and all four exact checks.
 - [ ] `production` is custom-policy, exactly `master`, and initially has its
   active reviewer rule.
 - [ ] Required Environment names, Tailscale ACL, SSH key, and pinned host key
