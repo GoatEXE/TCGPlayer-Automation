@@ -1,6 +1,12 @@
 # Collection Sellability Backend Contract
 
-Scanner intake uses collection tables only. None of these endpoints create or update `/api/cards` selling/listing inventory.
+Owned Collection intake uses collection tables only. The supported workflow is TCGPlayer collection CSV preview/import → sellability review → explicit transfer to Selling Inventory. None of these endpoints create or update `/api/cards` selling/listing inventory until the user confirms a transfer, and transfers never mutate existing listed rows.
+
+## Workflow
+
+1. Preview and import a TCGPlayer collection CSV into an owned collection.
+2. Review `GET /api/collections/:id/sellability` recommendations; tokens/runes are excluded and unknown kinds stay safe for classification.
+3. Preview and commit selected `transfer-to-inventory` rows to create or update non-listed Ready-to-List staging inventory.
 
 ## Card classification
 
@@ -17,49 +23,6 @@ If no explicit kind is present, sellability infers what is safe from catalog/sou
 Metadata override still wins. Hyphenated names alone do **not** classify a card as a legend. Battlefield classification no longer relies on broad contiguous ranges; TCGCSV `extendedData.Card Type` identified exact battlefield products/numbers across currently available groups (`OGN`, `OGS`, `OPP`, `PR`, `SFD`, `UNL`, `VEN`; `JDG` currently has none, `RWB` currently has no products). Anything that does not match those signals is returned as `unknown`, kept safe, and flagged with `needsClassification: true`.
 
 Evidence: local TCGTracking product/catalog raw data checked for Inferna, Dusk Rose Lab, Calm Rune, Sprite // Buff, and Kha'Zix - Voidreaver exposes id/name/number/rarity/image URLs and CardTrader marketplace fields, but no explicit legend/battlefield type line. TCGTracking pricing/price-update data (`/tcgapi/v1/89/sets/{setId}/pricing`) was also checked for UNL and OGN; it returns only `set_id`, `updated`, and `prices` keyed by product ID with finish prices (`tcg.Normal`/`tcg.Foil` low/market), so it does not expose card type either. TCGCSV for the same category does expose `extendedData` with `Card Type` (`Legend`, `Battlefield`, `Rune`, `Token`, etc.), so `packages/server/src/lib/collections/riftbound-card-kinds.ts` is generated from that source for reliable current-set inference.
-
-## Android scan preview
-
-`POST /api/collections/scan-preview`
-
-Request:
-
-```json
-{
-  "items": [
-    {
-      "catalogCardId": 123,
-      "quantity": 1,
-      "finish": "Normal",
-      "condition": "Near Mint",
-      "language": "EN"
-    }
-  ]
-}
-```
-
-Response groups sell recommendations first:
-
-```json
-{
-  "behavior": {
-    "unknownKind": "keep_all_needs_classification",
-    "tokenRune": "excluded_from_sellability_kept_in_owned",
-    "finishPreference": "keep_normal_first_sell_foil_first"
-  },
-  "summary": { "sellQuantity": 1, "keepQuantity": 2, "excludedQuantity": 0 },
-  "groups": { "sell": [], "keep": [], "excluded": [] },
-  "items": []
-}
-```
-
-Each item includes card identity, `kind`, `cardKindSource` (`metadata`, `inferred`, or `unknown`), quantities/count context, `action`, `targetCollectionName`, `reasons`, `reasonCodes`, `primaryReasonCode`, `opportunityType`, and `keepTargetSatisfiedByNormal`. Foil swaps are marked with `primaryReasonCode: "foil_preference"`, `opportunityType: "foil_swap"`, and `keepTargetSatisfiedByNormal: true`.
-
-## Android split commit
-
-`POST /api/collections/split-scan`
-
-Pass reviewed `allocations` from preview, or pass `items` and the server recomputes the split. `sell` allocations are bulk-added to the `To Be Sold` collection; `keep` and `excluded` allocations are bulk-added to `Default` owned collection. Finish, condition, and language are preserved.
 
 ## Owned collection CSV import
 

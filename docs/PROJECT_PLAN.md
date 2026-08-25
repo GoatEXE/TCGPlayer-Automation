@@ -270,7 +270,7 @@ Keeps the server and frontend independently buildable/testable, but avoids the o
 
 ### 4.4 CSV Import Service
 
-**Deliverable:** Parse TCGPlayer mobile app CSV exports and upsert cards into the database.
+**Historical/legacy deliverable (not a current workflow requirement):** Parse TCGPlayer mobile app CSV exports and upsert cards into the database. Current intake uses the web dashboard's CSV flow for Owned Collection and CSV/TXT flow for Selling Inventory.
 
 **Confirmed CSV Format:** 16 columns:
 ```
@@ -652,7 +652,7 @@ Fast, disk-efficient, good workspace support. No strong opinion here — npm or 
 
 ### Open Questions (To Resolve Before or During Phase 1)
 
-1. **What does the TCGPlayer mobile app CSV actually look like?** We need a sample file to build the parser. Column names, delimiter, encoding, etc.
+1. **Historical/legacy context (resolved):** The former question, “What does the TCGPlayer mobile app CSV actually look like?” was answered by archived sample fixtures; it is not a current workflow requirement. Current intake uses the web dashboard's Owned Collection CSV and Selling Inventory CSV/TXT workflows.
 2. **Which TCGPlayer API version should we target?** Need to verify current API docs and endpoints. The v2 API may have different auth flows.
 
 ### Future / Backlog Ideas

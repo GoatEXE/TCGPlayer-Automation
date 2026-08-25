@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeCollectionSellability,
-  computeScanSessionPreview,
   type SellabilityCatalogCardInput,
 } from '../sellability.js';
 
@@ -329,53 +328,5 @@ describe('computeCollectionSellability', () => {
         recommendedSellQuantity: 1,
       }),
     ]);
-  });
-});
-
-describe('computeScanSessionPreview', () => {
-  it('uses existing collection counts to split scanned keep and sell rows', () => {
-    const preview = computeScanSessionPreview({
-      catalogCards: [card(11, 'Extra Unit', 'normal')],
-      scannedItems: [
-        { catalogCardId: 11, finish: 'Normal', quantity: 2 },
-        { catalogCardId: 11, finish: 'Foil', quantity: 1 },
-      ],
-      existingCountsByCatalogCardId: new Map([[11, { normalQty: 2, foilQty: 0 }]]),
-    });
-
-    expect(preview.summary).toMatchObject({ sellQuantity: 2, keepQuantity: 1 });
-    expect(preview.groups.sell).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          finishKind: 'foil',
-          quantity: 1,
-          primaryReasonCode: 'foil_preference',
-          opportunityType: 'foil_swap',
-          keepTargetSatisfiedByNormal: true,
-        }),
-        expect.objectContaining({ finishKind: 'normal', quantity: 1 }),
-      ]),
-    );
-    expect(preview.groups.keep).toEqual([
-      expect.objectContaining({ finishKind: 'normal', quantity: 1 }),
-    ]);
-  });
-
-  it('keeps scanned unknowns and excludes scanned tokens/runes from sell actions', () => {
-    const preview = computeScanSessionPreview({
-      catalogCards: [card(12, 'Unknown Champ', null, 'MYSTERY'), card(13, 'Calm Rune', null, 'R02')],
-      scannedItems: [
-        { catalogCardId: 12, finish: 'Normal', quantity: 5 },
-        { catalogCardId: 13, finish: 'Normal', quantity: 5 },
-      ],
-    });
-
-    expect(preview.summary).toMatchObject({
-      sellQuantity: 0,
-      keepQuantity: 5,
-      excludedQuantity: 5,
-      needsClassificationQuantity: 5,
-    });
-    expect(preview.groups.excluded[0]).toMatchObject({ kind: 'rune' });
   });
 });

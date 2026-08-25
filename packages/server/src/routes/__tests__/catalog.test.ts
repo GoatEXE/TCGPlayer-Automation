@@ -129,7 +129,7 @@ describe('catalog routes', () => {
     expect(body.candidates).toEqual([]);
   });
 
-  it('reports catalog status counts for scanner readiness', async () => {
+  it('reports cached catalog status counts', async () => {
     const lastSyncedAt = new Date('2026-07-26T03:30:00.000Z');
     vi.mocked(db.select)
       .mockReturnValueOnce(

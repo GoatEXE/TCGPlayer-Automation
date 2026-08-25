@@ -4,7 +4,6 @@ import { catalogRoutes } from './catalog.js';
 import { collectionsRoutes } from './collections.js';
 import { expensesRoutes } from './expenses.js';
 import { salesRoutes } from './sales.js';
-import { scannerRoutes } from './scanner.js';
 import { shipmentsRoutes } from './shipments.js';
 import { invoiceRoutes } from './invoices.js';
 import { notificationsRoutes } from './notifications.js';
@@ -16,7 +15,6 @@ export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(collectionsRoutes, { prefix: '/api/collections' });
   await fastify.register(expensesRoutes, { prefix: '/api/expenses' });
   await fastify.register(salesRoutes, { prefix: '/api/sales' });
-  await fastify.register(scannerRoutes, { prefix: '/api/scanner' });
   await fastify.register(shipmentsRoutes, { prefix: '/api' });
   await fastify.register(invoiceRoutes, { prefix: '/api' });
   await fastify.register(notificationsRoutes, { prefix: '/api/notifications' });

@@ -42,8 +42,6 @@ import type {
   CollectionTransferCommitResponse,
   CollectionTransferRequest,
   CollectionTransferPreviewResponse,
-  BulkCollectionItemsRequest,
-  BulkCollectionItemsResponse,
   UpdateCatalogCardMetadataRequest,
 } from './types';
 
@@ -452,19 +450,6 @@ class ApiClient {
   ): Promise<CollectionTransferCommitResponse> {
     return this.request<CollectionTransferCommitResponse>(
       `/collections/${encodeURIComponent(String(collectionId))}/transfer-to-inventory`,
-      {
-        method: 'POST',
-        body: JSON.stringify(data),
-      },
-    );
-  }
-
-  async addCollectionItemsBulk(
-    collectionId: number | string,
-    data: BulkCollectionItemsRequest,
-  ): Promise<BulkCollectionItemsResponse> {
-    return this.request<BulkCollectionItemsResponse>(
-      `/collections/${encodeURIComponent(String(collectionId))}/items/bulk`,
       {
         method: 'POST',
         body: JSON.stringify(data),
