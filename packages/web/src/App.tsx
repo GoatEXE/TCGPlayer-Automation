@@ -841,8 +841,12 @@ export function App() {
                   onChange={(e) => setSalesSearch(e.target.value)}
                   className="search-input"
                 />
-                <button type="submit" className="search-button">
-                  🔍
+                <button
+                  type="submit"
+                  className="search-button"
+                  aria-label="Search sales"
+                >
+                  Search
                 </button>
               </form>
             </div>

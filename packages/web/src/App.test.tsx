@@ -484,6 +484,7 @@ describe('App view tabs', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Sales History' }),
     ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Search sales' })).toBeTruthy();
   });
 
   it('fetches pipeline when switching to sales-history view', async () => {
@@ -552,7 +553,10 @@ describe('App view tabs', () => {
       expect(screen.getByText('Test Card')).toBeTruthy();
     });
 
-    await user.click(screen.getByTitle('Record shipment'));
+    await user.click(
+      screen.getByRole('button', { name: /actions for test card/i }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Record shipment' }));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeTruthy();
@@ -804,7 +808,10 @@ describe('App view tabs', () => {
     apiMocks.getSalesPipeline.mockClear();
     apiMocks.getSalesStats.mockClear();
 
-    await user.click(screen.getByTitle('Record shipment'));
+    await user.click(
+      screen.getByRole('button', { name: /actions for card a/i }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Record shipment' }));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeTruthy();
