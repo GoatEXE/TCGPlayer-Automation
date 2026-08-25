@@ -325,7 +325,7 @@ printf '%s\n' "$compose_render" | grep -A20 '^  migrate:' | grep -F 'redis:' >/d
   fail 'migration service does not depend on Redis'
 printf '%s\n' "$compose_render" | grep -A20 '^  migrate:' | grep -F 'condition: service_healthy' >/dev/null ||
   fail 'migration service does not wait for healthy data services'
-if grep -RInE 'docker[[:space:]]+(pull|push|login)|GHCR_IMAGE_REPOSITORY' \
+if grep -RInE 'docker[[:space:]]+(pull|push|login)|^[[:space:]]*(GHCR_IMAGE_REPOSITORY|IMAGE_REPOSITORY|CONTAINER_REGISTRY|REGISTRY_URL)=' \
   "$REPO_ROOT/.github" "$REPO_ROOT/docker-compose.yml" "$REPO_ROOT/docs" \
   "$REPO_ROOT/ops/host" --exclude='*.test.sh'; then
   fail 'registry publishing, pulling, login, or configuration remains'

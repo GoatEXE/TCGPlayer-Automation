@@ -79,8 +79,8 @@ Server startup runs Drizzle migrations automatically by default; managed deploym
 
 - [Project plan](docs/PROJECT_PLAN.md): architecture, workflow decisions, phase history, and implementation status
 - [Development guide](docs/DEVELOPMENT.md): Docker profiles, local scripts, migrations, and operational commands
-- [CI/CD](docs/operations/CI-CD.md): GitHub checks and protected exact-revision deployment gates
-- [Host operations](docs/operations/HOST-OPERATIONS.md): server-built releases, restricted deploy account, backups, rollback, and production safeguards
+- [CI/CD](docs/operations/CI-CD.md): one-time approval cutover and automatic protected-`master`, exact-revision production releases
+- [Host operations](docs/operations/HOST-OPERATIONS.md): fresh/current host setup, restricted deploy boundary, preflight, backups, and rollback
 - [Phase 2 docs](docs/phase2/): scheduler, price history, safeguards, floor-price backend, notifications, CSV diffs
 - [Phase 3 docs](docs/phase3/): active listings, sales history, order status, shipments, invoices, packing slips
 - [Implementation plans](docs/plans/): sell workflow and expense tracking plans

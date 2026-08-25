@@ -63,16 +63,19 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Check shell syntax
-        run: find ops/host -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
-      - name: Run host operation tests
+      - name: Check operations shell syntax
+        run: find ops/host ops/github -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - name: Run operations tests
         run: |
           set -euo pipefail
-          for test_file in ops/host/tests/*.test.sh; do
+          for test_file in ops/host/tests/*.test.sh ops/github/tests/*.test.sh; do
             bash "$test_file"
           done
       - name: Run ShellCheck
-        run: shellcheck --severity=warning ops/host/*.sh ops/host/lib/*.sh ops/host/tests/*.sh
+        run: |
+          shellcheck --severity=warning \
+            ops/host/*.sh ops/host/lib/*.sh ops/host/tests/*.sh \
+            ops/github/*.sh ops/github/tests/*.sh
 
   container:
     name: Compose integration
