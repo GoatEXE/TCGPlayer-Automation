@@ -38,6 +38,14 @@ function makeSale(overrides: Partial<Sale> = {}): Sale {
   };
 }
 
+async function openActionsMenu(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = screen.getByRole('button', {
+    name: /actions for targon's peak/i,
+  });
+  await user.click(trigger);
+  return trigger;
+}
+
 describe('SalesTable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,7 +66,9 @@ describe('SalesTable', () => {
 
   it('renders loading state', () => {
     render(<SalesTable sales={[]} loading={true} />);
-    expect(screen.getByText('Loading sales…')).toBeTruthy();
+    const loadingCell = screen.getByText('Loading sales…');
+    expect(loadingCell).toBeTruthy();
+    expect(loadingCell.getAttribute('colspan')).toBe('9');
   });
 
   it('renders empty state when no sales', () => {
@@ -128,7 +138,11 @@ describe('SalesTable inline status change', () => {
       />,
     );
 
-    expect(screen.getByRole('combobox')).toBeTruthy();
+    expect(
+      screen.getByRole('combobox', {
+        name: "Change order status for Targon's Peak",
+      }),
+    ).toBeTruthy();
   });
 
   it('renders static badge when onStatusChange is not provided', () => {
@@ -175,9 +189,14 @@ describe('SalesTable row selection', () => {
       />,
     );
 
-    const checkboxes = screen.getAllByRole('checkbox');
-    // select-all + row checkbox
-    expect(checkboxes.length).toBe(2);
+    expect(
+      screen.getByRole('checkbox', { name: 'Select all sales' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('checkbox', {
+        name: "Select Targon's Peak for batch update",
+      }),
+    ).toBeTruthy();
   });
 
   it('does not render checkboxes when selection props are absent', () => {
@@ -220,8 +239,9 @@ describe('SalesTable row selection', () => {
       />,
     );
 
-    const checkboxes = screen.getAllByRole('checkbox');
-    const rowCheckbox = checkboxes[1] as HTMLInputElement;
+    const rowCheckbox = screen.getByRole('checkbox', {
+      name: "Select Targon's Peak for batch update",
+    }) as HTMLInputElement;
     expect(rowCheckbox.disabled).toBe(true);
   });
 });
@@ -231,7 +251,7 @@ describe('SalesTable history expansion', () => {
     vi.clearAllMocks();
   });
 
-  it('expands history when expand button is clicked', async () => {
+  it('expands history from the named action menu', async () => {
     mockGetHistory.mockResolvedValue({
       history: [
         {
@@ -248,7 +268,10 @@ describe('SalesTable history expansion', () => {
     const user = userEvent.setup();
     render(<SalesTable sales={[makeSale({ id: 7 })]} loading={false} />);
 
-    await user.click(screen.getByTitle('View status history'));
+    await openActionsMenu(user);
+    await user.click(
+      screen.getByRole('menuitem', { name: 'View status history' }),
+    );
 
     await waitFor(() => {
       expect(mockGetHistory).toHaveBeenCalledWith(7);
@@ -265,27 +288,35 @@ describe('SalesTable history expansion', () => {
     const user = userEvent.setup();
     render(<SalesTable sales={[makeSale({ id: 7 })]} loading={false} />);
 
-    await user.click(screen.getByTitle('View status history'));
+    await openActionsMenu(user);
+    await user.click(
+      screen.getByRole('menuitem', { name: 'View status history' }),
+    );
 
     await waitFor(() => {
       expect(screen.getByText('No status changes recorded.')).toBeTruthy();
     });
   });
 
-  it('collapses history on second click', async () => {
+  it('collapses history from the named action menu', async () => {
     mockGetHistory.mockResolvedValue({ history: [] });
 
     const user = userEvent.setup();
     render(<SalesTable sales={[makeSale({ id: 7 })]} loading={false} />);
 
-    const btn = screen.getByTitle('View status history');
-    await user.click(btn);
+    await openActionsMenu(user);
+    await user.click(
+      screen.getByRole('menuitem', { name: 'View status history' }),
+    );
 
     await waitFor(() => {
       expect(screen.getByText('No status changes recorded.')).toBeTruthy();
     });
 
-    await user.click(btn);
+    await openActionsMenu(user);
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Hide status history' }),
+    );
 
     await waitFor(() => {
       expect(screen.queryByText('No status changes recorded.')).toBeNull();
@@ -293,68 +324,78 @@ describe('SalesTable history expansion', () => {
   });
 });
 
-describe('SalesTable invoice and packing slip buttons', () => {
+describe('SalesTable row action menu', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders invoice button for non-cancelled sale', () => {
+  it('groups row actions in an accessible menu with named controls', async () => {
+    const user = userEvent.setup();
     render(
       <SalesTable
         sales={[makeSale({ id: 1, orderStatus: 'confirmed' })]}
         loading={false}
+        onShip={vi.fn()}
       />,
     );
 
-    expect(screen.getByTitle('Open invoice')).toBeTruthy();
+    const trigger = screen.getByRole('button', {
+      name: /actions for targon's peak/i,
+    });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    await user.click(trigger);
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: 'Record shipment' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open invoice' })).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: 'Open packing slip' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: 'View status history' }),
+    ).toBeTruthy();
   });
 
-  it('hides invoice button for cancelled sale', () => {
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'cancelled' })]}
-        loading={false}
-      />,
-    );
+  it('only shows actions available for the sale status', async () => {
+    const user = userEvent.setup();
+    const cases = [
+      {
+        status: 'pending' as const,
+        actions: ['Open invoice', 'View status history'],
+      },
+      {
+        status: 'delivered' as const,
+        actions: ['View status history'],
+      },
+      {
+        status: 'cancelled' as const,
+        actions: ['View status history'],
+      },
+    ];
 
-    expect(screen.queryByTitle('Open invoice')).toBeNull();
-  });
-
-  it('renders packing slip button for confirmed sale', () => {
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'confirmed' })]}
-        loading={false}
-      />,
-    );
-
-    expect(screen.getByTitle('Open packing slip')).toBeTruthy();
-  });
-
-  it('renders packing slip button for shipped sale', () => {
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'shipped' })]}
-        loading={false}
-      />,
-    );
-
-    expect(screen.getByTitle('Open packing slip')).toBeTruthy();
-  });
-
-  it('hides packing slip button for pending delivered and cancelled sales', () => {
-    for (const status of ['pending', 'delivered', 'cancelled'] as const) {
-      render(
+    for (const { status, actions } of cases) {
+      const view = render(
         <SalesTable
           sales={[makeSale({ id: 1, orderStatus: status })]}
           loading={false}
+          onShip={vi.fn()}
         />,
       );
-      expect(screen.queryByTitle('Open packing slip')).toBeNull();
+
+      await openActionsMenu(user);
+      expect(
+        screen.getAllByRole('menuitem').map((item) => item.textContent),
+      ).toEqual(actions);
+      view.unmount();
     }
   });
 
-  it('opens the invoice and packing slip urls in a new tab', async () => {
+  it('opens document urls from named menu actions', async () => {
     const user = userEvent.setup();
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
@@ -365,8 +406,12 @@ describe('SalesTable invoice and packing slip buttons', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('Open invoice'));
-    await user.click(screen.getByTitle('Open packing slip'));
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Open invoice' }));
+    await openActionsMenu(user);
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Open packing slip' }),
+    );
 
     expect(mockGetInvoiceUrl).toHaveBeenCalledWith(42);
     expect(mockGetPackingSlipUrl).toHaveBeenCalledWith(42);
@@ -383,79 +428,8 @@ describe('SalesTable invoice and packing slip buttons', () => {
 
     openSpy.mockRestore();
   });
-});
 
-describe('SalesTable ship button', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('renders ship button for confirmed sale', () => {
-    const onShip = vi.fn();
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'confirmed' })]}
-        loading={false}
-        onShip={onShip}
-      />,
-    );
-
-    expect(screen.getByTitle('Record shipment')).toBeTruthy();
-  });
-
-  it('renders ship button for shipped sale', () => {
-    const onShip = vi.fn();
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'shipped' })]}
-        loading={false}
-        onShip={onShip}
-      />,
-    );
-
-    expect(screen.getByTitle('Record shipment')).toBeTruthy();
-  });
-
-  it('does not render ship button for pending sale', () => {
-    const onShip = vi.fn();
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'pending' })]}
-        loading={false}
-        onShip={onShip}
-      />,
-    );
-
-    expect(screen.queryByTitle('Record shipment')).toBeNull();
-  });
-
-  it('does not render ship button for delivered sale', () => {
-    const onShip = vi.fn();
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'delivered' })]}
-        loading={false}
-        onShip={onShip}
-      />,
-    );
-
-    expect(screen.queryByTitle('Record shipment')).toBeNull();
-  });
-
-  it('does not render ship button for cancelled sale', () => {
-    const onShip = vi.fn();
-    render(
-      <SalesTable
-        sales={[makeSale({ id: 1, orderStatus: 'cancelled' })]}
-        loading={false}
-        onShip={onShip}
-      />,
-    );
-
-    expect(screen.queryByTitle('Record shipment')).toBeNull();
-  });
-
-  it('calls onShip with sale id when ship button clicked', async () => {
+  it('records a shipment from its named menu action', async () => {
     const user = userEvent.setup();
     const onShip = vi.fn();
     render(
@@ -466,8 +440,31 @@ describe('SalesTable ship button', () => {
       />,
     );
 
-    await user.click(screen.getByTitle('Record shipment'));
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Record shipment' }));
+
     expect(onShip).toHaveBeenCalledWith(42);
+  });
+
+  it('dismisses the menu with Escape and restores focus to the trigger', async () => {
+    const user = userEvent.setup();
+    render(<SalesTable sales={[makeSale()]} loading={false} />);
+
+    const trigger = await openActionsMenu(user);
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('dismisses the menu when clicking outside it', async () => {
+    const user = userEvent.setup();
+    render(<SalesTable sales={[makeSale()]} loading={false} />);
+
+    await openActionsMenu(user);
+    await user.click(screen.getByText('Jane Doe'));
+
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });
 

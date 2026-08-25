@@ -3,6 +3,7 @@ import type { OrderStatus } from '../api/types';
 interface OrderStatusSelectProps {
   currentStatus: OrderStatus;
   onChange: (nextStatus: OrderStatus) => void;
+  ariaLabel?: string;
 }
 
 const transitions: Record<OrderStatus, OrderStatus[]> = {
@@ -16,6 +17,7 @@ const transitions: Record<OrderStatus, OrderStatus[]> = {
 export function OrderStatusSelect({
   currentStatus,
   onChange,
+  ariaLabel = 'Change order status',
 }: OrderStatusSelectProps) {
   const validNext = transitions[currentStatus];
 
@@ -33,7 +35,7 @@ export function OrderStatusSelect({
       className="order-status-select"
       value={currentStatus}
       onChange={(e) => onChange(e.target.value as OrderStatus)}
-      aria-label="Change order status"
+      aria-label={ariaLabel}
     >
       <option value={currentStatus}>{currentStatus}</option>
       {validNext.map((status) => (

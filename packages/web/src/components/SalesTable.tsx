@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import type {
   Sale,
   Shipment,
@@ -47,16 +47,49 @@ export function SalesTable({
   const [expandedSaleId, setExpandedSaleId] = useState<number | null>(null);
   const [history, setHistory] = useState<SaleStatusHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const actionMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
   const selectable = !!onSelectionChange && !!selectedIds;
   const hasTracking = !!shipments;
-  const hasShipAction = !!onShip;
-  const hasInvoiceActions = true;
-  let colCount = 9; // base columns including expand
+  let colCount = 9; // base columns including the action menu
   if (selectable) colCount += 1;
   if (hasTracking) colCount += 1;
-  if (hasShipAction) colCount += 1;
-  if (hasInvoiceActions) colCount += 1;
+
+  const closeActionMenu = useCallback((restoreFocus = false) => {
+    setOpenActionMenuId(null);
+    if (restoreFocus) {
+      actionMenuTriggerRef.current?.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (openActionMenuId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        actionMenuRef.current &&
+        !actionMenuRef.current.contains(event.target as Node)
+      ) {
+        closeActionMenu();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeActionMenu(true);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeActionMenu, openActionMenuId]);
 
   useEffect(() => {
     if (expandedSaleId === null) {
@@ -124,6 +157,7 @@ export function SalesTable({
                   checked={allSelected}
                   onChange={toggleAll}
                   title="Select all"
+                  aria-label="Select all sales"
                   disabled={selectableRows.length === 0}
                 />
               </th>
@@ -137,9 +171,7 @@ export function SalesTable({
             <th>Order ID</th>
             <th>Status</th>
             {hasTracking && <th>Tracking</th>}
-            {hasShipAction && <th></th>}
-            {hasInvoiceActions && <th></th>}
-            <th></th>
+            <th className="actions">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -176,6 +208,7 @@ export function SalesTable({
                               ? 'Terminal status'
                               : 'Select for batch update'
                           }
+                          aria-label={`Select ${sale.cardProductName ?? `sale ${sale.id}`} for batch update`}
                         />
                       </td>
                     )}
@@ -198,6 +231,7 @@ export function SalesTable({
                         <OrderStatusSelect
                           currentStatus={sale.orderStatus}
                           onChange={(next) => onStatusChange(sale.id, next)}
+                          ariaLabel={`Change order status for ${sale.cardProductName ?? `sale ${sale.id}`}`}
                         />
                       ) : (
                         <span
@@ -221,68 +255,100 @@ export function SalesTable({
                           : '—'}
                       </td>
                     )}
-                    {hasShipAction && (
-                      <td>
-                        {shippableStatuses.includes(sale.orderStatus) ? (
-                          <button
-                            type="button"
-                            className="action-button ship-button"
-                            title="Record shipment"
-                            onClick={() => onShip!(sale.id)}
+                    <td className="actions">
+                      <div
+                        className="action-menu-container"
+                        ref={
+                          openActionMenuId === sale.id ? actionMenuRef : null
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="action-menu-trigger"
+                          ref={
+                            openActionMenuId === sale.id
+                              ? actionMenuTriggerRef
+                              : null
+                          }
+                          aria-label={`Actions for ${sale.cardProductName ?? `sale ${sale.id}`}`}
+                          aria-haspopup="menu"
+                          aria-expanded={openActionMenuId === sale.id}
+                          aria-controls={`sale-actions-${sale.id}`}
+                          onClick={() =>
+                            setOpenActionMenuId((current) =>
+                              current === sale.id ? null : sale.id,
+                            )
+                          }
+                        >
+                          …
+                        </button>
+                        {openActionMenuId === sale.id && (
+                          <div
+                            id={`sale-actions-${sale.id}`}
+                            className="action-menu"
+                            role="menu"
+                            aria-label={`Actions for ${sale.cardProductName ?? `sale ${sale.id}`}`}
                           >
-                            📦
-                          </button>
-                        ) : null}
-                      </td>
-                    )}
-                    {hasInvoiceActions && (
-                      <td>
-                        {!terminalStatuses.includes(sale.orderStatus) ? (
-                          <>
-                            <button
-                              type="button"
-                              className="action-button"
-                              title="Open invoice"
-                              onClick={() =>
-                                window.open(
-                                  api.getInvoiceUrl(sale.id),
-                                  '_blank',
-                                  'noopener,noreferrer',
-                                )
-                              }
-                            >
-                              🧾
-                            </button>
-                            {shippableStatuses.includes(sale.orderStatus) ? (
+                            {onShip &&
+                              shippableStatuses.includes(sale.orderStatus) && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    closeActionMenu();
+                                    onShip(sale.id);
+                                  }}
+                                >
+                                  Record shipment
+                                </button>
+                              )}
+                            {!isTerminal && (
                               <button
                                 type="button"
-                                className="action-button"
-                                title="Open packing slip"
-                                onClick={() =>
+                                role="menuitem"
+                                onClick={() => {
+                                  closeActionMenu();
+                                  window.open(
+                                    api.getInvoiceUrl(sale.id),
+                                    '_blank',
+                                    'noopener,noreferrer',
+                                  );
+                                }}
+                              >
+                                Open invoice
+                              </button>
+                            )}
+                            {shippableStatuses.includes(sale.orderStatus) && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  closeActionMenu();
                                   window.open(
                                     api.getPackingSlipUrl(sale.id),
                                     '_blank',
                                     'noopener,noreferrer',
-                                  )
-                                }
+                                  );
+                                }}
                               >
-                                📋
+                                Open packing slip
                               </button>
-                            ) : null}
-                          </>
-                        ) : null}
-                      </td>
-                    )}
-                    <td>
-                      <button
-                        type="button"
-                        className="action-button"
-                        title="View status history"
-                        onClick={() => toggleExpand(sale.id)}
-                        aria-expanded={isExpanded}
-                      >
-                        {isExpanded ? '▼' : '▶'}
-                      </button>
+                            )}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                toggleExpand(sale.id);
+                                closeActionMenu(true);
+                              }}
+                            >
+                              {isExpanded
+                                ? 'Hide status history'
+                                : 'View status history'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {isExpanded && (
