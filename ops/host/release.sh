@@ -97,15 +97,22 @@ release_deploy() (
     # never old metadata plus the target revision's Compose definition.
     restore_recorded_checkout "$current_revision" ||
       die 'could not select the recorded release checkout for backup'
-    backup_for_release || die 'pre-deploy database backup failed'
+    # The current release helper remains loaded from the target revision;
+    # only the checkout (and therefore Compose file) is recorded-current.
+    backup_recorded_release "$current_image" "$current_revision" ||
+      die 'pre-deploy database backup failed'
     checkout_exact_revision "$new_revision" ||
       die 'could not return to the target checkout after backup'
     assert_checkout_at_revision "$new_revision" ||
       die 'managed checkout changed after backup'
+    # The in-process recorded backup sets this for its Compose invocation;
+    # migrations and app replacement must resume the target pairing.
+    export RELEASE_REVISION_FOR_COMPOSE="$new_revision"
   else
     # The target metadata lets backup address Compose before release state
     # exists; it records the dump as pre-adoption.
-    backup_for_release "$new_image" "$new_revision" || die 'pre-deploy database backup failed'
+    backup_for_release "$new_image" "$new_revision" pre-adoption ||
+      die 'pre-deploy database backup failed'
   fi
 
   log 'running the one-shot migration job'
