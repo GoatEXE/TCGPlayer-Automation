@@ -84,7 +84,7 @@ fi
 ensure_managed_checkout
 
 install -o root -g root -m 0644 "$SCRIPT_DIR/lib/common.sh" "$LIBEXEC_DIR/common.sh"
-for script in status logs backup deploy rollback smoke dispatch; do
+for script in status logs backup deploy rollback smoke preflight dispatch; do
   bash -n "$SCRIPT_DIR/${script}.sh"
   mode=0750
   [[ "$script" == dispatch ]] && mode=0755
