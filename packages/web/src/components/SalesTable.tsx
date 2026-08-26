@@ -1,22 +1,25 @@
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
-import type {
-  Sale,
-  Shipment,
-  OrderStatus,
-  SaleStatusHistoryEntry,
-} from '../api/types';
-import { OrderStatusSelect } from './OrderStatusSelect';
-import { SaleStatusTimeline } from './SaleStatusTimeline';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
+import type { OrderStatus, SalesOrder } from '../api/types';
 import { api } from '../api/client';
+import { MeasuredHeight } from './MeasuredHeight';
+import { OrderStatusSelect } from './OrderStatusSelect';
+import { OrderStatusHistoryModal } from './OrderStatusHistoryModal';
 
 interface SalesTableProps {
-  sales: Sale[];
+  orders: SalesOrder[];
   loading: boolean;
-  onStatusChange?: (saleId: number, newStatus: OrderStatus) => Promise<void>;
-  selectedIds?: Set<number>;
-  onSelectionChange?: (ids: Set<number>) => void;
-  shipments?: Map<number, Shipment>;
-  onShip?: (saleId: number) => void;
+  onStatusChange?: (
+    representativeSaleId: number,
+    newStatus: OrderStatus,
+  ) => Promise<void>;
+  onShip?: (order: SalesOrder) => void;
 }
 
 function formatCents(cents: number): string {
@@ -31,42 +34,59 @@ function formatDate(iso: string): string {
   });
 }
 
-const terminalStatuses: OrderStatus[] = ['delivered', 'cancelled'];
-
 const shippableStatuses: OrderStatus[] = ['confirmed', 'shipped'];
 
+const interactiveSummaryRowSelector = [
+  'a',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'option',
+  'summary',
+  '[contenteditable="true"]',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="menuitem"]',
+].join(',');
+
+function isInteractiveSummaryRowTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(interactiveSummaryRowSelector) !== null
+  );
+}
+
+function orderLabel(order: SalesOrder) {
+  return (
+    order.tcgplayerOrderId ?? `Synthetic order #${order.representativeSaleId}`
+  );
+}
+
 export function SalesTable({
-  sales,
+  orders,
   loading,
   onStatusChange,
-  selectedIds,
-  onSelectionChange,
-  shipments,
   onShip,
 }: SalesTableProps) {
-  const [expandedSaleId, setExpandedSaleId] = useState<number | null>(null);
-  const [history, setHistory] = useState<SaleStatusHistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null);
+  const [statusHistoryOrder, setStatusHistoryOrder] =
+    useState<SalesOrder | null>(null);
+  const [openActionMenuKey, setOpenActionMenuKey] = useState<string | null>(
+    null,
+  );
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const actionMenuTriggerRef = useRef<HTMLButtonElement>(null);
-
-  const selectable = !!onSelectionChange && !!selectedIds;
-  const hasTracking = !!shipments;
-  let colCount = 9; // base columns including the action menu
-  if (selectable) colCount += 1;
-  if (hasTracking) colCount += 1;
+  const statusHistoryTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const colCount = 10;
 
   const closeActionMenu = useCallback((restoreFocus = false) => {
-    setOpenActionMenuId(null);
-    if (restoreFocus) {
-      actionMenuTriggerRef.current?.focus();
-    }
+    setOpenActionMenuKey(null);
+    if (restoreFocus) actionMenuTriggerRef.current?.focus();
   }, []);
 
   useEffect(() => {
-    if (openActionMenuId === null) return;
-
+    if (openActionMenuKey === null) return;
     const handlePointerDown = (event: MouseEvent) => {
       if (
         actionMenuRef.current &&
@@ -75,74 +95,43 @@ export function SalesTable({
         closeActionMenu();
       }
     };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
         closeActionMenu(true);
       }
     };
-
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [closeActionMenu, openActionMenuId]);
+  }, [closeActionMenu, openActionMenuKey]);
 
-  useEffect(() => {
-    if (expandedSaleId === null) {
-      setHistory([]);
-      return;
-    }
-    let cancelled = false;
-    setHistoryLoading(true);
-    api
-      .getSaleStatusHistory(expandedSaleId)
-      .then((res) => {
-        if (!cancelled) setHistory(res.history);
-      })
-      .catch(() => {
-        if (!cancelled) setHistory([]);
-      })
-      .finally(() => {
-        if (!cancelled) setHistoryLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [expandedSaleId]);
+  const closeStatusHistory = useCallback(() => {
+    setStatusHistoryOrder(null);
+    statusHistoryTriggerRef.current?.focus();
+  }, []);
 
-  const toggleExpand = (saleId: number) => {
-    setExpandedSaleId((prev) => (prev === saleId ? null : saleId));
+  const openStatusHistory = (order: SalesOrder) => {
+    statusHistoryTriggerRef.current = actionMenuTriggerRef.current;
+    closeActionMenu();
+    setStatusHistoryOrder(order);
   };
 
-  const toggleSelect = (id: number) => {
-    if (!selectedIds || !onSelectionChange) return;
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    onSelectionChange(next);
+  const toggleExpand = (order: SalesOrder) => {
+    setExpandedOrderKey((current) =>
+      current === order.orderKey ? null : order.orderKey,
+    );
   };
 
-  const selectableRows = sales.filter(
-    (s) => !terminalStatuses.includes(s.orderStatus),
-  );
-  const allSelected =
-    selectableRows.length > 0 &&
-    selectableRows.every((s) => selectedIds?.has(s.id));
-
-  const toggleAll = () => {
-    if (!onSelectionChange) return;
-    if (allSelected) {
-      onSelectionChange(new Set());
-    } else {
-      onSelectionChange(new Set(selectableRows.map((s) => s.id)));
-    }
+  const handleSummaryRowClick = (
+    event: ReactMouseEvent<HTMLTableRowElement>,
+    order: SalesOrder,
+  ) => {
+    if (isInteractiveSummaryRowTarget(event.target)) return;
+    toggleExpand(order);
   };
 
   return (
@@ -150,27 +139,15 @@ export function SalesTable({
       <table className="card-table">
         <thead>
           <tr>
-            {selectable && (
-              <th className="checkbox-column">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  title="Select all"
-                  aria-label="Select all sales"
-                  disabled={selectableRows.length === 0}
-                />
-              </th>
-            )}
             <th>Date</th>
-            <th>Card</th>
-            <th>Set</th>
-            <th className="quantity">Qty</th>
-            <th className="price">Price</th>
+            <th>Order</th>
             <th>Buyer</th>
-            <th>Order ID</th>
+            <th className="quantity">Items</th>
+            <th className="price">Product subtotal</th>
+            <th className="price">Shipping</th>
+            <th className="price">Total</th>
             <th>Status</th>
-            {hasTracking && <th>Tracking</th>}
+            <th>Tracking</th>
             <th className="actions">Actions</th>
           </tr>
         </thead>
@@ -182,7 +159,7 @@ export function SalesTable({
               </td>
             </tr>
           )}
-          {!loading && sales.length === 0 && (
+          {!loading && orders.length === 0 && (
             <tr>
               <td colSpan={colCount} className="table-empty">
                 No sales recorded yet.
@@ -190,126 +167,133 @@ export function SalesTable({
             </tr>
           )}
           {!loading &&
-            sales.map((sale) => {
-              const isTerminal = terminalStatuses.includes(sale.orderStatus);
-              const isExpanded = expandedSaleId === sale.id;
+            orders.map((order) => {
+              const isCancelled = order.orderStatus === 'cancelled';
+              const isExpanded = expandedOrderKey === order.orderKey;
+              const label = orderLabel(order);
+              const tracking = order.shipment
+                ? [order.shipment.carrier, order.shipment.trackingNumber]
+                    .filter(Boolean)
+                    .join(' · ') || '—'
+                : '—';
               return (
-                <Fragment key={sale.id}>
-                  <tr>
-                    {selectable && (
-                      <td className="checkbox-column">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds!.has(sale.id)}
-                          onChange={() => toggleSelect(sale.id)}
-                          disabled={isTerminal}
-                          title={
-                            isTerminal
-                              ? 'Terminal status'
-                              : 'Select for batch update'
-                          }
-                          aria-label={`Select ${sale.cardProductName ?? `sale ${sale.id}`} for batch update`}
-                        />
-                      </td>
-                    )}
+                <Fragment key={order.orderKey}>
+                  <tr
+                    className="order-summary-row"
+                    onClick={(event) => handleSummaryRowClick(event, order)}
+                  >
                     <td
                       className="date"
-                      title={new Date(sale.soldAt).toLocaleString()}
+                      title={new Date(order.soldAt).toLocaleString()}
                     >
-                      {formatDate(sale.soldAt)}
+                      {formatDate(order.soldAt)}
                     </td>
-                    <td className="card-name">{sale.cardProductName ?? '—'}</td>
-                    <td>{sale.cardSetName ?? '—'}</td>
-                    <td className="quantity">{sale.quantitySold}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="order-expand-button"
+                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${label} items`}
+                        aria-expanded={isExpanded}
+                        aria-controls={`order-items-${order.orderKey}`}
+                        onClick={() => toggleExpand(order)}
+                      >
+                        <span
+                          className="order-expand-chevron"
+                          aria-hidden="true"
+                        >
+                          ›
+                        </span>
+                      </button>
+                      <span className="order-label">{label}</span>
+                    </td>
+                    <td>{order.buyerName ?? '—'}</td>
+                    <td className="quantity">{order.itemCount}</td>
                     <td className="price">
-                      {formatCents(sale.salePriceCents)}
+                      {formatCents(order.productSubtotalCents)}
                     </td>
-                    <td>{sale.buyerName ?? '—'}</td>
-                    <td>{sale.tcgplayerOrderId ?? '—'}</td>
+                    <td className="price">
+                      {formatCents(order.shippingCollectedCents)}
+                    </td>
+                    <td className="price">{formatCents(order.totalCents)}</td>
                     <td>
                       {onStatusChange ? (
                         <OrderStatusSelect
-                          currentStatus={sale.orderStatus}
-                          onChange={(next) => onStatusChange(sale.id, next)}
-                          ariaLabel={`Change order status for ${sale.cardProductName ?? `sale ${sale.id}`}`}
+                          currentStatus={order.orderStatus}
+                          onChange={(next) =>
+                            onStatusChange(order.representativeSaleId, next)
+                          }
+                          ariaLabel={`Change order status for ${label}`}
                         />
                       ) : (
                         <span
-                          className={`sales-status sales-status-${sale.orderStatus}`}
+                          className={`sales-status sales-status-${order.orderStatus}`}
                         >
-                          {sale.orderStatus}
+                          {order.orderStatus}
                         </span>
                       )}
                     </td>
-                    {hasTracking && (
-                      <td className="tracking-cell">
-                        {shipments!.has(sale.id)
-                          ? (() => {
-                              const s = shipments!.get(sale.id)!;
-                              const parts = [
-                                s.carrier,
-                                s.trackingNumber,
-                              ].filter(Boolean);
-                              return parts.length > 0 ? parts.join(' · ') : '—';
-                            })()
-                          : '—'}
-                      </td>
-                    )}
+                    <td className="tracking-cell">{tracking}</td>
                     <td className="actions">
                       <div
                         className="action-menu-container"
                         ref={
-                          openActionMenuId === sale.id ? actionMenuRef : null
+                          openActionMenuKey === order.orderKey
+                            ? actionMenuRef
+                            : null
                         }
                       >
                         <button
                           type="button"
                           className="action-menu-trigger"
                           ref={
-                            openActionMenuId === sale.id
+                            openActionMenuKey === order.orderKey
                               ? actionMenuTriggerRef
                               : null
                           }
-                          aria-label={`Actions for ${sale.cardProductName ?? `sale ${sale.id}`}`}
+                          aria-label={`Actions for ${label}`}
                           aria-haspopup="menu"
-                          aria-expanded={openActionMenuId === sale.id}
-                          aria-controls={`sale-actions-${sale.id}`}
+                          aria-expanded={openActionMenuKey === order.orderKey}
+                          aria-controls={`sale-actions-${order.orderKey}`}
                           onClick={() =>
-                            setOpenActionMenuId((current) =>
-                              current === sale.id ? null : sale.id,
+                            setOpenActionMenuKey((current) =>
+                              current === order.orderKey
+                                ? null
+                                : order.orderKey,
                             )
                           }
                         >
                           …
                         </button>
-                        {openActionMenuId === sale.id && (
+                        {openActionMenuKey === order.orderKey && (
                           <div
-                            id={`sale-actions-${sale.id}`}
+                            id={`sale-actions-${order.orderKey}`}
                             className="action-menu"
                             role="menu"
-                            aria-label={`Actions for ${sale.cardProductName ?? `sale ${sale.id}`}`}
+                            aria-label={`Actions for ${label}`}
                           >
                             {onShip &&
-                              shippableStatuses.includes(sale.orderStatus) && (
+                              shippableStatuses.includes(order.orderStatus) && (
                                 <button
                                   type="button"
                                   role="menuitem"
                                   onClick={() => {
                                     closeActionMenu();
-                                    onShip(sale.id);
+                                    onShip(order);
                                   }}
                                 >
                                   Record shipment
                                 </button>
                               )}
-                            {!isTerminal && (
+                            {!isCancelled && (
                               <button
                                 type="button"
                                 role="menuitem"
                                 onClick={() => {
                                   closeActionMenu();
                                   window.open(
-                                    api.getInvoiceUrl(sale.id),
+                                    api.getInvoiceUrl(
+                                      order.representativeSaleId,
+                                    ),
                                     '_blank',
                                     'noopener,noreferrer',
                                   );
@@ -318,14 +302,16 @@ export function SalesTable({
                                 Open invoice
                               </button>
                             )}
-                            {shippableStatuses.includes(sale.orderStatus) && (
+                            {shippableStatuses.includes(order.orderStatus) && (
                               <button
                                 type="button"
                                 role="menuitem"
                                 onClick={() => {
                                   closeActionMenu();
                                   window.open(
-                                    api.getPackingSlipUrl(sale.id),
+                                    api.getPackingSlipUrl(
+                                      order.representativeSaleId,
+                                    ),
                                     '_blank',
                                     'noopener,noreferrer',
                                   );
@@ -337,41 +323,94 @@ export function SalesTable({
                             <button
                               type="button"
                               role="menuitem"
-                              onClick={() => {
-                                toggleExpand(sale.id);
-                                closeActionMenu(true);
-                              }}
+                              onClick={() => openStatusHistory(order)}
                             >
-                              {isExpanded
-                                ? 'Hide status history'
-                                : 'View status history'}
+                              View status history
                             </button>
                           </div>
                         )}
                       </div>
                     </td>
                   </tr>
-                  {isExpanded && (
-                    <tr className="history-row">
-                      <td colSpan={colCount} className="history-cell">
-                        {historyLoading ? (
-                          <span className="price-check-loading">
-                            Loading history…
-                          </span>
-                        ) : (
-                          <SaleStatusTimeline
-                            history={history}
-                            shipment={shipments?.get(sale.id)}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  )}
+                  <tr
+                    className={`history-row ${
+                      isExpanded
+                        ? 'history-row-expanded'
+                        : 'history-row-collapsed'
+                    }`}
+                    id={`order-items-${order.orderKey}`}
+                    aria-hidden={!isExpanded}
+                  >
+                    <td colSpan={colCount} className="history-cell">
+                      <MeasuredHeight
+                        open={isExpanded}
+                        className={`order-details ${
+                          isExpanded
+                            ? 'order-details-expanded'
+                            : 'order-details-collapsed'
+                        }`}
+                        contentClassName="order-details-content"
+                        inert={!isExpanded}
+                      >
+                        <div className="order-details-inner">
+                          <table
+                            className="order-line-items"
+                            aria-label={`${label} line items`}
+                          >
+                            <thead>
+                              <tr>
+                                <th>Card</th>
+                                <th>Set</th>
+                                <th>Condition</th>
+                                <th>Qty</th>
+                                <th>Type</th>
+                                <th>Unit price</th>
+                                <th>Line total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.lineItems.map((line) => (
+                                <tr key={line.id}>
+                                  <td>{line.cardProductName ?? '—'}</td>
+                                  <td>{line.cardSetName ?? '—'}</td>
+                                  <td>{line.cardCondition ?? '—'}</td>
+                                  <td>{line.quantitySold}</td>
+                                  <td>
+                                    {line.lineItemType === 'gift'
+                                      ? 'Gift'
+                                      : 'Paid'}
+                                  </td>
+                                  <td>
+                                    {formatCents(
+                                      line.quantitySold > 0
+                                        ? Math.round(
+                                            line.salePriceCents /
+                                              line.quantitySold,
+                                          )
+                                        : line.salePriceCents,
+                                    )}
+                                  </td>
+                                  <td>{formatCents(line.salePriceCents)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </MeasuredHeight>
+                    </td>
+                  </tr>
                 </Fragment>
               );
             })}
         </tbody>
       </table>
+      {statusHistoryOrder && (
+        <OrderStatusHistoryModal
+          representativeSaleId={statusHistoryOrder.representativeSaleId}
+          orderLabel={orderLabel(statusHistoryOrder)}
+          onClose={closeStatusHistory}
+        />
+      )}
     </div>
   );
 }

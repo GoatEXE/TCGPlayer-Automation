@@ -578,13 +578,100 @@ body {
   max-width: fit-content;
 }
 
-/* History expansion row */
-.history-row {
+/* Order summary expansion */
+.card-table tbody tr.order-summary-row {
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.card-table tbody tr.order-summary-row:hover,
+.card-table tbody tr.order-summary-row:focus-within {
   background: var(--color-surface);
 }
 
-.history-cell {
+.order-expand-button {
+  display: inline-grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  margin-right: 0.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.order-expand-button:hover {
+  background: var(--color-surface);
+}
+
+.order-expand-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.order-expand-chevron {
+  display: block;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 500ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+.order-expand-button[aria-expanded='true'] .order-expand-chevron {
+  transform: rotate(90deg);
+}
+
+.order-label {
+  font-weight: 500;
+}
+
+/* History expansion row */
+.card-table tbody tr.history-row {
+  background: var(--color-surface);
+}
+
+.card-table tbody tr.history-row-collapsed {
+  border-bottom: 0;
+}
+
+.card-table .history-cell {
+  padding: 0;
+}
+
+.order-details {
+  height: 0;
+  overflow: hidden;
+  transition: height 500ms cubic-bezier(0.45, 0, 0.55, 1);
+  will-change: height;
+}
+
+.order-details-content {
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    opacity 420ms cubic-bezier(0.45, 0, 0.55, 1),
+    transform 500ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+.order-details-expanded .order-details-content {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.order-details-inner {
   padding: 0.75rem 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-summary-row,
+  .order-expand-chevron,
+  .order-details,
+  .order-details-content {
+    transition: none;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1721,6 +1808,35 @@ body {
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* ───── Order Status History Modal ───── */
+.order-status-history-modal {
+  max-width: 640px;
+}
+
+.order-status-history-label {
+  margin: 0;
+  padding: 0.75rem 1.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.order-status-history-body {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  padding: 0.75rem 1.5rem 1rem;
+}
+
+.order-status-history-state {
+  padding: 2.5rem 1.5rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.order-status-history-error {
+  color: var(--color-error);
 }
 
 /* ───── Price History Modal ───── */

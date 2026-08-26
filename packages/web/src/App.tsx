@@ -14,10 +14,9 @@ import type {
   OrderStatus,
   PerformanceSummaryResponse,
   PriceCheckStatus,
-  Sale,
+  SalesOrder,
   SalesStats,
   SalesPipelineEntry,
-  Shipment,
   UpdateExpenseRequest,
   UpdateExpenseSettingsRequest,
 } from './api/types';
@@ -72,7 +71,7 @@ export function App() {
     useState<PriceCheckStatus | null>(null);
   const [priceCheckLoading, setPriceCheckLoading] = useState(true);
   const [priceCheckError, setPriceCheckError] = useState(false);
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
   const [salesTotalItems, setSalesTotalItems] = useState(0);
   const [salesPage, setSalesPage] = useState(1);
@@ -83,13 +82,7 @@ export function App() {
   const [salesStatusFilter, setSalesStatusFilter] = useState<
     OrderStatus | undefined
   >(undefined);
-  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<number>>(
-    new Set(),
-  );
-  const [shipmentsMap, setShipmentsMap] = useState<Map<number, Shipment>>(
-    new Map(),
-  );
-  const [shipModalSaleId, setShipModalSaleId] = useState<number | null>(null);
+  const [shipModalOrder, setShipModalOrder] = useState<SalesOrder | null>(null);
   const [notificationEvents, setNotificationEvents] = useState<
     NotificationEvent[]
   >([]);
@@ -137,7 +130,9 @@ export function App() {
       });
       const visibleCards =
         statusFilter === 'all'
-          ? response.cards.filter((card) => !shouldHideFromActiveInventory(card))
+          ? response.cards.filter(
+              (card) => !shouldHideFromActiveInventory(card),
+            )
           : response.cards;
       setCards(visibleCards);
       setTotalItems(response.total);
@@ -233,7 +228,7 @@ export function App() {
         page: salesPage,
         limit: itemsPerPage,
       });
-      setSales(response.sales);
+      setOrders(response.orders);
       setSalesTotalItems(response.total);
     } catch (err) {
       console.error('Failed to fetch sales:', err);
@@ -241,21 +236,6 @@ export function App() {
     } finally {
       setSalesLoading(false);
     }
-  };
-
-  const fetchShipments = async (saleIds: number[]) => {
-    const next = new Map(shipmentsMap);
-    await Promise.all(
-      saleIds.map(async (id) => {
-        try {
-          const shipment = await api.getShipment(id);
-          next.set(id, shipment);
-        } catch {
-          // 404 = no shipment, skip
-        }
-      }),
-    );
-    setShipmentsMap(next);
   };
 
   const fetchNotifications = async () => {
@@ -325,7 +305,14 @@ export function App() {
     if (activeView === 'inventory') {
       fetchCards();
     }
-  }, [activeView, statusFilter, searchQuery, currentPage, cardSortField, cardSortDirection]);
+  }, [
+    activeView,
+    statusFilter,
+    searchQuery,
+    currentPage,
+    cardSortField,
+    cardSortDirection,
+  ]);
 
   useEffect(() => {
     if (activeView === 'inventory') {
@@ -364,13 +351,6 @@ export function App() {
     if (activeView !== 'performance') return;
     fetchExpenseSettings();
   }, [activeView]);
-
-  useEffect(() => {
-    if (activeView === 'sales-history' && sales.length > 0) {
-      const saleIds = sales.map((s) => s.id);
-      fetchShipments(saleIds);
-    }
-  }, [sales]);
 
   const fetchPriceCheckStatus = async () => {
     setPriceCheckLoading(true);
@@ -537,7 +517,10 @@ export function App() {
     await Promise.all([fetchExpenses(), fetchPerformanceSummary()]);
   };
 
-  const handleUpdateExpense = async (id: number, data: UpdateExpenseRequest) => {
+  const handleUpdateExpense = async (
+    id: number,
+    data: UpdateExpenseRequest,
+  ) => {
     await api.updateExpense(id, data);
     await Promise.all([fetchExpenses(), fetchPerformanceSummary()]);
   };
@@ -592,12 +575,12 @@ export function App() {
     }
   };
 
-  const handleSaleStatusChange = async (
-    saleId: number,
+  const handleOrderStatusChange = async (
+    representativeSaleId: number,
     newStatus: OrderStatus,
   ) => {
     try {
-      await api.updateSale(saleId, { orderStatus: newStatus });
+      await api.updateSale(representativeSaleId, { orderStatus: newStatus });
       fetchSales();
       fetchPipeline();
       fetchSalesStats();
@@ -608,36 +591,13 @@ export function App() {
     }
   };
 
-  const handleBatchStatusUpdate = async (newStatus: OrderStatus) => {
-    if (selectedSaleIds.size === 0) return;
-    try {
-      const result = await api.batchUpdateSaleStatus({
-        saleIds: Array.from(selectedSaleIds),
-        newStatus,
-      });
-      let message = `✅ Updated ${result.updated} sale${result.updated !== 1 ? 's' : ''}`;
-      if (result.skipped.length > 0) {
-        message += `\n\n⚠️ Skipped ${result.skipped.length}:\n${result.skipped.map((s) => `#${s.id}: ${s.reason}`).join('\n')}`;
-      }
-      alert(message);
-      setSelectedSaleIds(new Set());
-      fetchSales();
-      fetchPipeline();
-      fetchSalesStats();
-    } catch (err) {
-      alert(
-        err instanceof Error ? err.message : 'Failed to batch update status',
-      );
-    }
-  };
-
   const handlePipelineSelect = (status: OrderStatus) => {
     setSalesStatusFilter((prev) => (prev === status ? undefined : status));
     setSalesPage(1);
   };
 
-  const handleShipAction = (saleId: number) => {
-    setShipModalSaleId(saleId);
+  const handleShipAction = (order: SalesOrder) => {
+    setShipModalOrder(order);
   };
 
   const handleShipmentSubmit = async (payload: ShipmentSubmitPayload) => {
@@ -646,19 +606,10 @@ export function App() {
     } else {
       await api.updateShipment(payload.shipmentId, payload.data);
     }
-    setShipModalSaleId(null);
+    setShipModalOrder(null);
     fetchSales();
     fetchPipeline();
     fetchSalesStats();
-    // Refresh shipment for the affected sale
-    const saleId =
-      payload.mode === 'create' ? payload.saleId : shipModalSaleId!;
-    try {
-      const shipment = await api.getShipment(saleId);
-      setShipmentsMap((prev) => new Map(prev).set(saleId, shipment));
-    } catch {
-      // ignore
-    }
   };
 
   const handleChangeView = (view: ViewMode) => {
@@ -668,9 +619,7 @@ export function App() {
       setSalesSearch('');
       setSalesPage(1);
       setSalesStatusFilter(undefined);
-      setSelectedSaleIds(new Set());
-      setShipmentsMap(new Map());
-      setShipModalSaleId(null);
+      setShipModalOrder(null);
       return;
     }
 
@@ -694,10 +643,7 @@ export function App() {
     setSelectedExpenseForEdit(null);
   };
 
-  const handleCardSortChange = (
-    field: SortField,
-    direction: SortDirection,
-  ) => {
+  const handleCardSortChange = (field: SortField, direction: SortDirection) => {
     setCardSortField(field);
     setCardSortDirection(direction);
     setCurrentPage(1);
@@ -793,39 +739,6 @@ export function App() {
               onSelectStatus={handlePipelineSelect}
             />
 
-            {selectedSaleIds.size > 0 && (
-              <div className="selection-actions">
-                <span>
-                  {selectedSaleIds.size} sale
-                  {selectedSaleIds.size !== 1 ? 's' : ''} selected
-                </span>
-                <button
-                  className="button-primary"
-                  onClick={() => handleBatchStatusUpdate('confirmed')}
-                >
-                  ✅ Confirm
-                </button>
-                <button
-                  className="button-primary"
-                  onClick={() => handleBatchStatusUpdate('shipped')}
-                >
-                  📦 Ship
-                </button>
-                <button
-                  className="button-primary"
-                  onClick={() => handleBatchStatusUpdate('delivered')}
-                >
-                  🏠 Delivered
-                </button>
-                <button
-                  className="button-secondary"
-                  onClick={() => handleBatchStatusUpdate('cancelled')}
-                >
-                  ❌ Cancel
-                </button>
-              </div>
-            )}
-
             <div className="filters">
               <form
                 onSubmit={(e) => {
@@ -852,21 +765,18 @@ export function App() {
             </div>
 
             <SalesTable
-              sales={sales}
+              orders={orders}
               loading={salesLoading}
-              onStatusChange={handleSaleStatusChange}
-              selectedIds={selectedSaleIds}
-              onSelectionChange={setSelectedSaleIds}
-              shipments={shipmentsMap}
+              onStatusChange={handleOrderStatusChange}
               onShip={handleShipAction}
             />
 
-            {shipModalSaleId !== null && (
+            {shipModalOrder !== null && (
               <ShipmentFormModal
-                saleId={shipModalSaleId}
-                shipment={shipmentsMap.get(shipModalSaleId) ?? null}
+                saleId={shipModalOrder.representativeSaleId}
+                shipment={shipModalOrder.shipment}
                 onSubmit={handleShipmentSubmit}
-                onClose={() => setShipModalSaleId(null)}
+                onClose={() => setShipModalOrder(null)}
               />
             )}
 
@@ -912,7 +822,9 @@ export function App() {
               ) : performanceSummary ? (
                 <PerformanceSummaryCard summary={performanceSummary} />
               ) : (
-                <div className="table-empty">Unable to load performance summary.</div>
+                <div className="table-empty">
+                  Unable to load performance summary.
+                </div>
               )}
 
               {expenseSettingsLoading && expenseSettings === null ? (
@@ -925,7 +837,9 @@ export function App() {
                   onSave={handleSaveExpenseSettings}
                 />
               ) : (
-                <div className="table-empty">Unable to load expense settings.</div>
+                <div className="table-empty">
+                  Unable to load expense settings.
+                </div>
               )}
             </div>
 
@@ -964,7 +878,9 @@ export function App() {
                   onChange={(e) =>
                     handleExpenseFilterChange(
                       'source',
-                      (e.target.value || undefined) as ExpenseSource | undefined,
+                      (e.target.value || undefined) as
+                        | ExpenseSource
+                        | undefined,
                     )
                   }
                   className="shipment-select"
@@ -994,7 +910,9 @@ export function App() {
                   id="expense-filter-date-to"
                   type="date"
                   value={expenseFilters.dateTo}
-                  onChange={(e) => handleExpenseFilterChange('dateTo', e.target.value)}
+                  onChange={(e) =>
+                    handleExpenseFilterChange('dateTo', e.target.value)
+                  }
                   className="shipment-input"
                 />
               </div>

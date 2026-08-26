@@ -65,25 +65,75 @@ vi.mock('../../lib/expenses/index.js', () => ({
 
 import { db } from '../../db/index.js';
 
-function mockCardSelectResult(cardRows: any[]) {
+function mockSelectById(rows: any[]) {
   vi.mocked(db.select).mockReturnValueOnce({
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue(cardRows),
+      where: vi
+        .fn()
+        .mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) }),
+    }),
+  } as any);
+}
+
+function mockOrderLineSelect(rows: any[]) {
+  vi.mocked(db.select).mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(rows) }),
+  } as any);
+}
+
+function mockOrderSaleRows(sale: any, lines: any[] = [sale]) {
+  mockSelectById([sale]);
+  if (sale?.tcgplayerOrderId) {
+    mockOrderLineSelect(lines);
+  }
+}
+
+function mockOrderRows(rows: any[]) {
+  vi.mocked(db.select).mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      leftJoin: vi.fn().mockReturnValue({
+        leftJoin: vi
+          .fn()
+          .mockReturnValue({ orderBy: vi.fn().mockResolvedValue(rows) }),
       }),
     }),
   } as any);
 }
 
-function mockSaleSelectResult(saleRows: any[]) {
-  vi.mocked(db.select).mockReturnValueOnce({
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue(saleRows),
-      }),
-    }),
-  } as any);
+function orderLine(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-06-01T10:00:00.000Z');
+  return {
+    id: 10,
+    cardId: 1,
+    tcgplayerOrderId: 'ORDER-10',
+    quantitySold: 1,
+    lineItemType: 'sale',
+    salePriceCents: 250,
+    shippingCollectedCents: 149,
+    buyerName: 'Buyer',
+    orderStatus: 'confirmed',
+    soldAt: now,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+    cardProductName: 'Paid Card',
+    cardSetName: 'Origins',
+    cardCondition: 'Near Mint',
+    shipmentId: null,
+    shipmentSaleId: null,
+    shipmentCarrier: null,
+    shipmentTrackingNumber: null,
+    shipmentShippedAt: null,
+    shipmentDeliveredAt: null,
+    shipmentNotes: null,
+    ...overrides,
+  };
 }
+
+// These names keep the established route tests readable while the helpers now
+// model the order lookup that backs line-oriented legacy rows.
+const mockCardSelectResult = mockSelectById;
+const mockSaleSelectResult = mockSelectById;
 
 describe('sales routes', () => {
   let app: FastifyInstance;
@@ -94,8 +144,8 @@ describe('sales routes', () => {
     mockSendSaleConfirmedAlert.mockResolvedValue(true);
     mockCreateSaleAutoEstimates.mockResolvedValue([]);
     mockGetOrCreateExpenseSettings.mockResolvedValue(buildExpenseSettings());
-    vi.mocked((db as any).transaction).mockImplementation(async (callback: any) =>
-      callback(db as any),
+    vi.mocked((db as any).transaction).mockImplementation(
+      async (callback: any) => callback(db as any),
     );
     app = Fastify();
     await app.register(salesRoutes, { prefix: '/api/sales' });
@@ -716,14 +766,17 @@ describe('sales routes', () => {
       ]);
 
       const updateCalls: any[] = [];
-      vi.mocked(db.update).mockImplementation(() => ({
-        set: vi.fn().mockImplementation((args) => {
-          updateCalls.push(args);
-          return {
-            where: vi.fn().mockResolvedValue(undefined),
-          };
-        }),
-      }) as any);
+      vi.mocked(db.update).mockImplementation(
+        () =>
+          ({
+            set: vi.fn().mockImplementation((args) => {
+              updateCalls.push(args);
+              return {
+                where: vi.fn().mockResolvedValue(undefined),
+              };
+            }),
+          }) as any,
+      );
 
       const historyValues = vi.fn().mockResolvedValue(undefined);
       vi.mocked(db.insert)
@@ -839,6 +892,76 @@ describe('sales routes', () => {
       });
     });
 
+    it('records a gift-only order without default shipping', async () => {
+      mockCardSelectResult([
+        {
+          id: 105,
+          productName: 'Gift Card',
+          status: 'gift',
+          attentionReason: null,
+          quantity: 1,
+        },
+      ]);
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as any);
+
+      const saleInsertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: 205,
+            cardId: 105,
+            quantitySold: 1,
+            lineItemType: 'gift',
+            salePriceCents: 0,
+            shippingCollectedCents: 0,
+            buyerName: null,
+            tcgplayerOrderId: 'ORDER-GIFT-ONLY',
+            orderStatus: 'pending',
+          },
+        ]),
+      });
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({ values: saleInsertValues } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales/bulk',
+        payload: {
+          tcgplayerOrderId: 'ORDER-GIFT-ONLY',
+          orderStatus: 'pending',
+          lines: [
+            {
+              cardId: 105,
+              quantitySold: 1,
+              salePriceCents: 0,
+              lineItemType: 'gift',
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
+      expect(saleInsertValues).toHaveBeenCalledWith(
+        expect.objectContaining({ shippingCollectedCents: 0 }),
+      );
+      expect(JSON.parse(response.body)).toEqual({
+        sales: [
+          expect.objectContaining({
+            id: 205,
+            lineItemType: 'gift',
+            shippingCollectedCents: 0,
+          }),
+        ],
+      });
+    });
+
     it('marks a paid bulk line card as sold when the last quantity is consumed', async () => {
       mockCardSelectResult([
         {
@@ -873,7 +996,9 @@ describe('sales routes', () => {
             ]),
           }),
         } as any)
-        .mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) } as any);
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -939,7 +1064,9 @@ describe('sales routes', () => {
         .mockReturnValueOnce({
           values: saleInsertValues,
         } as any)
-        .mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) } as any);
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -1009,7 +1136,9 @@ describe('sales routes', () => {
             ]),
           }),
         } as any)
-        .mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) } as any);
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -1192,7 +1321,9 @@ describe('sales routes', () => {
             ]),
           }),
         } as any)
-        .mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) } as any);
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -1222,96 +1353,69 @@ describe('sales routes', () => {
   });
 
   describe('GET /api/sales', () => {
-    it('returns paginated sales list', async () => {
-      vi.mocked(db.select)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            leftJoin: vi.fn().mockReturnValue({
-              where: vi.fn().mockResolvedValue([{ count: 1 }]),
-            }),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            leftJoin: vi.fn().mockReturnValue({
-              where: vi.fn().mockReturnValue({
-                orderBy: vi.fn().mockReturnValue({
-                  limit: vi.fn().mockReturnValue({
-                    offset: vi.fn().mockResolvedValue([
-                      {
-                        id: 20,
-                        cardId: 1,
-                        quantitySold: 1,
-                        salePriceCents: 325,
-                        buyerName: 'Buyer',
-                        orderStatus: 'confirmed',
-                        soldAt: new Date(),
-                        cardProductName: 'Test Card',
-                        cardSetName: 'Origins',
-                      },
-                    ]),
-                  }),
-                }),
-              }),
-            }),
-          }),
-        } as any);
+    it('returns paginated order rows while preserving paid and gift line items', async () => {
+      mockOrderRows([
+        orderLine({
+          id: 20,
+          salePriceCents: 325,
+          cardProductName: 'Test Card',
+        }),
+        orderLine({
+          id: 21,
+          cardId: 2,
+          lineItemType: 'gift',
+          salePriceCents: 0,
+          cardProductName: 'Gift Card',
+        }),
+        orderLine({
+          id: 22,
+          tcgplayerOrderId: null,
+          soldAt: new Date('2026-05-30T10:00:00.000Z'),
+        }),
+      ]);
 
       const response = await app.inject({
         method: 'GET',
-        url: '/api/sales?page=1&limit=50',
+        url: '/api/sales?page=1&limit=1&search=gift',
       });
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.total).toBe(1);
-      expect(body.sales).toHaveLength(1);
-      expect(body.sales[0]).toEqual(
+      expect(body.orders).toEqual([
         expect.objectContaining({
-          id: 20,
-          cardProductName: 'Test Card',
-          orderStatus: 'confirmed',
+          orderKey: 'order:ORDER-10',
+          representativeSaleId: 20,
+          itemCount: 2,
+          productSubtotalCents: 325,
+          shippingCollectedCents: 149,
+          totalCents: 474,
+          lineItems: [
+            expect.objectContaining({ id: 20, lineItemType: 'sale' }),
+            expect.objectContaining({ id: 21, lineItemType: 'gift' }),
+          ],
         }),
-      );
+      ]);
     });
   });
 
   describe('GET /api/sales/stats', () => {
-    it('returns dashboard summary stats and mirrors totalListedCount to active listed quantity for now', async () => {
-      vi.mocked(db.select)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([
-              {
-                id: 1,
-                tcgplayerOrderId: 'ORDER-1',
-                salePriceCents: 300,
-                shippingCollectedCents: 149,
-              },
-              {
-                id: 2,
-                tcgplayerOrderId: 'ORDER-1',
-                salePriceCents: 201,
-                shippingCollectedCents: 149,
-              },
-              {
-                id: 3,
-                tcgplayerOrderId: null,
-                salePriceCents: 300,
-                shippingCollectedCents: 0,
-              },
-            ]),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([
-              {
-                activeListingCount: 7,
-              },
-            ]),
-          }),
-        } as any);
+    it('counts real orders and charges persisted shipping once in dashboard summary stats', async () => {
+      mockOrderRows([
+        orderLine({ id: 1, tcgplayerOrderId: 'ORDER-1', salePriceCents: 300 }),
+        orderLine({ id: 2, tcgplayerOrderId: 'ORDER-1', salePriceCents: 201 }),
+        orderLine({
+          id: 3,
+          tcgplayerOrderId: null,
+          salePriceCents: 300,
+          shippingCollectedCents: 0,
+        }),
+      ]);
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ activeListingCount: 7 }]),
+        }),
+      } as any);
 
       const response = await app.inject({
         method: 'GET',
@@ -1320,30 +1424,21 @@ describe('sales routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.body)).toEqual({
-        totalSales: 3,
-        totalRevenueCents: 950,
-        averageSaleCents: 317,
+        totalSales: 2,
+        totalRevenueCents: 1099,
+        averageSaleCents: 550,
         activeListingCount: 7,
         totalListedCount: 7,
       });
     });
 
     it('returns zero defaults when there are no sales or listed quantities', async () => {
-      vi.mocked(db.select)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([]),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([
-              {
-                activeListingCount: 0,
-              },
-            ]),
-          }),
-        } as any);
+      mockOrderRows([]);
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ activeListingCount: 0 }]),
+        }),
+      } as any);
 
       const response = await app.inject({
         method: 'GET',
@@ -1360,35 +1455,28 @@ describe('sales routes', () => {
       });
     });
 
-    it('filters gift lines out of the sales stats summary', async () => {
-      const salesWhere = vi.fn().mockResolvedValue([
-        {
+    it('retains gift-only orders without inflating order revenue', async () => {
+      mockOrderRows([
+        orderLine({
           id: 10,
           tcgplayerOrderId: 'ORDER-10',
           salePriceCents: 200,
           shippingCollectedCents: 0,
-        },
-        {
+        }),
+        orderLine({
           id: 11,
-          tcgplayerOrderId: 'ORDER-11',
-          salePriceCents: 500,
+          tcgplayerOrderId: 'GIFT-ONLY',
+          lineItemType: 'gift',
+          salePriceCents: 0,
           shippingCollectedCents: 0,
-        },
+          orderStatus: 'pending',
+        }),
       ]);
-
-      vi.mocked(db.select)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({ where: salesWhere }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([
-              {
-                activeListingCount: 4,
-              },
-            ]),
-          }),
-        } as any);
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ activeListingCount: 4 }]),
+        }),
+      } as any);
 
       const response = await app.inject({
         method: 'GET',
@@ -1396,11 +1484,10 @@ describe('sales routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(salesWhere).toHaveBeenCalledTimes(1);
       expect(JSON.parse(response.body)).toEqual({
         totalSales: 2,
-        totalRevenueCents: 700,
-        averageSaleCents: 350,
+        totalRevenueCents: 349,
+        averageSaleCents: 175,
         activeListingCount: 4,
         totalListedCount: 4,
       });
@@ -1408,25 +1495,36 @@ describe('sales routes', () => {
   });
 
   describe('GET /api/sales/pipeline', () => {
-    it('returns grouped pipeline counts and totals', async () => {
-      vi.mocked(db.select).mockReturnValueOnce({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            groupBy: vi.fn().mockResolvedValue([
-              {
-                status: 'pending',
-                count: 2,
-                totalCents: 725,
-              },
-              {
-                status: 'shipped',
-                count: 1,
-                totalCents: 400,
-              },
-            ]),
-          }),
+    it('returns grouped pipeline counts and totals by order', async () => {
+      mockOrderRows([
+        orderLine({
+          id: 1,
+          tcgplayerOrderId: 'PENDING-1',
+          orderStatus: 'pending',
+          salePriceCents: 250,
         }),
-      } as any);
+        orderLine({
+          id: 2,
+          tcgplayerOrderId: 'PENDING-1',
+          orderStatus: 'pending',
+          salePriceCents: 100,
+        }),
+        orderLine({
+          id: 3,
+          tcgplayerOrderId: 'SHIPPED-1',
+          orderStatus: 'shipped',
+          salePriceCents: 400,
+          shippingCollectedCents: 0,
+        }),
+        orderLine({
+          id: 4,
+          tcgplayerOrderId: 'GIFT-ONLY',
+          orderStatus: 'pending',
+          lineItemType: 'gift',
+          salePriceCents: 0,
+          shippingCollectedCents: 0,
+        }),
+      ]);
 
       const response = await app.inject({
         method: 'GET',
@@ -1436,29 +1534,31 @@ describe('sales routes', () => {
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.body)).toEqual({
         pipeline: [
-          {
-            status: 'pending',
-            count: 2,
-            totalCents: 725,
-          },
-          {
-            status: 'shipped',
-            count: 1,
-            totalCents: 400,
-          },
+          { status: 'pending', count: 2, totalCents: 499 },
+          { status: 'shipped', count: 1, totalCents: 549 },
         ],
       });
     });
   });
 
   describe('GET /api/sales/:id/history', () => {
-    it('returns status history entries', async () => {
+    it('returns status history entries from every line in the requested order', async () => {
+      const paid = orderLine({ id: 10, orderStatus: 'confirmed' });
+      const gift = orderLine({
+        id: 11,
+        cardId: 2,
+        lineItemType: 'gift',
+        salePriceCents: 0,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(paid, [paid, gift]);
       vi.mocked(db.select).mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
             orderBy: vi.fn().mockResolvedValue([
               {
                 id: 1,
+                saleId: 10,
                 previousStatus: null,
                 newStatus: 'pending',
                 source: 'manual',
@@ -1467,6 +1567,7 @@ describe('sales routes', () => {
               },
               {
                 id: 2,
+                saleId: 11,
                 previousStatus: 'pending',
                 newStatus: 'confirmed',
                 source: 'manual',
@@ -1486,20 +1587,15 @@ describe('sales routes', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.history).toHaveLength(2);
-      expect(body.history[0]).toEqual(
-        expect.objectContaining({
-          id: 1,
-          previousStatus: null,
-          newStatus: 'pending',
-        }),
-      );
-      expect(body.history[1]).toEqual(
-        expect.objectContaining({
-          id: 2,
-          previousStatus: 'pending',
-          newStatus: 'confirmed',
-          note: 'Payment cleared',
-        }),
+      expect(body.history).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ saleId: 10, newStatus: 'pending' }),
+          expect.objectContaining({
+            saleId: 11,
+            newStatus: 'confirmed',
+            note: 'Payment cleared',
+          }),
+        ]),
       );
     });
 
@@ -1518,50 +1614,43 @@ describe('sales routes', () => {
 
   describe('PATCH /api/sales/batch-status', () => {
     it('updates multiple sales when transitions are valid', async () => {
-      mockSaleSelectResult([
-        {
-          id: 1,
-          cardId: 1,
-          quantitySold: 1,
-          salePriceCents: 125,
-          buyerName: 'Buyer One',
-          tcgplayerOrderId: 'ORDER-1',
-          orderStatus: 'pending',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 1,
-          productName: 'Card One',
-        },
-      ]);
-      mockSaleSelectResult([
-        {
-          id: 2,
-          cardId: 2,
-          quantitySold: 1,
-          salePriceCents: 225,
-          buyerName: 'Buyer Two',
-          tcgplayerOrderId: 'ORDER-2',
-          orderStatus: 'pending',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 2,
-          productName: 'Card Two',
-        },
-      ]);
+      const paidOrderOne = orderLine({
+        id: 1,
+        cardId: 1,
+        salePriceCents: 125,
+        buyerName: 'Buyer One',
+        tcgplayerOrderId: 'ORDER-1',
+        orderStatus: 'pending',
+      });
+      const giftOrderOne = orderLine({
+        id: 12,
+        cardId: 12,
+        salePriceCents: 0,
+        lineItemType: 'gift',
+        buyerName: 'Buyer One',
+        tcgplayerOrderId: 'ORDER-1',
+        orderStatus: 'pending',
+      });
+      const paidOrderTwo = orderLine({
+        id: 2,
+        cardId: 2,
+        salePriceCents: 225,
+        buyerName: 'Buyer Two',
+        tcgplayerOrderId: 'ORDER-2',
+        orderStatus: 'pending',
+      });
+      mockOrderSaleRows(paidOrderOne, [paidOrderOne, giftOrderOne]);
+      mockOrderSaleRows(paidOrderTwo);
+      mockCardSelectResult([{ id: 1, productName: 'Card One' }]);
+      mockCardSelectResult([{ id: 2, productName: 'Card Two' }]);
 
       vi.mocked(db.update)
         .mockReturnValueOnce({
           set: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({
               returning: vi.fn().mockResolvedValue([
-                {
-                  id: 1,
-                  orderStatus: 'confirmed',
-                },
+                { id: 1, orderStatus: 'confirmed' },
+                { id: 12, orderStatus: 'confirmed' },
               ]),
             }),
           }),
@@ -1600,23 +1689,23 @@ describe('sales routes', () => {
     });
 
     it('returns mixed updated/skipped results for invalid and missing sales', async () => {
-      mockSaleSelectResult([
-        {
+      mockOrderSaleRows(
+        orderLine({
           id: 3,
+          tcgplayerOrderId: null,
           cardId: 3,
-          quantitySold: 1,
           orderStatus: 'confirmed',
-        },
-      ]);
-      mockSaleSelectResult([
-        {
+        }),
+      );
+      mockOrderSaleRows(
+        orderLine({
           id: 4,
+          tcgplayerOrderId: null,
           cardId: 4,
-          quantitySold: 1,
           orderStatus: 'cancelled',
-        },
-      ]);
-      mockSaleSelectResult([]);
+        }),
+      );
+      mockOrderSaleRows(null as any, []);
 
       vi.mocked(db.update).mockReturnValueOnce({
         set: vi.fn().mockReturnValue({
@@ -1672,35 +1761,29 @@ describe('sales routes', () => {
     });
 
     it('restores quantities for cancelled sales in batch', async () => {
-      mockSaleSelectResult([
-        {
+      mockOrderSaleRows(
+        orderLine({
           id: 20,
           cardId: 100,
+          tcgplayerOrderId: null,
           quantitySold: 1,
           orderStatus: 'confirmed',
-        },
-      ]);
+        }),
+      );
       mockCardSelectResult([
-        {
-          id: 100,
-          quantity: 0,
-          status: 'sold',
-        },
+        { id: 100, quantity: 0, status: 'sold', attentionReason: null },
       ]);
-      mockSaleSelectResult([
-        {
+      mockOrderSaleRows(
+        orderLine({
           id: 21,
           cardId: 101,
+          tcgplayerOrderId: null,
           quantitySold: 2,
           orderStatus: 'shipped',
-        },
-      ]);
+        }),
+      );
       mockCardSelectResult([
-        {
-          id: 101,
-          quantity: 3,
-          status: 'listed',
-        },
+        { id: 101, quantity: 3, status: 'listed', attentionReason: null },
       ]);
 
       const saleOneUpdateSet = vi.fn().mockReturnValue({
@@ -1776,40 +1859,26 @@ describe('sales routes', () => {
     });
 
     it('creates shipment placeholders when batch-updating to confirmed', async () => {
-      mockSaleSelectResult([
-        {
-          id: 50,
-          cardId: 50,
-          quantitySold: 1,
-          salePriceCents: 250,
-          buyerName: 'Batch Buyer One',
-          tcgplayerOrderId: 'ORDER-50',
-          orderStatus: 'pending',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 50,
-          productName: 'Batch Card One',
-        },
-      ]);
-      mockSaleSelectResult([
-        {
-          id: 51,
-          cardId: 51,
-          quantitySold: 1,
-          salePriceCents: 350,
-          buyerName: 'Batch Buyer Two',
-          tcgplayerOrderId: 'ORDER-51',
-          orderStatus: 'pending',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 51,
-          productName: 'Batch Card Two',
-        },
-      ]);
+      const firstOrder = orderLine({
+        id: 50,
+        cardId: 50,
+        salePriceCents: 250,
+        buyerName: 'Batch Buyer One',
+        tcgplayerOrderId: 'ORDER-50',
+        orderStatus: 'pending',
+      });
+      const secondOrder = orderLine({
+        id: 51,
+        cardId: 51,
+        salePriceCents: 350,
+        buyerName: 'Batch Buyer Two',
+        tcgplayerOrderId: 'ORDER-51',
+        orderStatus: 'pending',
+      });
+      mockOrderSaleRows(firstOrder);
+      mockOrderSaleRows(secondOrder);
+      mockCardSelectResult([{ id: 50, productName: 'Batch Card One' }]);
+      mockCardSelectResult([{ id: 51, productName: 'Batch Card Two' }]);
 
       vi.mocked(db.update)
         .mockReturnValueOnce({
@@ -1890,40 +1959,26 @@ describe('sales routes', () => {
     });
 
     it('writes one history row per updated sale and includes optional note', async () => {
-      mockSaleSelectResult([
-        {
-          id: 30,
-          cardId: 30,
-          quantitySold: 1,
-          salePriceCents: 175,
-          buyerName: 'Buyer Thirty',
-          tcgplayerOrderId: 'ORDER-30',
-          orderStatus: 'pending',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 30,
-          productName: 'Card Thirty',
-        },
-      ]);
-      mockSaleSelectResult([
-        {
-          id: 31,
-          cardId: 31,
-          quantitySold: 1,
-          salePriceCents: 275,
-          buyerName: 'Buyer Thirty One',
-          tcgplayerOrderId: 'ORDER-31',
-          orderStatus: 'pending',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 31,
-          productName: 'Card Thirty One',
-        },
-      ]);
+      const firstOrder = orderLine({
+        id: 30,
+        cardId: 30,
+        salePriceCents: 175,
+        buyerName: 'Buyer Thirty',
+        tcgplayerOrderId: 'ORDER-30',
+        orderStatus: 'pending',
+      });
+      const secondOrder = orderLine({
+        id: 31,
+        cardId: 31,
+        salePriceCents: 275,
+        buyerName: 'Buyer Thirty One',
+        tcgplayerOrderId: 'ORDER-31',
+        orderStatus: 'pending',
+      });
+      mockOrderSaleRows(firstOrder);
+      mockOrderSaleRows(secondOrder);
+      mockCardSelectResult([{ id: 30, productName: 'Card Thirty' }]);
+      mockCardSelectResult([{ id: 31, productName: 'Card Thirty One' }]);
 
       vi.mocked(db.update)
         .mockReturnValueOnce({
@@ -1966,8 +2021,7 @@ describe('sales routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(historyValues).toHaveBeenCalledTimes(2);
-      expect(historyValues).toHaveBeenNthCalledWith(
-        1,
+      expect(historyValues).toHaveBeenNthCalledWith(1, [
         expect.objectContaining({
           saleId: 30,
           previousStatus: 'pending',
@@ -1975,9 +2029,8 @@ describe('sales routes', () => {
           source: 'manual',
           note: 'Batch update',
         }),
-      );
-      expect(historyValues).toHaveBeenNthCalledWith(
-        2,
+      ]);
+      expect(historyValues).toHaveBeenNthCalledWith(2, [
         expect.objectContaining({
           saleId: 31,
           previousStatus: 'pending',
@@ -1985,7 +2038,7 @@ describe('sales routes', () => {
           source: 'manual',
           note: 'Batch update',
         }),
-      );
+      ]);
     });
   });
 
@@ -2013,20 +2066,16 @@ describe('sales routes', () => {
 
   describe('PATCH /api/sales/:id', () => {
     it('updates sale metadata fields', async () => {
-      mockSaleSelectResult([
-        {
-          id: 1,
-          cardId: 1,
-          quantitySold: 1,
-          orderStatus: 'confirmed',
-        },
-      ]);
+      const sale = orderLine({
+        id: 1,
+        cardId: 1,
+        tcgplayerOrderId: null,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
       mockCardSelectResult([
-        {
-          id: 1,
-          productName: 'Updated Sale Card',
-          setName: 'Origins',
-        },
+        { id: 1, productName: 'Updated Sale Card', setName: 'Origins' },
       ]);
 
       vi.mocked(db.update).mockReturnValue({
@@ -2076,14 +2125,14 @@ describe('sales routes', () => {
     });
 
     it('rejects invalid backward transitions', async () => {
-      mockSaleSelectResult([
-        {
-          id: 2,
-          cardId: 2,
-          quantitySold: 1,
-          orderStatus: 'shipped',
-        },
-      ]);
+      const sale = orderLine({
+        id: 2,
+        cardId: 2,
+        tcgplayerOrderId: null,
+        orderStatus: 'shipped',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
 
       const response = await app.inject({
         method: 'PATCH',
@@ -2100,14 +2149,14 @@ describe('sales routes', () => {
     });
 
     it('rejects transitions from terminal statuses', async () => {
-      mockSaleSelectResult([
-        {
-          id: 3,
-          cardId: 3,
-          quantitySold: 1,
-          orderStatus: 'delivered',
-        },
-      ]);
+      const sale = orderLine({
+        id: 3,
+        cardId: 3,
+        tcgplayerOrderId: null,
+        orderStatus: 'delivered',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
 
       const response = await app.inject({
         method: 'PATCH',
@@ -2124,29 +2173,19 @@ describe('sales routes', () => {
     });
 
     it('creates shipment placeholder when patching sale to confirmed', async () => {
-      mockSaleSelectResult([
-        {
-          id: 40,
-          cardId: 40,
-          quantitySold: 1,
-          salePriceCents: 425,
-          buyerName: 'Patch Buyer',
-          tcgplayerOrderId: 'ORDER-40',
-          orderStatus: 'pending',
-        },
-      ]);
+      const sale = orderLine({
+        id: 40,
+        cardId: 40,
+        salePriceCents: 425,
+        buyerName: 'Patch Buyer',
+        tcgplayerOrderId: 'ORDER-40',
+        orderStatus: 'pending',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
+      mockCardSelectResult([{ id: 40, productName: 'Patch Card' }]);
       mockCardSelectResult([
-        {
-          id: 40,
-          productName: 'Patch Card',
-        },
-      ]);
-      mockCardSelectResult([
-        {
-          id: 40,
-          productName: 'Patch Card',
-          setName: 'Origins',
-        },
+        { id: 40, productName: 'Patch Card', setName: 'Origins' },
       ]);
 
       vi.mocked(db.update).mockReturnValue({
@@ -2191,20 +2230,16 @@ describe('sales routes', () => {
     });
 
     it('does not create shipment when patching to shipped', async () => {
-      mockSaleSelectResult([
-        {
-          id: 41,
-          cardId: 41,
-          quantitySold: 1,
-          orderStatus: 'confirmed',
-        },
-      ]);
+      const sale = orderLine({
+        id: 41,
+        cardId: 41,
+        tcgplayerOrderId: null,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
       mockCardSelectResult([
-        {
-          id: 41,
-          productName: 'Ship Card',
-          setName: 'Origins',
-        },
+        { id: 41, productName: 'Ship Card', setName: 'Origins' },
       ]);
 
       vi.mocked(db.update).mockReturnValue({
@@ -2235,20 +2270,16 @@ describe('sales routes', () => {
     });
 
     it('writes status history row on valid status transitions', async () => {
-      mockSaleSelectResult([
-        {
-          id: 4,
-          cardId: 4,
-          quantitySold: 1,
-          orderStatus: 'confirmed',
-        },
-      ]);
+      const sale = orderLine({
+        id: 4,
+        cardId: 4,
+        tcgplayerOrderId: null,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
       mockCardSelectResult([
-        {
-          id: 4,
-          productName: 'History Card',
-          setName: 'Origins',
-        },
+        { id: 4, productName: 'History Card', setName: 'Origins' },
       ]);
 
       vi.mocked(db.update).mockReturnValue({
@@ -2274,58 +2305,32 @@ describe('sales routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(historyValues).toHaveBeenCalledWith(
+      expect(historyValues).toHaveBeenCalledWith([
         expect.objectContaining({
           saleId: 4,
           previousStatus: 'confirmed',
           newStatus: 'shipped',
           source: 'manual',
         }),
-      );
+      ]);
     });
 
     it('restores quantity and relists card when cancelling a fully sold sale', async () => {
-      vi.mocked(db.select)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([
-                {
-                  id: 5,
-                  cardId: 9,
-                  quantitySold: 2,
-                  orderStatus: 'confirmed',
-                },
-              ]),
-            }),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([
-                {
-                  id: 9,
-                  quantity: 0,
-                  status: 'sold',
-                },
-              ]),
-            }),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([
-                {
-                  id: 9,
-                  productName: 'Cancelled Card',
-                  setName: 'Origins',
-                },
-              ]),
-            }),
-          }),
-        } as any);
+      const sale = orderLine({
+        id: 5,
+        cardId: 9,
+        tcgplayerOrderId: null,
+        quantitySold: 2,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
+      mockCardSelectResult([
+        { id: 9, quantity: 0, status: 'sold', attentionReason: null },
+      ]);
+      mockCardSelectResult([
+        { id: 9, productName: 'Cancelled Card', setName: 'Origins' },
+      ]);
 
       const saleUpdateSet = vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
@@ -2367,14 +2372,14 @@ describe('sales routes', () => {
     });
 
     it('cancellation succeeds when sale has no linked card id', async () => {
-      mockSaleSelectResult([
-        {
-          id: 6,
-          cardId: null,
-          quantitySold: 1,
-          orderStatus: 'confirmed',
-        },
-      ]);
+      const sale = orderLine({
+        id: 6,
+        cardId: null,
+        tcgplayerOrderId: null,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
 
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -2404,35 +2409,16 @@ describe('sales routes', () => {
     });
 
     it('cancellation succeeds when linked card is missing', async () => {
-      vi.mocked(db.select)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([
-                {
-                  id: 7,
-                  cardId: 99,
-                  quantitySold: 1,
-                  orderStatus: 'confirmed',
-                },
-              ]),
-            }),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([]),
-            }),
-          }),
-        } as any)
-        .mockReturnValueOnce({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([]),
-            }),
-          }),
-        } as any);
+      const sale = orderLine({
+        id: 7,
+        cardId: 99,
+        tcgplayerOrderId: null,
+        orderStatus: 'confirmed',
+      });
+      mockOrderSaleRows(sale);
+      mockOrderSaleRows(sale);
+      mockCardSelectResult([]);
+      mockCardSelectResult([]);
 
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({

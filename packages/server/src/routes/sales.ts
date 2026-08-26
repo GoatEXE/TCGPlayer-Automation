@@ -1,14 +1,4 @@
-import {
-  asc,
-  desc,
-  eq,
-  getTableColumns,
-  gte,
-  ilike,
-  lte,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import {
@@ -18,9 +8,15 @@ import {
 } from '../db/schema/cards.js';
 import { saleStatusHistory } from '../db/schema/sale-status-history.js';
 import { sales } from '../db/schema/sales.js';
+import { shipments } from '../db/schema/shipments.js';
 import { getOrCreateExpenseSettings } from '../lib/expenses/index.js';
 import { sendSaleConfirmedAlert } from '../lib/notifications/telegram.js';
-import { isValidTransition } from '../lib/sales/status-machine.js';
+import {
+  OrderTransitionError,
+  getOrderSaleRows,
+  transitionOrderStatus,
+} from '../lib/sales/order-status.js';
+import { buildOrderSummaries, type OrderLineRow } from '../lib/sales/orders.js';
 import { createShipmentOnConfirm } from '../lib/shipments/index.js';
 
 type OrderStatus =
@@ -160,80 +156,6 @@ function getNextGiftCardStatus(remainingQuantity: number) {
   return remainingQuantity === 0 ? 'gifted' : 'gift';
 }
 
-function buildPaidOrderSummaries(
-  saleRows: Array<{
-    id: number;
-    tcgplayerOrderId: string | null;
-    salePriceCents: number;
-    shippingCollectedCents: number;
-  }>,
-) {
-  const orders = new Map<
-    string,
-    {
-      productRevenueCents: number;
-      shippingCollectedCents: number;
-    }
-  >();
-
-  for (const sale of saleRows) {
-    const key = sale.tcgplayerOrderId ?? `sale:${sale.id}`;
-    const existing = orders.get(key);
-
-    if (existing) {
-      existing.productRevenueCents += sale.salePriceCents;
-      existing.shippingCollectedCents = Math.max(
-        existing.shippingCollectedCents,
-        sale.shippingCollectedCents,
-      );
-      continue;
-    }
-
-    orders.set(key, {
-      productRevenueCents: sale.salePriceCents,
-      shippingCollectedCents: sale.shippingCollectedCents,
-    });
-  }
-
-  return [...orders.values()];
-}
-
-function getRestoredCardStateForCancelledLine(params: {
-  lineItemType: SaleLineItemType;
-  linkedCardStatus: Card['status'];
-  restoredQuantity: number;
-  linkedCardAttentionReason: Card['attentionReason'];
-}): {
-  status: Card['status'];
-  attentionReason: Card['attentionReason'];
-} {
-  const {
-    lineItemType,
-    linkedCardStatus,
-    restoredQuantity,
-    linkedCardAttentionReason,
-  } = params;
-
-  if (lineItemType === 'gift') {
-    return {
-      status: restoredQuantity > 0 ? 'gift' : linkedCardStatus,
-      attentionReason: null,
-    };
-  }
-
-  if (linkedCardStatus === 'sold' && restoredQuantity > 0) {
-    return {
-      status: 'listed',
-      attentionReason: null,
-    };
-  }
-
-  return {
-    status: linkedCardStatus,
-    attentionReason: linkedCardAttentionReason,
-  };
-}
-
 export async function salesRoutes(fastify: FastifyInstance) {
   async function getCardById(cardId: number | null | undefined) {
     if (cardId === null || cardId === undefined) {
@@ -257,6 +179,40 @@ export async function salesRoutes(fastify: FastifyInstance) {
   async function getDefaultShippingCollectedCents() {
     const settings = await getOrCreateExpenseSettings(db);
     return settings.defaultShippingCollectedCents;
+  }
+
+  async function getOrderSummaries() {
+    const rows = (await db
+      .select({
+        ...getTableColumns(sales),
+        cardProductName: cards.productName,
+        cardSetName: cards.setName,
+        cardCondition: cards.condition,
+        shipmentId: shipments.id,
+        shipmentSaleId: shipments.saleId,
+        shipmentCarrier: shipments.carrier,
+        shipmentTrackingNumber: shipments.trackingNumber,
+        shipmentShippedAt: shipments.shippedAt,
+        shipmentDeliveredAt: shipments.deliveredAt,
+        shipmentNotes: shipments.notes,
+      })
+      .from(sales)
+      .leftJoin(cards, eq(sales.cardId, cards.id))
+      .leftJoin(shipments, eq(shipments.saleId, sales.id))
+      .orderBy(desc(sales.soldAt), desc(sales.id))) as OrderLineRow[];
+
+    const unpricedOrders = buildOrderSummaries(rows);
+    const needsShippingFallback = unpricedOrders.some(
+      (order) =>
+        order.lineItems.some((lineItem) => lineItem.lineItemType === 'sale') &&
+        order.shippingCollectedCents === 0 &&
+        order.productSubtotalCents < 500,
+    );
+    const defaultShippingCollectedCents = needsShippingFallback
+      ? await getDefaultShippingCollectedCents()
+      : 0;
+
+    return buildOrderSummaries(rows, defaultShippingCollectedCents);
   }
 
   function serializeSaleResponse(
@@ -324,250 +280,267 @@ export async function salesRoutes(fastify: FastifyInstance) {
   }
 
   // POST /bulk - Record a multi-line TCGplayer order atomically
-  fastify.post<{ Body: BulkRecordSaleBody }>('/bulk', async (request, reply) => {
-    const {
-      tcgplayerOrderId,
-      lines,
-      shippingCollectedCents,
-      buyerName,
-      orderStatus = 'confirmed',
-      soldAt,
-      notes,
-      applyEstimatedExpenses,
-    } = request.body;
+  fastify.post<{ Body: BulkRecordSaleBody }>(
+    '/bulk',
+    async (request, reply) => {
+      const {
+        tcgplayerOrderId,
+        lines,
+        shippingCollectedCents,
+        buyerName,
+        orderStatus = 'confirmed',
+        soldAt,
+        notes,
+        applyEstimatedExpenses,
+      } = request.body;
 
-    const normalizedOrderId = normalizeOptionalOrderId(tcgplayerOrderId);
-    if (!normalizedOrderId) {
-      return reply.code(400).send({
-        error: 'tcgplayerOrderId is required for bulk order recording',
-      });
-    }
+      const normalizedOrderId = normalizeOptionalOrderId(tcgplayerOrderId);
+      if (!normalizedOrderId) {
+        return reply.code(400).send({
+          error: 'tcgplayerOrderId is required for bulk order recording',
+        });
+      }
 
-    if (!Array.isArray(lines) || lines.length === 0) {
-      return reply.code(400).send({
-        error: 'lines must be a non-empty array',
-      });
-    }
+      if (!Array.isArray(lines) || lines.length === 0) {
+        return reply.code(400).send({
+          error: 'lines must be a non-empty array',
+        });
+      }
 
-    if (!validOrderStatuses.includes(orderStatus)) {
-      return reply.code(400).send({ error: 'Invalid orderStatus' });
-    }
+      if (!validOrderStatuses.includes(orderStatus)) {
+        return reply.code(400).send({ error: 'Invalid orderStatus' });
+      }
 
-    if (
-      applyEstimatedExpenses !== undefined &&
-      typeof applyEstimatedExpenses !== 'boolean'
-    ) {
-      return reply
-        .code(400)
-        .send({ error: 'applyEstimatedExpenses must be a boolean' });
-    }
+      if (
+        applyEstimatedExpenses !== undefined &&
+        typeof applyEstimatedExpenses !== 'boolean'
+      ) {
+        return reply
+          .code(400)
+          .send({ error: 'applyEstimatedExpenses must be a boolean' });
+      }
 
-    if (
-      shippingCollectedCents !== undefined &&
-      !isNonNegativeInteger(shippingCollectedCents)
-    ) {
-      return reply.code(400).send({
-        error: 'shippingCollectedCents must be a non-negative integer',
-      });
-    }
+      if (
+        shippingCollectedCents !== undefined &&
+        !isNonNegativeInteger(shippingCollectedCents)
+      ) {
+        return reply.code(400).send({
+          error: 'shippingCollectedCents must be a non-negative integer',
+        });
+      }
 
-    const soldAtDate = soldAt ? parseDate(soldAt) : new Date();
-    if (!soldAtDate) {
-      return reply.code(400).send({ error: 'Invalid soldAt date' });
-    }
+      const soldAtDate = soldAt ? parseDate(soldAt) : new Date();
+      if (!soldAtDate) {
+        return reply.code(400).send({ error: 'Invalid soldAt date' });
+      }
 
-    try {
-      const resolvedShippingCollectedCents =
-        shippingCollectedCents ?? (await getDefaultShippingCollectedCents());
-      const insertedSales: Array<{
-        id: number;
-        cardId: number | null;
-        tcgplayerOrderId: string | null;
-        quantitySold: number;
-        lineItemType: SaleLineItemType;
-        salePriceCents: number;
-        shippingCollectedCents: number;
-        buyerName: string | null;
-        orderStatus: OrderStatus;
-        soldAt: Date;
-        notes: string | null;
-        createdAt?: Date;
-        updatedAt: Date;
-        cardProductName: string | null;
-        cardSetName: string | null;
-      }> = [];
+      try {
+        const hasPaidLine = lines.some((line) => line?.lineItemType === 'sale');
+        const resolvedShippingCollectedCents = hasPaidLine
+          ? (shippingCollectedCents ??
+            (await getDefaultShippingCollectedCents()))
+          : 0;
+        const insertedSales: Array<{
+          id: number;
+          cardId: number | null;
+          tcgplayerOrderId: string | null;
+          quantitySold: number;
+          lineItemType: SaleLineItemType;
+          salePriceCents: number;
+          shippingCollectedCents: number;
+          buyerName: string | null;
+          orderStatus: OrderStatus;
+          soldAt: Date;
+          notes: string | null;
+          createdAt?: Date;
+          updatedAt: Date;
+          cardProductName: string | null;
+          cardSetName: string | null;
+        }> = [];
 
-      await db.transaction(async (tx) => {
-        for (const line of lines) {
-          if (!isSaleLineItemType(line?.lineItemType)) {
-            throw new SalesRouteError(
-              400,
-              'lineItemType must be either "sale" or "gift"',
-            );
-          }
-
-          if (!Number.isInteger(line.cardId) || line.cardId <= 0) {
-            throw new SalesRouteError(400, 'cardId must be a positive integer');
-          }
-
-          if (!Number.isInteger(line.quantitySold) || line.quantitySold <= 0) {
-            throw new SalesRouteError(
-              400,
-              'quantitySold must be a positive integer',
-            );
-          }
-
-          if (!Number.isInteger(line.salePriceCents) || line.salePriceCents < 0) {
-            throw new SalesRouteError(
-              400,
-              'salePriceCents must be a non-negative integer',
-            );
-          }
-
-          const [card] = await tx
-            .select()
-            .from(cards)
-            .where(eq(cards.id, line.cardId))
-            .limit(1);
-
-          if (!card) {
-            throw new SalesRouteError(404, `Card ${line.cardId} not found`);
-          }
-
-          if (line.quantitySold > card.quantity) {
-            throw new SalesRouteError(
-              400,
-              'quantitySold cannot exceed available card quantity',
-            );
-          }
-
-          if (line.lineItemType === 'gift') {
-            if (card.status !== 'gift') {
+        await db.transaction(async (tx) => {
+          for (const line of lines) {
+            if (!isSaleLineItemType(line?.lineItemType)) {
               throw new SalesRouteError(
                 400,
-                'Gift lines require cards with status gift',
+                'lineItemType must be either "sale" or "gift"',
               );
             }
 
-            if (line.salePriceCents !== 0) {
+            if (!Number.isInteger(line.cardId) || line.cardId <= 0) {
               throw new SalesRouteError(
                 400,
-                'Gift lines must have salePriceCents of 0',
-              );
-            }
-          }
-
-          if (line.lineItemType === 'sale') {
-            if (!canRecordPaidSaleForCard(card)) {
-              throw new SalesRouteError(
-                400,
-                'Paid lines require cards with status listed or listed-origin needs_attention',
+                'cardId must be a positive integer',
               );
             }
 
-            if (line.salePriceCents <= 0) {
+            if (
+              !Number.isInteger(line.quantitySold) ||
+              line.quantitySold <= 0
+            ) {
               throw new SalesRouteError(
                 400,
-                'Paid lines must have salePriceCents greater than 0',
+                'quantitySold must be a positive integer',
               );
             }
-          }
 
-          const remainingQuantity = card.quantity - line.quantitySold;
-          const nextCardState =
-            line.lineItemType === 'gift'
-              ? {
-                  status: getNextGiftCardStatus(remainingQuantity),
-                  attentionReason: null,
-                }
-              : getNextPaidCardStatus({
-                  status: card.status,
-                  quantity: remainingQuantity,
-                  attentionReason: card.attentionReason,
-                });
+            if (
+              !Number.isInteger(line.salePriceCents) ||
+              line.salePriceCents < 0
+            ) {
+              throw new SalesRouteError(
+                400,
+                'salePriceCents must be a non-negative integer',
+              );
+            }
 
-          await tx
-            .update(cards)
-            .set({
-              quantity: remainingQuantity,
-              status: nextCardState.status as any,
-              attentionReason: nextCardState.attentionReason,
-              updatedAt: new Date(),
-            })
-            .where(eq(cards.id, card.id));
+            const [card] = await tx
+              .select()
+              .from(cards)
+              .where(eq(cards.id, line.cardId))
+              .limit(1);
 
-          const [sale] = await tx
-            .insert(sales)
-            .values({
-              cardId: line.cardId,
-              quantitySold: line.quantitySold,
-              lineItemType: line.lineItemType,
-              salePriceCents: line.salePriceCents,
-              shippingCollectedCents: resolvedShippingCollectedCents,
-              buyerName: buyerName ?? null,
-              tcgplayerOrderId: normalizedOrderId,
-              orderStatus,
-              soldAt: soldAtDate,
-              notes: notes ?? null,
-              updatedAt: new Date(),
-            })
-            .returning();
+            if (!card) {
+              throw new SalesRouteError(404, `Card ${line.cardId} not found`);
+            }
 
-          await tx.insert(saleStatusHistory).values({
-            saleId: sale.id,
-            previousStatus: null,
-            newStatus: orderStatus,
-            source: 'manual',
-          });
+            if (line.quantitySold > card.quantity) {
+              throw new SalesRouteError(
+                400,
+                'quantitySold cannot exceed available card quantity',
+              );
+            }
 
-          if (orderStatus === 'confirmed') {
-            await createShipmentOnConfirm(tx as any, sale.id);
-          }
+            if (line.lineItemType === 'gift') {
+              if (card.status !== 'gift') {
+                throw new SalesRouteError(
+                  400,
+                  'Gift lines require cards with status gift',
+                );
+              }
 
-          insertedSales.push(
-            serializeSaleResponse(
-              {
-                ...sale,
-                orderStatus,
+              if (line.salePriceCents !== 0) {
+                throw new SalesRouteError(
+                  400,
+                  'Gift lines must have salePriceCents of 0',
+                );
+              }
+            }
+
+            if (line.lineItemType === 'sale') {
+              if (!canRecordPaidSaleForCard(card)) {
+                throw new SalesRouteError(
+                  400,
+                  'Paid lines require cards with status listed or listed-origin needs_attention',
+                );
+              }
+
+              if (line.salePriceCents <= 0) {
+                throw new SalesRouteError(
+                  400,
+                  'Paid lines must have salePriceCents greater than 0',
+                );
+              }
+            }
+
+            const remainingQuantity = card.quantity - line.quantitySold;
+            const nextCardState =
+              line.lineItemType === 'gift'
+                ? {
+                    status: getNextGiftCardStatus(remainingQuantity),
+                    attentionReason: null,
+                  }
+                : getNextPaidCardStatus({
+                    status: card.status,
+                    quantity: remainingQuantity,
+                    attentionReason: card.attentionReason,
+                  });
+
+            await tx
+              .update(cards)
+              .set({
+                quantity: remainingQuantity,
+                status: nextCardState.status as any,
+                attentionReason: nextCardState.attentionReason,
+                updatedAt: new Date(),
+              })
+              .where(eq(cards.id, card.id));
+
+            const [sale] = await tx
+              .insert(sales)
+              .values({
+                cardId: line.cardId,
+                quantitySold: line.quantitySold,
                 lineItemType: line.lineItemType,
+                salePriceCents: line.salePriceCents,
+                shippingCollectedCents: resolvedShippingCollectedCents,
+                buyerName: buyerName ?? null,
+                tcgplayerOrderId: normalizedOrderId,
+                orderStatus,
                 soldAt: soldAtDate,
-              },
-              card,
-            ),
-          );
-        }
-      });
+                notes: notes ?? null,
+                updatedAt: new Date(),
+              })
+              .returning();
 
-      if (orderStatus === 'confirmed') {
-        for (const sale of insertedSales) {
-          if (sale.lineItemType !== 'sale') {
-            continue;
+            await tx.insert(saleStatusHistory).values({
+              saleId: sale.id,
+              previousStatus: null,
+              newStatus: orderStatus,
+              source: 'manual',
+            });
+
+            if (orderStatus === 'confirmed') {
+              await createShipmentOnConfirm(tx as any, sale.id);
+            }
+
+            insertedSales.push(
+              serializeSaleResponse(
+                {
+                  ...sale,
+                  orderStatus,
+                  lineItemType: line.lineItemType,
+                  soldAt: soldAtDate,
+                },
+                card,
+              ),
+            );
           }
+        });
 
-          await sendSaleConfirmedAlertBestEffort(
-            {
-              id: sale.id,
-              cardId: sale.cardId,
-              quantitySold: sale.quantitySold,
-              salePriceCents: sale.salePriceCents,
-              buyerName: sale.buyerName,
-              tcgplayerOrderId: sale.tcgplayerOrderId,
-            },
-            sale.cardProductName,
-          );
+        if (orderStatus === 'confirmed') {
+          for (const sale of insertedSales) {
+            if (sale.lineItemType !== 'sale') {
+              continue;
+            }
+
+            await sendSaleConfirmedAlertBestEffort(
+              {
+                id: sale.id,
+                cardId: sale.cardId,
+                quantitySold: sale.quantitySold,
+                salePriceCents: sale.salePriceCents,
+                buyerName: sale.buyerName,
+                tcgplayerOrderId: sale.tcgplayerOrderId,
+              },
+              sale.cardProductName,
+            );
+          }
         }
-      }
 
-      return reply.code(201).send({ sales: insertedSales });
-    } catch (error) {
-      if (error instanceof SalesRouteError) {
-        return reply.code(error.statusCode).send({ error: error.message });
-      }
+        return reply.code(201).send({ sales: insertedSales });
+      } catch (error) {
+        if (error instanceof SalesRouteError) {
+          return reply.code(error.statusCode).send({ error: error.message });
+        }
 
-      fastify.log.error(error);
-      return reply.code(500).send({ error: 'Failed to record bulk sale order' });
-    }
-  });
+        fastify.log.error(error);
+        return reply
+          .code(500)
+          .send({ error: 'Failed to record bulk sale order' });
+      }
+    },
+  );
 
   // POST / - Record a sale
   fastify.post<{ Body: RecordSaleBody }>('/', async (request, reply) => {
@@ -714,16 +687,14 @@ export async function salesRoutes(fastify: FastifyInstance) {
         );
       }
 
-      return reply
-        .code(201)
-        .send(serializeSaleResponse(sale, card));
+      return reply.code(201).send(serializeSaleResponse(sale, card));
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: 'Failed to record sale' });
     }
   });
 
-  // GET / - List sales
+  // GET / - List an order-facing facade backed by the legacy sale-line table.
   fastify.get<{
     Querystring: {
       page?: string;
@@ -742,13 +713,11 @@ export async function salesRoutes(fastify: FastifyInstance) {
       dateFrom,
       dateTo,
     } = request.query;
-
     const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
     const limitNum = Math.min(
       Math.max(Number.parseInt(limit, 10) || 50, 1),
       200,
     );
-    const offset = (pageNum - 1) * limitNum;
 
     if (
       orderStatus &&
@@ -757,70 +726,44 @@ export async function salesRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'Invalid orderStatus' });
     }
 
-    const conditions: any[] = [eq(sales.lineItemType, 'sale')];
-
-    if (orderStatus) {
-      conditions.push(eq(sales.orderStatus, orderStatus as OrderStatus));
+    const fromDate = dateFrom ? parseDate(dateFrom) : null;
+    if (dateFrom && !fromDate) {
+      return reply.code(400).send({ error: 'Invalid dateFrom' });
     }
-
-    if (search) {
-      conditions.push(
-        or(
-          ilike(sales.buyerName, `%${search}%`),
-          ilike(sales.tcgplayerOrderId, `%${search}%`),
-          ilike(cards.productName, `%${search}%`),
-        ),
-      );
-    }
-
-    if (dateFrom) {
-      const fromDate = parseDate(dateFrom);
-      if (!fromDate) {
-        return reply.code(400).send({ error: 'Invalid dateFrom' });
-      }
-      conditions.push(gte(sales.soldAt, fromDate));
-    }
-
-    if (dateTo) {
-      const toDate = parseDate(dateTo);
-      if (!toDate) {
-        return reply.code(400).send({ error: 'Invalid dateTo' });
-      }
-      conditions.push(lte(sales.soldAt, toDate));
+    const toDate = dateTo ? parseDate(dateTo) : null;
+    if (dateTo && !toDate) {
+      return reply.code(400).send({ error: 'Invalid dateTo' });
     }
 
     try {
-      let countQuery: any = db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(sales)
-        .leftJoin(cards, eq(sales.cardId, cards.id));
+      const normalizedSearch = search?.trim().toLocaleLowerCase();
+      const orders = (await getOrderSummaries())
+        .filter((order) => {
+          if (orderStatus && order.orderStatus !== orderStatus) return false;
+          if (fromDate && order.soldAt < fromDate) return false;
+          if (toDate && order.soldAt > toDate) return false;
+          if (!normalizedSearch) return true;
 
-      if (conditions.length > 0) {
-        countQuery = countQuery.where(sql`${sql.join(conditions, sql` AND `)}`);
-      }
-
-      const [{ count: total }] = await countQuery;
-
-      let query: any = db
-        .select({
-          ...getTableColumns(sales),
-          cardProductName: cards.productName,
-          cardSetName: cards.setName,
+          return [
+            order.tcgplayerOrderId,
+            order.buyerName,
+            ...order.lineItems.flatMap((line) => [
+              line.cardProductName,
+              line.cardSetName,
+            ]),
+          ].some((value) =>
+            value?.toLocaleLowerCase().includes(normalizedSearch),
+          );
         })
-        .from(sales)
-        .leftJoin(cards, eq(sales.cardId, cards.id));
-
-      if (conditions.length > 0) {
-        query = query.where(sql`${sql.join(conditions, sql` AND `)}`);
-      }
-
-      const rows = await query
-        .orderBy(desc(sales.soldAt))
-        .limit(limitNum)
-        .offset(offset);
+        .sort((left, right) => right.soldAt.getTime() - left.soldAt.getTime());
+      const total = orders.length;
+      const pagedOrders = orders.slice(
+        (pageNum - 1) * limitNum,
+        pageNum * limitNum,
+      );
 
       return reply.send({
-        sales: rows,
+        orders: pagedOrders,
         total,
         page: pageNum,
         limit: limitNum,
@@ -831,24 +774,13 @@ export async function salesRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /stats - Dashboard summary statistics
-  fastify.get('/stats', async (request, reply) => {
+  // GET /stats - dashboard figures use one shipping amount per order, not line.
+  fastify.get('/stats', async (_request, reply) => {
     try {
-      const saleRows = await db
-        .select({
-          id: sales.id,
-          tcgplayerOrderId: sales.tcgplayerOrderId,
-          salePriceCents: sales.salePriceCents,
-          shippingCollectedCents: sales.shippingCollectedCents,
-        })
-        .from(sales)
-        .where(eq(sales.lineItemType, 'sale'));
-
-      const paidOrders = buildPaidOrderSummaries(saleRows);
-      const totalSales = saleRows.length;
-      const totalRevenueCents = paidOrders.reduce(
-        (sum, order) =>
-          sum + order.productRevenueCents + order.shippingCollectedCents,
+      const orderSummaries = await getOrderSummaries();
+      const totalSales = orderSummaries.length;
+      const totalRevenueCents = orderSummaries.reduce(
+        (sum, order) => sum + order.totalCents,
         0,
       );
       const averageSaleCents =
@@ -860,7 +792,6 @@ export async function salesRoutes(fastify: FastifyInstance) {
         })
         .from(cards)
         .where(eq(cards.status, 'listed'));
-
       const activeListingCount = listedSummary?.activeListingCount ?? 0;
 
       return reply.send({
@@ -868,7 +799,6 @@ export async function salesRoutes(fastify: FastifyInstance) {
         totalRevenueCents,
         averageSaleCents,
         activeListingCount,
-        // For now, total listed count uses the same quantity-based semantics as active listings.
         totalListedCount: activeListingCount,
       });
     } catch (error) {
@@ -877,29 +807,32 @@ export async function salesRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /pipeline - Order pipeline summary by status
-  fastify.get('/pipeline', async (request, reply) => {
+  // GET /pipeline - count and total whole orders, including gift line items.
+  fastify.get('/pipeline', async (_request, reply) => {
     try {
+      const byStatus = new Map<
+        OrderStatus,
+        { status: OrderStatus; count: number; totalCents: number }
+      >();
+      for (const order of await getOrderSummaries()) {
+        const entry = byStatus.get(order.orderStatus) ?? {
+          status: order.orderStatus,
+          count: 0,
+          totalCents: 0,
+        };
+        entry.count += 1;
+        entry.totalCents += order.totalCents;
+        byStatus.set(order.orderStatus, entry);
+      }
+
       const statusOrder = new Map(
         validOrderStatuses.map((status, index) => [status, index]),
       );
-
-      const pipeline = await db
-        .select({
-          status: sales.orderStatus,
-          count: sql<number>`count(*)::int`,
-          totalCents: sql<number>`coalesce(sum(${sales.salePriceCents}), 0)::int`,
-        })
-        .from(sales)
-        .where(eq(sales.lineItemType, 'sale'))
-        .groupBy(sales.orderStatus);
-
-      pipeline.sort(
+      const pipeline = [...byStatus.values()].sort(
         (left, right) =>
           (statusOrder.get(left.status) ?? Number.MAX_SAFE_INTEGER) -
           (statusOrder.get(right.status) ?? Number.MAX_SAFE_INTEGER),
       );
-
       return reply.send({ pipeline });
     } catch (error) {
       fastify.log.error(error);
@@ -907,12 +840,12 @@ export async function salesRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /batch-status - Batch order status updates
+  // Deprecated compatibility endpoint. It now treats each supplied id as an
+  // order representative instead of permitting partial line-item updates.
   fastify.patch<{ Body: BatchUpdateStatusBody }>(
     '/batch-status',
     async (request, reply) => {
       const { saleIds, newStatus, note } = request.body;
-
       if (
         !Array.isArray(saleIds) ||
         saleIds.length === 0 ||
@@ -922,117 +855,50 @@ export async function salesRoutes(fastify: FastifyInstance) {
           error: 'saleIds must be a non-empty array of positive integers',
         });
       }
-
       if (!validOrderStatuses.includes(newStatus)) {
         return reply.code(400).send({ error: 'Invalid newStatus' });
       }
 
       const skipped: { id: number; reason: string }[] = [];
+      const seenOrders = new Set<string>();
       let updated = 0;
+      const confirmedLines: any[] = [];
 
-      try {
-        for (const saleId of saleIds) {
-          const [existingSale] = await db
-            .select()
-            .from(sales)
-            .where(eq(sales.id, saleId))
-            .limit(1);
-
-          if (!existingSale) {
-            skipped.push({ id: saleId, reason: 'Sale not found' });
-            continue;
-          }
-
-          if (!isValidTransition(existingSale.orderStatus, newStatus)) {
-            skipped.push({
-              id: saleId,
-              reason: `Invalid orderStatus transition from ${existingSale.orderStatus} to ${newStatus}`,
-            });
-            continue;
-          }
-
-          const [updatedSale] = await db
-            .update(sales)
-            .set({
-              orderStatus: newStatus,
-              updatedAt: new Date(),
-            })
-            .where(eq(sales.id, saleId))
-            .returning();
-
-          if (!updatedSale) {
-            skipped.push({ id: saleId, reason: 'Sale not found' });
-            continue;
-          }
-
-          await db.insert(saleStatusHistory).values({
-            saleId: existingSale.id,
-            previousStatus: existingSale.orderStatus,
-            newStatus,
-            source: 'manual',
-            note: note ?? null,
+      for (const saleId of saleIds) {
+        try {
+          const changedLines = await db.transaction(async (tx) => {
+            const lines = await getOrderSaleRows(tx, saleId);
+            if (lines.length === 0)
+              throw new OrderTransitionError('Sale not found');
+            const orderKey = lines[0].tcgplayerOrderId
+              ? `order:${lines[0].tcgplayerOrderId}`
+              : `sale:${lines[0].id}`;
+            if (seenOrders.has(orderKey)) return null;
+            await transitionOrderStatus(tx, lines, newStatus, note);
+            seenOrders.add(orderKey);
+            return lines;
           });
-
-          if (newStatus === 'confirmed') {
-            await createShipmentOnConfirm(db, existingSale.id);
-            const productName = await getCardProductName(existingSale.cardId);
-            await sendSaleConfirmedAlertBestEffort(
-              {
-                id: existingSale.id,
-                cardId: existingSale.cardId,
-                quantitySold: existingSale.quantitySold,
-                salePriceCents: existingSale.salePriceCents,
-                buyerName: existingSale.buyerName,
-                tcgplayerOrderId: existingSale.tcgplayerOrderId,
-              },
-              productName,
-            );
-          }
-
-          if (newStatus === 'cancelled' && existingSale.cardId !== null) {
-            const [linkedCard] = await db
-              .select()
-              .from(cards)
-              .where(eq(cards.id, existingSale.cardId))
-              .limit(1);
-
-            if (linkedCard) {
-              const restoredQuantity =
-                linkedCard.quantity + existingSale.quantitySold;
-              const restoredCardState = getRestoredCardStateForCancelledLine({
-                lineItemType:
-                  (existingSale.lineItemType as SaleLineItemType | undefined) ??
-                  'sale',
-                linkedCardStatus: linkedCard.status,
-                restoredQuantity,
-                linkedCardAttentionReason: linkedCard.attentionReason,
-              });
-
-              await db
-                .update(cards)
-                .set({
-                  quantity: restoredQuantity,
-                  status: restoredCardState.status as any,
-                  attentionReason: restoredCardState.attentionReason,
-                  updatedAt: new Date(),
-                })
-                .where(eq(cards.id, linkedCard.id));
-            }
-          }
-
+          if (!changedLines) continue;
           updated += 1;
+          if (newStatus === 'confirmed') confirmedLines.push(...changedLines);
+        } catch (error) {
+          skipped.push({
+            id: saleId,
+            reason:
+              error instanceof Error ? error.message : 'Failed to update order',
+          });
         }
-
-        return reply.send({
-          updated,
-          skipped,
-        });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply
-          .code(500)
-          .send({ error: 'Failed to batch update sales status' });
       }
+
+      for (const line of confirmedLines) {
+        if (line.lineItemType === 'gift') continue;
+        await sendSaleConfirmedAlertBestEffort(
+          line,
+          await getCardProductName(line.cardId),
+        );
+      }
+
+      return reply.send({ updated, skipped });
     },
   );
 
@@ -1046,9 +912,14 @@ export async function salesRoutes(fastify: FastifyInstance) {
       }
 
       try {
+        const orderLines = await getOrderSaleRows(db, saleId);
+        if (orderLines.length === 0) {
+          return reply.code(404).send({ error: 'Sale not found' });
+        }
         const history = await db
           .select({
             id: saleStatusHistory.id,
+            saleId: saleStatusHistory.saleId,
             previousStatus: saleStatusHistory.previousStatus,
             newStatus: saleStatusHistory.newStatus,
             source: saleStatusHistory.source,
@@ -1056,7 +927,12 @@ export async function salesRoutes(fastify: FastifyInstance) {
             changedAt: saleStatusHistory.changedAt,
           })
           .from(saleStatusHistory)
-          .where(eq(saleStatusHistory.saleId, saleId))
+          .where(
+            inArray(
+              saleStatusHistory.saleId,
+              orderLines.map((line) => line.id),
+            ),
+          )
           .orderBy(asc(saleStatusHistory.changedAt));
 
         return reply.send({ history });
@@ -1129,33 +1005,28 @@ export async function salesRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        const [existingSale] = await db
-          .select()
-          .from(sales)
-          .where(eq(sales.id, saleId))
-          .limit(1);
-
-        if (!existingSale) {
+        const orderLines = await getOrderSaleRows(db, saleId);
+        if (orderLines.length === 0) {
           return reply.code(404).send({ error: 'Sale not found' });
         }
+        const existingSale = orderLines.find((line) => line.id === saleId)!;
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
-        const updateData: any = {
-          updatedAt: new Date(),
-        };
-
-        if (buyerName !== undefined) {
-          updateData.buyerName = buyerName;
+        if (buyerName !== undefined) updateData.buyerName = buyerName;
+        if (notes !== undefined) updateData.notes = notes;
+        if (soldAt !== undefined) {
+          const soldAtDate = parseDate(soldAt);
+          if (!soldAtDate)
+            return reply.code(400).send({ error: 'Invalid soldAt date' });
+          updateData.soldAt = soldAtDate;
         }
 
         const normalizedOrderId =
-          tcgplayerOrderId !== undefined
-            ? normalizeOptionalOrderId(tcgplayerOrderId)
-            : undefined;
-
-        if (tcgplayerOrderId !== undefined) {
+          tcgplayerOrderId === undefined
+            ? undefined
+            : normalizeOptionalOrderId(tcgplayerOrderId);
+        if (normalizedOrderId !== undefined)
           updateData.tcgplayerOrderId = normalizedOrderId;
-        }
-
         if (shippingCollectedCents !== undefined) {
           updateData.shippingCollectedCents = shippingCollectedCents;
         } else if (
@@ -1167,125 +1038,65 @@ export async function salesRoutes(fastify: FastifyInstance) {
             await getDefaultShippingCollectedCents();
         }
 
-        if (notes !== undefined) {
-          updateData.notes = notes;
-        }
-
-        if (soldAt !== undefined) {
-          const soldAtDate = parseDate(soldAt);
-          if (!soldAtDate) {
-            return reply.code(400).send({ error: 'Invalid soldAt date' });
-          }
-          updateData.soldAt = soldAtDate;
-        }
-
-        let nextStatus: OrderStatus | null = null;
-        if (
-          orderStatus !== undefined &&
-          orderStatus !== existingSale.orderStatus
-        ) {
-          if (!isValidTransition(existingSale.orderStatus, orderStatus)) {
-            return reply.code(400).send({
-              error: `Invalid orderStatus transition from ${existingSale.orderStatus} to ${orderStatus}`,
-            });
-          }
-
-          updateData.orderStatus = orderStatus;
-          nextStatus = orderStatus;
-        }
-
-        if (Object.keys(updateData).length === 1) {
+        const hasMetadataUpdate = Object.keys(updateData).length > 1;
+        const needsStatusUpdate =
+          orderStatus !== undefined && orderStatus !== existingSale.orderStatus;
+        if (!hasMetadataUpdate && !needsStatusUpdate) {
           return reply.code(400).send({ error: 'No valid fields to update' });
         }
 
-        const [updatedSale] = await db
-          .update(sales)
-          .set(updateData)
-          .where(eq(sales.id, saleId))
-          .returning();
+        let changedLines = orderLines;
+        await db.transaction(async (tx) => {
+          // Re-read inside the transaction so all validation and restoration
+          // acts on the same complete order.
+          changedLines = await getOrderSaleRows(tx, saleId);
+          if (changedLines.length === 0)
+            throw new OrderTransitionError('Sale not found');
 
-        if (!updatedSale) {
-          return reply.code(404).send({ error: 'Sale not found' });
-        }
+          if (hasMetadataUpdate) {
+            await tx
+              .update(sales)
+              .set(updateData)
+              .where(
+                inArray(
+                  sales.id,
+                  changedLines.map((line) => line.id),
+                ),
+              );
+          }
+          if (needsStatusUpdate) {
+            await transitionOrderStatus(tx, changedLines, orderStatus!);
+          }
+        });
 
-        const effectiveOrderId = normalizeOptionalOrderId(
-          updatedSale.tcgplayerOrderId ?? existingSale.tcgplayerOrderId,
-        );
-
-        if (shippingCollectedCents !== undefined && effectiveOrderId) {
-          await db
-            .update(sales)
-            .set({
-              shippingCollectedCents,
-              updatedAt: new Date(),
-            })
-            .where(eq(sales.tcgplayerOrderId, effectiveOrderId));
-
-          updatedSale.shippingCollectedCents = shippingCollectedCents;
-        }
-
-        if (nextStatus) {
-          await db.insert(saleStatusHistory).values({
-            saleId: existingSale.id,
-            previousStatus: existingSale.orderStatus,
-            newStatus: nextStatus,
-            source: 'manual',
-          });
-
-          if (nextStatus === 'confirmed') {
-            await createShipmentOnConfirm(db, existingSale.id);
-            const productName = await getCardProductName(existingSale.cardId);
+        if (needsStatusUpdate && orderStatus === 'confirmed') {
+          for (const line of changedLines) {
+            if (line.lineItemType === 'gift') continue;
             await sendSaleConfirmedAlertBestEffort(
-              {
-                id: existingSale.id,
-                cardId: existingSale.cardId,
-                quantitySold: existingSale.quantitySold,
-                salePriceCents: existingSale.salePriceCents,
-                buyerName: updatedSale.buyerName ?? existingSale.buyerName,
-                tcgplayerOrderId:
-                  updatedSale.tcgplayerOrderId ?? existingSale.tcgplayerOrderId,
-              },
-              productName,
+              line,
+              await getCardProductName(line.cardId),
             );
           }
-
-          if (nextStatus === 'cancelled' && existingSale.cardId !== null) {
-            const [linkedCard] = await db
-              .select()
-              .from(cards)
-              .where(eq(cards.id, existingSale.cardId))
-              .limit(1);
-
-            if (linkedCard) {
-              const restoredQuantity =
-                linkedCard.quantity + existingSale.quantitySold;
-              const restoredCardState = getRestoredCardStateForCancelledLine({
-                lineItemType:
-                  (existingSale.lineItemType as SaleLineItemType | undefined) ??
-                  'sale',
-                linkedCardStatus: linkedCard.status,
-                restoredQuantity,
-                linkedCardAttentionReason: linkedCard.attentionReason,
-              });
-              await db
-                .update(cards)
-                .set({
-                  quantity: restoredQuantity,
-                  status: restoredCardState.status as any,
-                  attentionReason: restoredCardState.attentionReason,
-                  updatedAt: new Date(),
-                })
-                .where(eq(cards.id, linkedCard.id));
-            }
-          }
         }
 
-        const linkedCard = await getCardById(
-          updatedSale.cardId ?? existingSale.cardId,
+        const linkedCard = await getCardById(existingSale.cardId);
+        return reply.send(
+          serializeSaleResponse(
+            {
+              ...existingSale,
+              ...updateData,
+              orderStatus: needsStatusUpdate
+                ? orderStatus!
+                : existingSale.orderStatus,
+            } as any,
+            linkedCard,
+          ),
         );
-
-        return reply.send(serializeSaleResponse(updatedSale, linkedCard));
       } catch (error) {
+        if (error instanceof OrderTransitionError) {
+          const statusCode = error.message === 'Sale not found' ? 404 : 400;
+          return reply.code(statusCode).send({ error: error.message });
+        }
         fastify.log.error(error);
         return reply.code(500).send({ error: 'Failed to update sale' });
       }

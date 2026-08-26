@@ -1,19 +1,14 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
-import { saleStatusHistory } from '../db/schema/sale-status-history.js';
-import { sales } from '../db/schema/sales.js';
 import { shipments } from '../db/schema/shipments.js';
 import { sendOrderShippedAlert } from '../lib/notifications/telegram.js';
-import { isValidTransition } from '../lib/sales/status-machine.js';
-
-type OrderStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'shipped'
-  | 'delivered'
-  | 'cancelled';
+import {
+  OrderTransitionError,
+  getOrderSaleRows,
+  transitionOrderStatus,
+} from '../lib/sales/order-status.js';
 
 interface CreateShipmentBody {
   carrier?: string | null;
@@ -55,66 +50,14 @@ function isShipmentPlaceholder(shipment: {
   );
 }
 
-async function getSaleById(saleId: number) {
-  const [sale] = await db
-    .select()
-    .from(sales)
-    .where(eq(sales.id, saleId))
-    .limit(1);
-
-  return sale;
-}
-
-async function getShipmentBySaleId(saleId: number) {
-  const [shipment] = await db
-    .select()
-    .from(shipments)
-    .where(eq(shipments.saleId, saleId))
-    .limit(1);
-
-  return shipment;
-}
-
-async function getShipmentById(shipmentId: number) {
-  const [shipment] = await db
+async function getShipmentById(database: any, shipmentId: number) {
+  const [shipment] = await database
     .select()
     .from(shipments)
     .where(eq(shipments.id, shipmentId))
     .limit(1);
 
   return shipment;
-}
-
-async function autoTransitionSaleStatus(
-  saleId: number,
-  fromStatus: OrderStatus,
-  toStatus: OrderStatus,
-) {
-  if (!isValidTransition(fromStatus, toStatus)) {
-    return false;
-  }
-
-  const [updatedSale] = await db
-    .update(sales)
-    .set({
-      orderStatus: toStatus,
-      updatedAt: new Date(),
-    })
-    .where(eq(sales.id, saleId))
-    .returning();
-
-  if (!updatedSale) {
-    return false;
-  }
-
-  await db.insert(saleStatusHistory).values({
-    saleId,
-    previousStatus: fromStatus,
-    newStatus: toStatus,
-    source: 'manual',
-  });
-
-  return true;
 }
 
 export async function shipmentsRoutes(fastify: FastifyInstance) {
@@ -194,83 +137,99 @@ export async function shipmentsRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        const sale = await getSaleById(saleId);
-        if (!sale) {
-          return reply.code(404).send({ error: 'Sale not found' });
-        }
+        let representativeSale: any;
+        let shipment: any;
+        let shouldSendShippedAlert = false;
 
-        if (!['confirmed', 'shipped'].includes(sale.orderStatus)) {
-          return reply.code(400).send({
-            error:
+        await db.transaction(async (tx) => {
+          const orderLines = await getOrderSaleRows(tx, saleId);
+          if (orderLines.length === 0)
+            throw new OrderTransitionError('Sale not found');
+          const currentStatus = orderLines[0].orderStatus;
+          if (!['confirmed', 'shipped'].includes(currentStatus)) {
+            throw new OrderTransitionError(
               'Sale must be confirmed or shipped before recording shipment',
-          });
-        }
-
-        const existingShipment = await getShipmentBySaleId(saleId);
-
-        let shipment;
-        if (existingShipment) {
-          if (!isShipmentPlaceholder(existingShipment)) {
-            return reply.code(409).send({
-              error: 'Shipment already exists for this sale',
-            });
+            );
+          }
+          if (orderLines.some((line) => line.orderStatus !== currentStatus)) {
+            throw new OrderTransitionError(
+              'Order lines have inconsistent statuses',
+            );
           }
 
-          [shipment] = await db
-            .update(shipments)
-            .set({
-              carrier: carrier ?? null,
-              trackingNumber: trackingNumber ?? null,
-              shippedAt: shippedAtDate,
-              notes: notes ?? null,
-              updatedAt: new Date(),
-            })
-            .where(eq(shipments.id, existingShipment.id))
-            .returning();
-        } else {
-          [shipment] = await db
-            .insert(shipments)
-            .values({
-              saleId,
-              carrier: carrier ?? null,
-              trackingNumber: trackingNumber ?? null,
-              shippedAt: shippedAtDate,
-              notes: notes ?? null,
-              updatedAt: new Date(),
-            })
-            .returning();
-        }
+          representativeSale =
+            orderLines.find((line) => line.id === saleId) ?? orderLines[0];
+          const orderShipments = await tx
+            .select()
+            .from(shipments)
+            .where(
+              inArray(
+                shipments.saleId,
+                orderLines.map((line) => line.id),
+              ),
+            );
+          if (
+            orderShipments.some(
+              (existingShipment) => !isShipmentPlaceholder(existingShipment),
+            )
+          ) {
+            throw new OrderTransitionError(
+              'Shipment already exists for this order',
+            );
+          }
 
-        let shouldSendShippedAlert = sale.orderStatus === 'shipped';
+          const placeholder =
+            orderShipments.find(
+              (existingShipment) =>
+                existingShipment.saleId === saleId &&
+                isShipmentPlaceholder(existingShipment),
+            ) ?? orderShipments.find(isShipmentPlaceholder);
+          if (placeholder) {
+            [shipment] = await tx
+              .update(shipments)
+              .set({
+                carrier: carrier ?? null,
+                trackingNumber: trackingNumber ?? null,
+                shippedAt: shippedAtDate,
+                notes: notes ?? null,
+                updatedAt: new Date(),
+              })
+              .where(eq(shipments.id, placeholder.id))
+              .returning();
+          } else {
+            [shipment] = await tx
+              .insert(shipments)
+              .values({
+                saleId,
+                carrier: carrier ?? null,
+                trackingNumber: trackingNumber ?? null,
+                shippedAt: shippedAtDate,
+                notes: notes ?? null,
+                updatedAt: new Date(),
+              })
+              .returning();
+          }
 
-        if (sale.orderStatus === 'confirmed') {
-          shouldSendShippedAlert = await autoTransitionSaleStatus(
-            sale.id,
-            sale.orderStatus,
-            'shipped',
-          );
-        }
+          if (currentStatus === 'confirmed') {
+            await transitionOrderStatus(tx, orderLines, 'shipped');
+          }
+          shouldSendShippedAlert = !isShipmentPlaceholder(shipment);
+        });
 
         if (shouldSendShippedAlert) {
-          await sendOrderShippedAlertBestEffort(
-            {
-              id: sale.id,
-              cardId: sale.cardId,
-              quantitySold: sale.quantitySold,
-              salePriceCents: sale.salePriceCents,
-              buyerName: sale.buyerName,
-              tcgplayerOrderId: sale.tcgplayerOrderId,
-            },
-            {
-              carrier: shipment.carrier,
-              trackingNumber: shipment.trackingNumber,
-              shippedAt: shipment.shippedAt,
-            },
-          );
+          await sendOrderShippedAlertBestEffort(representativeSale, shipment);
         }
-
         return reply.code(201).send(shipment);
       } catch (error) {
+        if (error instanceof OrderTransitionError) {
+          const statusCode =
+            error.message === 'Sale not found'
+              ? 404
+              : error.message === 'Shipment already exists for this order'
+                ? 409
+                : 400;
+          return reply.code(statusCode).send({ error: error.message });
+        }
         fastify.log.error(error);
         return reply.code(500).send({ error: 'Failed to record shipment' });
       }
@@ -286,11 +245,25 @@ export async function shipmentsRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        const shipment = await getShipmentBySaleId(saleId);
-        if (!shipment) {
-          return reply.code(404).send({ error: 'Shipment not found' });
+        const orderLines = await getOrderSaleRows(db, saleId);
+        if (orderLines.length === 0) {
+          return reply.code(404).send({ error: 'Sale not found' });
         }
-
+        const orderShipments = await db
+          .select()
+          .from(shipments)
+          .where(
+            inArray(
+              shipments.saleId,
+              orderLines.map((line) => line.id),
+            ),
+          );
+        const shipment =
+          orderShipments.find(
+            (candidate) => !isShipmentPlaceholder(candidate),
+          ) ?? orderShipments[0];
+        if (!shipment)
+          return reply.code(404).send({ error: 'Shipment not found' });
         return reply.send(shipment);
       } catch (error) {
         fastify.log.error(error);
@@ -357,38 +330,38 @@ export async function shipmentsRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        const existingShipment = await getShipmentById(shipmentId);
-        if (!existingShipment) {
-          return reply.code(404).send({ error: 'Shipment not found' });
-        }
+        let updatedShipment: any;
+        await db.transaction(async (tx) => {
+          const existingShipment = await getShipmentById(tx, shipmentId);
+          if (!existingShipment)
+            throw new OrderTransitionError('Shipment not found');
 
-        const [updatedShipment] = await db
-          .update(shipments)
-          .set(updateData)
-          .where(eq(shipments.id, shipmentId))
-          .returning();
+          [updatedShipment] = await tx
+            .update(shipments)
+            .set(updateData)
+            .where(eq(shipments.id, shipmentId))
+            .returning();
+          if (!updatedShipment)
+            throw new OrderTransitionError('Shipment not found');
 
-        if (!updatedShipment) {
-          return reply.code(404).send({ error: 'Shipment not found' });
-        }
-
-        if (deliveredAtDate) {
-          const sale = await getSaleById(existingShipment.saleId);
-          if (
-            sale &&
-            sale.orderStatus === 'shipped' &&
-            isValidTransition(sale.orderStatus, 'delivered')
-          ) {
-            await autoTransitionSaleStatus(
-              sale.id,
-              sale.orderStatus,
-              'delivered',
+          if (deliveredAtDate) {
+            const orderLines = await getOrderSaleRows(
+              tx,
+              existingShipment.saleId,
             );
+            if (orderLines.length === 0)
+              throw new OrderTransitionError('Sale not found');
+            if (orderLines[0].orderStatus === 'shipped') {
+              await transitionOrderStatus(tx, orderLines, 'delivered');
+            }
           }
-        }
-
+        });
         return reply.send(updatedShipment);
       } catch (error) {
+        if (error instanceof OrderTransitionError) {
+          const statusCode = error.message === 'Shipment not found' ? 404 : 400;
+          return reply.code(statusCode).send({ error: error.message });
+        }
         fastify.log.error(error);
         return reply.code(500).send({ error: 'Failed to update shipment' });
       }

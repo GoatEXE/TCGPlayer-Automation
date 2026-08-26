@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { cards } from '../db/schema/cards.js';
 import { sales } from '../db/schema/sales.js';
 import { shipments } from '../db/schema/shipments.js';
+import { getOrCreateExpenseSettings } from '../lib/expenses/index.js';
 import {
   renderInvoiceHtml,
   renderPackingSlipHtml,
@@ -20,7 +21,9 @@ interface SaleDocumentRow {
   soldAt: Date;
   notes: string | null;
   quantitySold: number;
+  lineItemType: 'sale' | 'gift' | null;
   salePriceCents: number;
+  shippingCollectedCents: number;
   cardProductName: string | null;
   cardSetName: string | null;
   cardCondition: string | null;
@@ -54,7 +57,9 @@ async function getSaleDocumentRows(saleId: number): Promise<SaleDocumentRow[]> {
       soldAt: sales.soldAt,
       notes: sales.notes,
       quantitySold: sales.quantitySold,
+      lineItemType: sales.lineItemType,
       salePriceCents: sales.salePriceCents,
+      shippingCollectedCents: sales.shippingCollectedCents,
       cardProductName: cards.productName,
       cardSetName: cards.setName,
       cardCondition: cards.condition,
@@ -116,24 +121,45 @@ function mapSharedDocumentData(
   };
 }
 
-function buildInvoiceData(rows: SaleDocumentRow[]): InvoiceData {
+async function buildInvoiceData(rows: SaleDocumentRow[]): Promise<InvoiceData> {
   const shared = mapSharedDocumentData(rows);
-  const lineItems = rows.map((row) => ({
-    description: row.cardProductName ?? 'Unknown Card',
-    setName: row.cardSetName ?? '—',
-    condition: row.cardCondition ?? '—',
-    quantity: row.quantitySold,
-    unitPriceCents:
-      row.quantitySold > 0
-        ? Math.round(row.salePriceCents / row.quantitySold)
-        : row.salePriceCents,
-    lineTotalCents: row.salePriceCents,
-  }));
+  const lineItems = rows.map((row) => {
+    const lineTotalCents =
+      (row.lineItemType ?? 'sale') === 'gift' ? 0 : row.salePriceCents;
+
+    return {
+      description: row.cardProductName ?? 'Unknown Card',
+      setName: row.cardSetName ?? '—',
+      condition: row.cardCondition ?? '—',
+      quantity: row.quantitySold,
+      unitPriceCents:
+        row.quantitySold > 0
+          ? Math.round(lineTotalCents / row.quantitySold)
+          : lineTotalCents,
+      lineTotalCents,
+    };
+  });
+  const subtotalCents = lineItems.reduce(
+    (sum, item) => sum + item.lineTotalCents,
+    0,
+  );
+  const hasPaidLine = rows.some(
+    (row) => (row.lineItemType ?? 'sale') === 'sale',
+  );
+  let shippingCents = hasPaidLine
+    ? Math.max(0, ...rows.map((row) => row.shippingCollectedCents ?? 0))
+    : 0;
+
+  if (hasPaidLine && shippingCents === 0 && subtotalCents < 500) {
+    const settings = await getOrCreateExpenseSettings(db);
+    shippingCents = settings.defaultShippingCollectedCents;
+  }
 
   return {
     ...shared,
     lineItems,
-    totalCents: lineItems.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    shippingCents,
+    totalCents: subtotalCents + shippingCents,
   };
 }
 
@@ -168,7 +194,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
 
         return reply
           .type('text/html; charset=utf-8')
-          .send(renderInvoiceHtml(buildInvoiceData(rows)));
+          .send(renderInvoiceHtml(await buildInvoiceData(rows)));
       } catch (error) {
         fastify.log.error(error);
         return reply.code(500).send({ error: 'Failed to render invoice' });
