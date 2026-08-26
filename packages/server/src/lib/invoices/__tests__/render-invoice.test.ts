@@ -105,6 +105,20 @@ describe('renderInvoiceHtml', () => {
     expect(html).toContain('$7.50');
   });
 
+  it('renders explicit shipping and invoice total values', () => {
+    const html = renderInvoiceHtml(
+      makeInvoiceData({
+        shippingCents: 159,
+        totalCents: 409,
+      }),
+    );
+
+    expect(html).toMatch(
+      /<th>Shipping<\/th>\s*<td class="number">\$1\.59<\/td>/,
+    );
+    expect(html).toMatch(/<th>Total<\/th>\s*<td class="number">\$4\.09<\/td>/);
+  });
+
   it('formats cents as dollars in unit price and line total columns', () => {
     const html = renderInvoiceHtml(
       makeInvoiceData({

@@ -132,7 +132,7 @@ describe('App view tabs', () => {
       lastRun: null,
     });
     apiMocks.getSales.mockResolvedValue({
-      sales: [],
+      orders: [],
       total: 0,
       page: 1,
       limit: 50,
@@ -235,7 +235,9 @@ describe('App view tabs', () => {
   it('does not expose the retired web Scan / Add Cards workflow', () => {
     render(<App />);
 
-    expect(screen.queryByRole('tab', { name: /scan \/ add cards/i })).toBeNull();
+    expect(
+      screen.queryByRole('tab', { name: /scan \/ add cards/i }),
+    ).toBeNull();
     expect(screen.queryByRole('button', { name: /start camera/i })).toBeNull();
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
   });
@@ -324,7 +326,9 @@ describe('App view tabs', () => {
       }),
     ).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
-    expect(screen.getByText(/never imports into selling inventory/i)).toBeTruthy();
+    expect(
+      screen.getByText(/never imports into selling inventory/i),
+    ).toBeTruthy();
     expect(screen.getByText('Collection Sell Candidate')).toBeTruthy();
     expect(apiMocks.getCollections).toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);
@@ -379,9 +383,19 @@ describe('App view tabs', () => {
     });
     apiMocks.getCards.mockImplementation((params) => {
       if (params?.status === 'needs_attention') {
-        return Promise.resolve({ cards: [reviewCard], total: 1, page: 1, limit: 200 });
+        return Promise.resolve({
+          cards: [reviewCard],
+          total: 1,
+          page: 1,
+          limit: 200,
+        });
       }
-      return Promise.resolve({ cards: [displayedCard], total: 1, page: 1, limit: 50 });
+      return Promise.resolve({
+        cards: [displayedCard],
+        total: 1,
+        page: 1,
+        limit: 50,
+      });
     });
 
     render(<App />);
@@ -392,10 +406,16 @@ describe('App view tabs', () => {
 
     await user.click(screen.getByRole('button', { name: /review pricing/i }));
 
-    const dialog = await screen.findByRole('dialog', { name: /pricing review/i });
+    const dialog = await screen.findByRole('dialog', {
+      name: /pricing review/i,
+    });
     expect(dialog).toHaveTextContent('Fetched Needs Attention Card');
     expect(apiMocks.getCards).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'needs_attention', page: 1, limit: 200 }),
+      expect.objectContaining({
+        status: 'needs_attention',
+        page: 1,
+        limit: 200,
+      }),
     );
   });
 
@@ -406,7 +426,7 @@ describe('App view tabs', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Against the Odds',
@@ -523,21 +543,32 @@ describe('App view tabs', () => {
   it('opens shipment modal when ship button clicked and calls createShipment on submit', async () => {
     const user = userEvent.setup();
     apiMocks.getSales.mockResolvedValue({
-      sales: [
+      orders: [
         {
-          id: 42,
-          cardId: 1,
+          orderKey: 'order:ORD-1',
           tcgplayerOrderId: 'ORD-1',
-          quantitySold: 1,
-          salePriceCents: 500,
+          representativeSaleId: 42,
           buyerName: 'Buyer',
           orderStatus: 'confirmed',
           soldAt: '2026-04-01T00:00:00Z',
           notes: null,
-          createdAt: '2026-04-01T00:00:00Z',
-          updatedAt: '2026-04-01T00:00:00Z',
-          cardProductName: 'Test Card',
-          cardSetName: 'Origins',
+          itemCount: 1,
+          productSubtotalCents: 500,
+          shippingCollectedCents: 0,
+          totalCents: 500,
+          shipment: null,
+          lineItems: [
+            {
+              id: 42,
+              cardId: 1,
+              quantitySold: 1,
+              lineItemType: 'sale',
+              salePriceCents: 500,
+              cardProductName: 'Test Card',
+              cardSetName: 'Origins',
+              cardCondition: 'Near Mint',
+            },
+          ],
         },
       ],
       total: 1,
@@ -550,11 +581,11 @@ describe('App view tabs', () => {
     await user.click(screen.getByRole('tab', { name: /sales history/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Test Card')).toBeTruthy();
+      expect(screen.getByText('ORD-1')).toBeTruthy();
     });
 
     await user.click(
-      screen.getByRole('button', { name: /actions for test card/i }),
+      screen.getByRole('button', { name: /actions for ORD-1/i }),
     );
     await user.click(screen.getByRole('menuitem', { name: 'Record shipment' }));
 
@@ -581,7 +612,7 @@ describe('App view tabs', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Against the Odds',
@@ -744,7 +775,12 @@ describe('App view tabs', () => {
     };
     apiMocks.getCards.mockImplementation((params) => {
       if (params?.status === 'sold') {
-        return Promise.resolve({ cards: [consumedCard], total: 1, page: 1, limit: 50 });
+        return Promise.resolve({
+          cards: [consumedCard],
+          total: 1,
+          page: 1,
+          limit: 50,
+        });
       }
       return Promise.resolve({ cards: [], total: 0, page: 1, limit: 50 });
     });
@@ -773,21 +809,32 @@ describe('App view tabs', () => {
   it('refreshes sales and pipeline after shipment save', async () => {
     const user = userEvent.setup();
     apiMocks.getSales.mockResolvedValue({
-      sales: [
+      orders: [
         {
-          id: 10,
-          cardId: 1,
+          orderKey: 'sale:10',
           tcgplayerOrderId: null,
-          quantitySold: 1,
-          salePriceCents: 200,
+          representativeSaleId: 10,
           buyerName: null,
           orderStatus: 'confirmed',
           soldAt: '2026-04-01T00:00:00Z',
           notes: null,
-          createdAt: '2026-04-01T00:00:00Z',
-          updatedAt: '2026-04-01T00:00:00Z',
-          cardProductName: 'Card A',
-          cardSetName: 'Set A',
+          itemCount: 1,
+          productSubtotalCents: 200,
+          shippingCollectedCents: 149,
+          totalCents: 349,
+          shipment: null,
+          lineItems: [
+            {
+              id: 10,
+              cardId: 1,
+              quantitySold: 1,
+              lineItemType: 'sale',
+              salePriceCents: 200,
+              cardProductName: 'Card A',
+              cardSetName: 'Set A',
+              cardCondition: 'Near Mint',
+            },
+          ],
         },
       ],
       total: 1,
@@ -800,7 +847,7 @@ describe('App view tabs', () => {
     await user.click(screen.getByRole('tab', { name: /sales history/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Card A')).toBeTruthy();
+      expect(screen.getByText('Synthetic order #10')).toBeTruthy();
     });
 
     // Clear call counts before ship action
@@ -809,7 +856,7 @@ describe('App view tabs', () => {
     apiMocks.getSalesStats.mockClear();
 
     await user.click(
-      screen.getByRole('button', { name: /actions for card a/i }),
+      screen.getByRole('button', { name: /actions for Synthetic order #10/i }),
     );
     await user.click(screen.getByRole('menuitem', { name: 'Record shipment' }));
 
@@ -907,7 +954,9 @@ describe('App performance view integration', () => {
     await user.click(screen.getByRole('tab', { name: /performance/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 2, name: 'Performance' })).toBeTruthy();
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'Performance' }),
+      ).toBeTruthy();
     });
 
     expect(screen.getByText(/Profit & Loss/i)).toBeTruthy();
@@ -933,17 +982,26 @@ describe('App performance view integration', () => {
     await user.click(screen.getByRole('button', { name: /Add Expense/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /create expense/i })).toBeTruthy();
+      expect(
+        screen.getByRole('dialog', { name: /create expense/i }),
+      ).toBeTruthy();
     });
 
-    const expenseDialog = screen.getByRole('dialog', { name: /create expense/i });
-    await user.type(within(expenseDialog).getByLabelText(/Amount \(\$\)/i), '1.25');
+    const expenseDialog = screen.getByRole('dialog', {
+      name: /create expense/i,
+    });
+    await user.type(
+      within(expenseDialog).getByLabelText(/Amount \(\$\)/i),
+      '1.25',
+    );
     await user.selectOptions(
       within(expenseDialog).getByLabelText('Category'),
       'shipping',
     );
 
-    await user.click(within(expenseDialog).getByRole('button', { name: /Save Expense/i }));
+    await user.click(
+      within(expenseDialog).getByRole('button', { name: /Save Expense/i }),
+    );
 
     await waitFor(() => {
       expect(apiMocks.createExpense).toHaveBeenCalledWith(
@@ -997,7 +1055,9 @@ describe('App performance view integration', () => {
     await user.click(screen.getByRole('tab', { name: /performance/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Save Settings/i })).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: /Save Settings/i }),
+      ).toBeTruthy();
     });
 
     apiMocks.getExpenseSettings.mockClear();
@@ -1088,7 +1148,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Test Card',
@@ -1121,7 +1181,9 @@ describe('App record sale + bulk sell integration', () => {
     });
 
     // Open row actions menu and click Record Sale
-    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(
+      screen.getByRole('button', { name: /actions for test card/i }),
+    );
     await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     await waitFor(() => {
@@ -1129,7 +1191,9 @@ describe('App record sale + bulk sell integration', () => {
     });
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
-    await user.click(within(dialog).getByRole('button', { name: /record sale/i }));
+    await user.click(
+      within(dialog).getByRole('button', { name: /record sale/i }),
+    );
 
     await waitFor(() => {
       expect(apiMocks.createSale).toHaveBeenCalledWith(
@@ -1161,7 +1225,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Test Card',
@@ -1205,7 +1269,9 @@ describe('App record sale + bulk sell integration', () => {
       expect(screen.getByText('Test Card')).toBeTruthy();
     });
 
-    await user.click(screen.getByRole('button', { name: /actions for test card/i }));
+    await user.click(
+      screen.getByRole('button', { name: /actions for test card/i }),
+    );
     await user.click(screen.getByRole('menuitem', { name: /record sale/i }));
 
     const dialog = screen.getByRole('dialog', { name: /record sale/i });
@@ -1214,11 +1280,18 @@ describe('App record sale + bulk sell integration', () => {
     ) as HTMLInputElement;
     expect(shippingInput.value).toBe('2.49');
     expect(
-      within(dialog).queryByRole('checkbox', { name: /apply estimated expenses/i }),
+      within(dialog).queryByRole('checkbox', {
+        name: /apply estimated expenses/i,
+      }),
     ).toBeNull();
 
-    await user.type(within(dialog).getByLabelText(/TCGPlayer Order ID/i), 'ORD-123');
-    await user.click(within(dialog).getByRole('button', { name: /record sale/i }));
+    await user.type(
+      within(dialog).getByLabelText(/TCGPlayer Order ID/i),
+      'ORD-123',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: /record sale/i }),
+    );
 
     await waitFor(() => {
       expect(apiMocks.createSale).toHaveBeenCalledWith(
@@ -1237,7 +1310,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card A',
@@ -1260,7 +1333,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 2,
           tcgplayerId: 101,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card B',
@@ -1299,8 +1372,13 @@ describe('App record sale + bulk sell integration', () => {
     await user.click(screen.getByText(/attach 2 to order/i));
 
     const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
-    await user.type(within(dialog).getByLabelText(/tcgplayer order id/i), 'ORD-123');
-    await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
+    await user.type(
+      within(dialog).getByLabelText(/tcgplayer order id/i),
+      'ORD-123',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: /attach to order/i }),
+    );
 
     await waitFor(() => {
       expect(apiMocks.createBulkOrder).toHaveBeenCalledWith(
@@ -1308,8 +1386,18 @@ describe('App record sale + bulk sell integration', () => {
           tcgplayerOrderId: 'ORD-123',
           orderStatus: 'confirmed',
           lines: [
-            { cardId: 1, quantitySold: 1, salePriceCents: 98, lineItemType: 'sale' },
-            { cardId: 2, quantitySold: 1, salePriceCents: 196, lineItemType: 'sale' },
+            {
+              cardId: 1,
+              quantitySold: 1,
+              salePriceCents: 98,
+              lineItemType: 'sale',
+            },
+            {
+              cardId: 2,
+              quantitySold: 1,
+              salePriceCents: 196,
+              lineItemType: 'sale',
+            },
           ],
         }),
       );
@@ -1321,7 +1409,7 @@ describe('App record sale + bulk sell integration', () => {
     const paidCard = {
       id: 1,
       tcgplayerId: 100,
-  tcgProductId: null,
+      tcgProductId: null,
       productLine: 'Riftbound',
       setName: 'Origins',
       productName: 'Paid Card',
@@ -1345,7 +1433,7 @@ describe('App record sale + bulk sell integration', () => {
       ...paidCard,
       id: 50,
       tcgplayerId: 150,
-  tcgProductId: null,
+      tcgProductId: null,
       productName: 'Gift Card',
       quantity: 3,
       status: 'gift',
@@ -1353,9 +1441,19 @@ describe('App record sale + bulk sell integration', () => {
     };
     apiMocks.getCards.mockImplementation((params) => {
       if (params?.status === 'gift') {
-        return Promise.resolve({ cards: [giftCard], total: 1, page: 1, limit: 200 });
+        return Promise.resolve({
+          cards: [giftCard],
+          total: 1,
+          page: 1,
+          limit: 200,
+        });
       }
-      return Promise.resolve({ cards: [paidCard], total: 1, page: 1, limit: 50 });
+      return Promise.resolve({
+        cards: [paidCard],
+        total: 1,
+        page: 1,
+        limit: 50,
+      });
     });
 
     render(<App />);
@@ -1370,19 +1468,45 @@ describe('App record sale + bulk sell integration', () => {
     const dialog = await screen.findByRole('dialog', { name: /bulk sell/i });
     expect(within(dialog).getAllByText('Gift Card').length).toBeGreaterThan(0);
 
-    await user.click(within(dialog).getByRole('checkbox', { name: /add gift card as gift/i }));
-    await user.clear(within(dialog).getByRole('spinbutton', { name: /gift quantity for gift card/i }));
-    await user.type(within(dialog).getByRole('spinbutton', { name: /gift quantity for gift card/i }), '2');
-    await user.type(within(dialog).getByLabelText(/tcgplayer order id/i), 'ORD-GIFT');
-    await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: /add gift card as gift/i }),
+    );
+    await user.clear(
+      within(dialog).getByRole('spinbutton', {
+        name: /gift quantity for gift card/i,
+      }),
+    );
+    await user.type(
+      within(dialog).getByRole('spinbutton', {
+        name: /gift quantity for gift card/i,
+      }),
+      '2',
+    );
+    await user.type(
+      within(dialog).getByLabelText(/tcgplayer order id/i),
+      'ORD-GIFT',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: /attach to order/i }),
+    );
 
     await waitFor(() => {
       expect(apiMocks.createBulkOrder).toHaveBeenCalledWith(
         expect.objectContaining({
           tcgplayerOrderId: 'ORD-GIFT',
           lines: [
-            { cardId: 1, quantitySold: 1, salePriceCents: 98, lineItemType: 'sale' },
-            { cardId: 50, quantitySold: 2, salePriceCents: 0, lineItemType: 'gift' },
+            {
+              cardId: 1,
+              quantitySold: 1,
+              salePriceCents: 98,
+              lineItemType: 'sale',
+            },
+            {
+              cardId: 50,
+              quantitySold: 2,
+              salePriceCents: 0,
+              lineItemType: 'gift',
+            },
           ],
         }),
       );
@@ -1398,7 +1522,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card A',
@@ -1421,7 +1545,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 2,
           tcgplayerId: 101,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Card B',
@@ -1460,8 +1584,13 @@ describe('App record sale + bulk sell integration', () => {
     await user.click(screen.getByText(/attach 2 to order/i));
 
     const dialog = screen.getByRole('dialog', { name: /bulk sell/i });
-    await user.type(within(dialog).getByLabelText(/tcgplayer order id/i), 'ORD-123');
-    await user.click(within(dialog).getByRole('button', { name: /attach to order/i }));
+    await user.type(
+      within(dialog).getByLabelText(/tcgplayer order id/i),
+      'ORD-123',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: /attach to order/i }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/network error/i);
@@ -1474,7 +1603,7 @@ describe('App record sale + bulk sell integration', () => {
         {
           id: 1,
           tcgplayerId: 100,
-  tcgProductId: null,
+          tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
           productName: 'Listed Card',

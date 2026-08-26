@@ -20,7 +20,14 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+vi.mock('../../lib/expenses/index.js', () => ({
+  getOrCreateExpenseSettings: vi.fn(),
+}));
+
 import { db } from '../../db/index.js';
+import { getOrCreateExpenseSettings } from '../../lib/expenses/index.js';
+
+const mockGetOrCreateExpenseSettings = vi.mocked(getOrCreateExpenseSettings);
 
 function mockBaseSale(rows: any[]) {
   vi.mocked(db.select).mockReturnValueOnce({
@@ -53,7 +60,9 @@ function makeDocumentRow(overrides: Partial<any> = {}) {
     soldAt: new Date('2026-04-01T07:00:00.000Z'),
     notes: 'Thank you for your purchase!',
     quantitySold: 2,
+    lineItemType: 'sale',
     salePriceCents: 250,
+    shippingCollectedCents: 0,
     cardProductName: 'Jinx - Demolitionist',
     cardSetName: 'Origins',
     cardCondition: 'Near Mint',
@@ -71,6 +80,10 @@ describe('invoice routes', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockGetOrCreateExpenseSettings.mockReset();
+    mockGetOrCreateExpenseSettings.mockResolvedValue({
+      defaultShippingCollectedCents: 159,
+    } as any);
     app = Fastify();
     await app.register(invoiceRoutes, { prefix: '/api' });
   });
@@ -107,6 +120,173 @@ describe('invoice routes', () => {
       expect(response.body).toContain('Jinx - Demolitionist');
       expect(response.body).toContain('$1.25');
       expect(response.body).toContain('$2.50');
+    });
+
+    it('uses recorded shipping once for a single $2.50 sale, totaling $4.09', async () => {
+      mockGetOrCreateExpenseSettings.mockResolvedValueOnce({
+        defaultShippingCollectedCents: 249,
+      } as any);
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'ORDER-123' }]);
+      mockDocumentRows([
+        makeDocumentRow({
+          salePriceCents: 250,
+          shippingCollectedCents: 159,
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatch(
+        /<th>Shipping<\/th>\s*<td class="number">\$1\.59<\/td>/,
+      );
+      expect(response.body).toMatch(
+        /<th>Total<\/th>\s*<td class="number">\$4\.09<\/td>/,
+      );
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
+    });
+
+    it('charges shipping once for a grouped paid and gift order', async () => {
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'ORDER-123' }]);
+      mockDocumentRows([
+        makeDocumentRow({
+          salePriceCents: 250,
+          shippingCollectedCents: 159,
+        }),
+        makeDocumentRow({
+          saleId: 12,
+          quantitySold: 1,
+          lineItemType: 'gift',
+          salePriceCents: 0,
+          shippingCollectedCents: 159,
+          cardProductName: 'Bonus Gift Card',
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('Bonus Gift Card');
+      expect(response.body).toMatch(
+        /<th>Shipping<\/th>\s*<td class="number">\$1\.59<\/td>/,
+      );
+      expect(response.body).toMatch(
+        /<th>Total<\/th>\s*<td class="number">\$4\.09<\/td>/,
+      );
+    });
+
+    it('does not add default shipping or revenue to a gift-only invoice', async () => {
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'GIFT-ONLY' }]);
+      mockDocumentRows([
+        makeDocumentRow({
+          tcgplayerOrderId: 'GIFT-ONLY',
+          lineItemType: 'gift',
+          salePriceCents: 0,
+          shippingCollectedCents: 0,
+          cardProductName: 'Bonus Gift Card',
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatch(
+        /<th>Shipping<\/th>\s*<td class="number">\$0\.00<\/td>/,
+      );
+      expect(response.body).toMatch(
+        /<th>Total<\/th>\s*<td class="number">\$0\.00<\/td>/,
+      );
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
+    });
+
+    it('uses the maximum shipping value once when grouped rows conflict', async () => {
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'ORDER-123' }]);
+      mockDocumentRows([
+        makeDocumentRow({
+          salePriceCents: 250,
+          shippingCollectedCents: 149,
+        }),
+        makeDocumentRow({
+          saleId: 11,
+          quantitySold: 1,
+          salePriceCents: 300,
+          shippingCollectedCents: 199,
+          cardProductName: 'Vi - Piltover Enforcer',
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatch(
+        /<th>Shipping<\/th>\s*<td class="number">\$1\.99<\/td>/,
+      );
+      expect(response.body).toMatch(
+        /<th>Total<\/th>\s*<td class="number">\$7\.49<\/td>/,
+      );
+    });
+
+    it('uses the configurable default shipping for a zero-shipping order below $5', async () => {
+      mockGetOrCreateExpenseSettings.mockResolvedValueOnce({
+        defaultShippingCollectedCents: 173,
+      } as any);
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'ORDER-123' }]);
+      mockDocumentRows([
+        makeDocumentRow({
+          salePriceCents: 250,
+          shippingCollectedCents: 0,
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatch(
+        /<th>Shipping<\/th>\s*<td class="number">\$1\.73<\/td>/,
+      );
+      expect(response.body).toMatch(
+        /<th>Total<\/th>\s*<td class="number">\$4\.23<\/td>/,
+      );
+      expect(mockGetOrCreateExpenseSettings).toHaveBeenCalledWith(db);
+    });
+
+    it('does not apply the under-$5 fallback at exactly $5.00', async () => {
+      mockBaseSale([{ id: 10, tcgplayerOrderId: 'ORDER-123' }]);
+      mockDocumentRows([
+        makeDocumentRow({
+          salePriceCents: 500,
+          shippingCollectedCents: 0,
+        }),
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/sales/10/invoice',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toMatch(
+        /<th>Shipping<\/th>\s*<td class="number">\$0\.00<\/td>/,
+      );
+      expect(response.body).toMatch(
+        /<th>Total<\/th>\s*<td class="number">\$5\.00<\/td>/,
+      );
+      expect(mockGetOrCreateExpenseSettings).not.toHaveBeenCalled();
     });
 
     it('groups line items for sales sharing the same tcgplayerOrderId', async () => {

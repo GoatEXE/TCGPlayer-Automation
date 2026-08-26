@@ -14,6 +14,7 @@ vi.mock('../../db/index.js', () => ({
     limit: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
     set: vi.fn().mockReturnThis(),
+    transaction: vi.fn(),
   },
 }));
 
@@ -27,10 +28,27 @@ import { db } from '../../db/index.js';
 function mockSelectResult(rows: any[]) {
   vi.mocked(db.select).mockReturnValueOnce({
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockResolvedValue(rows),
-      }),
+      where: vi
+        .fn()
+        .mockReturnValue({ limit: vi.fn().mockResolvedValue(rows) }),
     }),
+  } as any);
+
+  // A real TCGplayer order expands from its representative row to all line
+  // rows before shipment work. Preserve each legacy fixture for both reads.
+  if (rows[0]?.tcgplayerOrderId) {
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(rows) }),
+    } as any);
+  }
+}
+
+function mockOrderShipmentSelect(rows: any[]) {
+  const result = Object.assign(Promise.resolve(rows), {
+    limit: vi.fn().mockResolvedValue(rows),
+  });
+  vi.mocked(db.select).mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(result) }),
   } as any);
 }
 
@@ -40,6 +58,9 @@ describe('shipment routes', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockSendOrderShippedAlert.mockResolvedValue(true);
+    vi.mocked((db as any).transaction).mockImplementation(
+      async (callback: any) => callback(db as any),
+    );
     app = Fastify();
     await app.register(shipmentsRoutes, { prefix: '/api' });
   });
@@ -57,7 +78,7 @@ describe('shipment routes', () => {
           orderStatus: 'shipped',
         },
       ]);
-      mockSelectResult([]);
+      mockOrderShipmentSelect([]);
       mockSelectResult([
         {
           id: 110,
@@ -125,7 +146,7 @@ describe('shipment routes', () => {
           orderStatus: 'confirmed',
         },
       ]);
-      mockSelectResult([]);
+      mockOrderShipmentSelect([]);
       mockSelectResult([
         {
           id: 200,
@@ -181,14 +202,14 @@ describe('shipment routes', () => {
           updatedAt: expect.any(Date),
         }),
       );
-      expect(historyValues).toHaveBeenCalledWith(
+      expect(historyValues).toHaveBeenCalledWith([
         expect.objectContaining({
           saleId: 20,
           previousStatus: 'confirmed',
           newStatus: 'shipped',
           source: 'manual',
         }),
-      );
+      ]);
       expect(mockSendOrderShippedAlert).toHaveBeenCalledWith(
         expect.objectContaining({
           saleId: 20,
@@ -218,7 +239,7 @@ describe('shipment routes', () => {
           orderStatus: 'confirmed',
         },
       ]);
-      mockSelectResult([]);
+      mockOrderShipmentSelect([]);
       mockSelectResult([
         {
           id: 201,
@@ -297,10 +318,15 @@ describe('shipment routes', () => {
           orderStatus: 'shipped',
         },
       ]);
-      mockSelectResult([
+      mockOrderShipmentSelect([
         {
           id: 99,
           saleId: 40,
+          carrier: 'USPS',
+          trackingNumber: '9400',
+          shippedAt: null,
+          deliveredAt: null,
+          notes: null,
         },
       ]);
 
@@ -311,8 +337,56 @@ describe('shipment routes', () => {
 
       expect(response.statusCode).toBe(409);
       expect(JSON.parse(response.body)).toEqual({
-        error: 'Shipment already exists for this sale',
+        error: 'Shipment already exists for this order',
       });
+    });
+
+    it('rejects a shipment through a non-representative line when another line is already shipped', async () => {
+      mockSelectResult([
+        {
+          id: 41,
+          cardId: 141,
+          quantitySold: 1,
+          salePriceCents: 0,
+          buyerName: 'Multi-line Buyer',
+          tcgplayerOrderId: 'ORDER-41',
+          orderStatus: 'shipped',
+        },
+        {
+          id: 40,
+          cardId: 140,
+          quantitySold: 1,
+          salePriceCents: 250,
+          buyerName: 'Multi-line Buyer',
+          tcgplayerOrderId: 'ORDER-41',
+          orderStatus: 'shipped',
+        },
+      ]);
+      mockOrderShipmentSelect([
+        {
+          id: 100,
+          saleId: 40,
+          carrier: 'USPS',
+          trackingNumber: '9400111111111111111111',
+          shippedAt: new Date('2026-04-02T12:00:00.000Z'),
+          deliveredAt: null,
+          notes: null,
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales/41/ship',
+        payload: { carrier: 'UPS', trackingNumber: '1Z999' },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'Shipment already exists for this order',
+      });
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mockSendOrderShippedAlert).not.toHaveBeenCalled();
     });
 
     it('returns 404 when sale does not exist', async () => {
@@ -329,8 +403,16 @@ describe('shipment routes', () => {
   });
 
   describe('GET /api/sales/:id/shipment', () => {
-    it('returns shipment for sale', async () => {
+    it('returns the meaningful shipment for every line in an order', async () => {
       mockSelectResult([
+        {
+          id: 10,
+          cardId: 100,
+          tcgplayerOrderId: 'ORDER-10',
+          orderStatus: 'shipped',
+        },
+      ]);
+      mockOrderShipmentSelect([
         {
           id: 1,
           saleId: 10,
@@ -354,7 +436,10 @@ describe('shipment routes', () => {
     });
 
     it('returns 404 when shipment is missing', async () => {
-      mockSelectResult([]);
+      mockSelectResult([
+        { id: 10, tcgplayerOrderId: 'ORDER-10', orderStatus: 'confirmed' },
+      ]);
+      mockOrderShipmentSelect([]);
 
       const response = await app.inject({
         method: 'GET',
@@ -474,14 +559,14 @@ describe('shipment routes', () => {
           updatedAt: expect.any(Date),
         }),
       );
-      expect(historyValues).toHaveBeenCalledWith(
+      expect(historyValues).toHaveBeenCalledWith([
         expect.objectContaining({
           saleId: 20,
           previousStatus: 'shipped',
           newStatus: 'delivered',
           source: 'manual',
         }),
-      );
+      ]);
     });
 
     it('returns 404 when shipment does not exist', async () => {

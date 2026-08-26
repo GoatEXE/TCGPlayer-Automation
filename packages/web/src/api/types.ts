@@ -277,8 +277,36 @@ export interface GetSalesParams {
   dateTo?: string;
 }
 
+export interface OrderLineItem {
+  id: number;
+  cardId: number | null;
+  quantitySold: number;
+  lineItemType: SaleLineItemType;
+  salePriceCents: number;
+  cardProductName: string | null;
+  cardSetName: string | null;
+  cardCondition: string | null;
+}
+
+/** Order-facing Sales History facade over the legacy sale-line table. */
+export interface SalesOrder {
+  orderKey: string;
+  tcgplayerOrderId: string | null;
+  representativeSaleId: number;
+  buyerName: string | null;
+  orderStatus: OrderStatus;
+  soldAt: string;
+  notes: string | null;
+  itemCount: number;
+  productSubtotalCents: number;
+  shippingCollectedCents: number;
+  totalCents: number;
+  shipment: Shipment | null;
+  lineItems: OrderLineItem[];
+}
+
 export interface GetSalesResponse {
-  sales: Sale[];
+  orders: SalesOrder[];
   total: number;
   page: number;
   limit: number;
@@ -333,9 +361,12 @@ export interface UpdateSaleRequest {
 
 export interface SaleStatusHistoryEntry {
   id: number;
+  saleId?: number;
   previousStatus: OrderStatus | null;
   newStatus: OrderStatus;
   source: 'manual' | 'api_sync';
+  /** Optional server-provided transition reason, retained for history deduplication. */
+  reason?: string | null;
   note: string | null;
   changedAt: string;
 }
@@ -557,7 +588,12 @@ export interface CollectionTransferRequest {
 
 export type CollectionTransferMessage =
   | string
-  | { collectionItemId?: number; warning?: string; blocker?: string; message?: string };
+  | {
+      collectionItemId?: number;
+      warning?: string;
+      blocker?: string;
+      message?: string;
+    };
 
 export interface CollectionTransferSummary {
   requestedItems?: number;
@@ -580,7 +616,14 @@ export interface CollectionTransferPreviewRow {
   inventoryCondition?: string | null;
   action: 'create' | 'update' | 'blocked' | string;
   targetCardId?: number | null;
-  status: 'matched' | 'needs_attention' | 'gift' | 'pending' | 'error' | null | string;
+  status:
+    | 'matched'
+    | 'needs_attention'
+    | 'gift'
+    | 'pending'
+    | 'error'
+    | null
+    | string;
   marketPrice?: number | string | null;
   listingPrice?: number | string | null;
   warnings: CollectionTransferMessage[];
@@ -602,8 +645,7 @@ export interface CollectionTransferPreviewResponse {
   errors?: string[];
 }
 
-export interface CollectionTransferCommitResponse
-  extends CollectionTransferPreviewResponse {
+export interface CollectionTransferCommitResponse extends CollectionTransferPreviewResponse {
   transferredQuantity?: number;
   inserted?: number;
   updated?: number;

@@ -74,6 +74,12 @@ Multiple `sales` rows can share the same `tcgplayerOrderId`. Bulk order recordin
 
 Gift lines have `lineItemType: 'gift'`, zero revenue, and are included on invoices and packing slips even though sales, stats, and performance views exclude them by default. The packing slip uses the same grouping logic.
 
+### Invoice shipping totals
+
+Invoice product subtotal is the sum of persisted `sales.salePriceCents` line totals; quantities are not multiplied again. Buyer-paid shipping is charged once per seller order by taking the highest recorded `sales.shippingCollectedCents` value across its rows, so duplicated bulk-order values and gift lines do not double-charge shipping. This is buyer-paid revenue, not the seller's postage/shipping-cost expense.
+
+When recorded order shipping is `$0.00` and paid product subtotal is below `$5.00`, the invoice dynamically uses the current Performance **Default Shipping Collected** setting. TCGplayer's official floor is `$1.49` for orders below `$5.00`; a seller-configured higher rate wins, and the implementation reads that app setting rather than hardcoding a rate. At exactly `$5.00` or above, zero recorded shipping remains zero.
+
 ---
 
 ## 3. Work Packages
