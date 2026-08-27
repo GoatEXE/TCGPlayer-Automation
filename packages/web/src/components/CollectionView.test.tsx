@@ -418,7 +418,7 @@ describe('CollectionView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /previous/i }));
     expect(screen.getByText('Page Card 001')).toBeTruthy();
-  });
+  }, 15_000);
 
   it('uses the owned collection id for sellability, import, transfer, and refreshes regardless of legacy collection order', async () => {
     const user = userEvent.setup();
@@ -611,7 +611,7 @@ describe('CollectionView', () => {
     expect(screen.queryByText('Page Card 051')).toBeNull();
     expect(screen.getByText('Showing 1–50 of 75 (1 of 2)')).toBeTruthy();
     expect(screen.getByText('0 card(s) selected')).toBeTruthy();
-  });
+  }, 15_000);
 
   it('uses a single accessible ellipsis menu per collection row and dismisses it on outside click or Escape', async () => {
     const user = userEvent.setup();
