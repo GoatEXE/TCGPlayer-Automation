@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { CollectionImportUpload } from './CollectionImportUpload';
+import {
+  CollectionRowAdjustModal,
+  CollectionRowDeleteModal,
+  type CollectionRowSourceItem,
+} from './CollectionRowActionModals';
 import { Pagination } from './Pagination';
 import type {
   CardKind,
@@ -132,6 +137,25 @@ function canTransferRow(row: CollectionSellabilityRow) {
   return recommendedTransferItems(row).length > 0;
 }
 
+function collectionRowSourceItems(row: CollectionSellabilityRow): CollectionRowSourceItem[] {
+  const sourceItems = row.sourceItems ?? row.items ?? [];
+  const items = sourceItems.flatMap((item) => {
+    const collectionItemId = item.collectionItemId ?? item.id;
+    return Number.isInteger(collectionItemId) && (collectionItemId as number) > 0
+      ? [{ ...item, collectionItemId: collectionItemId as number }]
+      : [];
+  });
+
+  return items.sort((left, right) => {
+    const leftFinish = left.finishKind === 'foil' || /foil/i.test(left.finish ?? '') ? 1 : 0;
+    const rightFinish = right.finishKind === 'foil' || /foil/i.test(right.finish ?? '') ? 1 : 0;
+    if (leftFinish !== rightFinish) return leftFinish - rightFinish;
+    return [left.condition ?? '', left.language ?? '', left.collectionItemId].join('|').localeCompare(
+      [right.condition ?? '', right.language ?? '', right.collectionItemId].join('|'),
+    );
+  });
+}
+
 function buildTransferRequest(selection: TransferSelection): CollectionTransferRequest {
   return {
     items: Object.entries(selection)
@@ -168,6 +192,15 @@ export function CollectionView({
   const [transferLoading, setTransferLoading] = useState(false);
   const [collectionPage, setCollectionPage] = useState(1);
   const [collectionSearchQuery, setCollectionSearchQuery] = useState('');
+  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const [adjustingRow, setAdjustingRow] = useState<CollectionSellabilityRow | null>(
+    null,
+  );
+  const [deletingRow, setDeletingRow] = useState<CollectionSellabilityRow | null>(
+    null,
+  );
+  const [rowActionSuccess, setRowActionSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -199,6 +232,7 @@ export function CollectionView({
 
   const loadSellability = async (collectionId: number) => {
     setCollectionPage(1);
+    setOpenActionMenuId(null);
     setLoadingSellability(true);
     setError(null);
     try {
@@ -220,6 +254,29 @@ export function CollectionView({
     if (ownedCollectionId === null) return;
     loadSellability(ownedCollectionId);
   }, [ownedCollectionId]);
+
+  useEffect(() => {
+    if (openActionMenuId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        actionMenuRef.current &&
+        !actionMenuRef.current.contains(event.target as Node)
+      ) {
+        setOpenActionMenuId(null);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenActionMenuId(null);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openActionMenuId]);
 
   const filteredRows = useMemo(() => {
     const query = collectionSearchQuery.trim().toLowerCase();
@@ -269,6 +326,7 @@ export function CollectionView({
 
   const handleCollectionPageChange = (page: number) => {
     setCollectionPage(Math.max(1, Math.min(page, collectionTotalPages)));
+    setOpenActionMenuId(null);
     setTransferSelection({});
     setTransferPreview(null);
     setTransferSuccess(null);
@@ -277,6 +335,7 @@ export function CollectionView({
   const handleCollectionSearchChange = (value: string) => {
     setCollectionSearchQuery(value);
     setCollectionPage(1);
+    setOpenActionMenuId(null);
     setTransferSelection({});
     setTransferPreview(null);
     setTransferSuccess(null);
@@ -305,6 +364,59 @@ export function CollectionView({
       ...current,
       [collectionItemId]: Math.max(0, Math.floor(quantity) || 0),
     }));
+  };
+
+  const clearRowTransferState = (row: CollectionSellabilityRow) => {
+    const sourceItemIds = new Set(
+      collectionRowSourceItems(row).map((item) => item.collectionItemId),
+    );
+    setTransferSelection((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([collectionItemId]) => !sourceItemIds.has(Number(collectionItemId)),
+        ),
+      ),
+    );
+    setTransferPreview(null);
+    setTransferSuccess(null);
+  };
+
+  const handleAdjustCollectionRow = async (
+    row: CollectionSellabilityRow,
+    data: { items: Array<{ collectionItemId: number; quantity: number }> },
+  ) => {
+    if (ownedCollectionId === null) {
+      throw new Error('Owned Collection is unavailable.');
+    }
+
+    setError(null);
+    await api.adjustCollectionRow(ownedCollectionId, row.catalogCardId, data);
+    clearRowTransferState(row);
+    setRowActionSuccess(`Updated counts for ${row.productName}.`);
+    await loadSellability(ownedCollectionId);
+    setAdjustingRow(null);
+  };
+
+  const handleDeleteCollectionRow = async (row: CollectionSellabilityRow) => {
+    if (ownedCollectionId === null) {
+      throw new Error('Owned Collection is unavailable.');
+    }
+
+    const collectionItemIds = collectionRowSourceItems(row).map(
+      (item) => item.collectionItemId,
+    );
+    if (collectionItemIds.length === 0) {
+      throw new Error('Collection item details are unavailable. Refresh and try again.');
+    }
+
+    setError(null);
+    await api.deleteCollectionRow(ownedCollectionId, row.catalogCardId, {
+      collectionItemIds,
+    });
+    clearRowTransferState(row);
+    setRowActionSuccess(`Deleted ${row.productName} from Owned Collection.`);
+    await loadSellability(ownedCollectionId);
+    setDeletingRow(null);
   };
 
   const handleTransferPreview = async () => {
@@ -525,6 +637,11 @@ export function CollectionView({
       )}
 
       {error && <div className="import-result error">{error}</div>}
+      {rowActionSuccess && (
+        <div className="import-result success" role="status">
+          {rowActionSuccess}
+        </div>
+      )}
 
       {loadingCollections || loadingSellability ? (
         <div className="table-loading">
@@ -555,6 +672,7 @@ export function CollectionView({
                 <th>Keep Target</th>
                 <th>Recommended Sell</th>
                 <th>Reason</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -668,6 +786,66 @@ export function CollectionView({
                         <div className="collection-muted">{row.reasons.join('; ')}</div>
                       )}
                     </td>
+                    <td className="actions">
+                      <div
+                        className="action-menu-container"
+                        ref={openActionMenuId === row.catalogCardId ? actionMenuRef : null}
+                      >
+                        <button
+                          type="button"
+                          className="action-menu-trigger"
+                          aria-label={`Actions for ${row.productName}`}
+                          aria-haspopup="menu"
+                          aria-expanded={openActionMenuId === row.catalogCardId}
+                          onClick={() =>
+                            setOpenActionMenuId((current) =>
+                              current === row.catalogCardId ? null : row.catalogCardId,
+                            )
+                          }
+                        >
+                          …
+                        </button>
+                        {openActionMenuId === row.catalogCardId && (
+                          <div className="action-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                if (collectionRowSourceItems(row).length === 0) {
+                                  setError(
+                                    'Collection item details are unavailable. Refresh and try again.',
+                                  );
+                                  return;
+                                }
+                                setRowActionSuccess(null);
+                                setAdjustingRow(row);
+                              }}
+                            >
+                              Adjust count
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="danger-menu-item"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                if (collectionRowSourceItems(row).length === 0) {
+                                  setError(
+                                    'Collection item details are unavailable. Refresh and try again.',
+                                  );
+                                  return;
+                                }
+                                setRowActionSuccess(null);
+                                setDeletingRow(row);
+                              }}
+                            >
+                              Delete row
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -681,6 +859,22 @@ export function CollectionView({
             onPageChange={handleCollectionPageChange}
           />
         </>
+      )}
+
+      {adjustingRow && (
+        <CollectionRowAdjustModal
+          row={adjustingRow}
+          sourceItems={collectionRowSourceItems(adjustingRow)}
+          onSave={(data) => handleAdjustCollectionRow(adjustingRow, data)}
+          onClose={() => setAdjustingRow(null)}
+        />
+      )}
+      {deletingRow && (
+        <CollectionRowDeleteModal
+          row={deletingRow}
+          onDelete={() => handleDeleteCollectionRow(deletingRow)}
+          onClose={() => setDeletingRow(null)}
+        />
       )}
     </section>
   );

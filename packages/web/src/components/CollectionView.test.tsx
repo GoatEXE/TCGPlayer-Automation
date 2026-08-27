@@ -12,6 +12,8 @@ const apiMocks = vi.hoisted(() => ({
   commitCollectionImport: vi.fn(),
   previewCollectionTransferToInventory: vi.fn(),
   commitCollectionTransferToInventory: vi.fn(),
+  adjustCollectionRow: vi.fn(),
+  deleteCollectionRow: vi.fn(),
   clearCollection: vi.fn(),
   importCards: vi.fn(),
 }));
@@ -338,6 +340,18 @@ describe('CollectionView', () => {
       inserted: 1,
       updated: 0,
     });
+    apiMocks.adjustCollectionRow.mockResolvedValue({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      catalogCardId: 11,
+      updatedItems: [],
+      deletedItemIds: [],
+    });
+    apiMocks.deleteCollectionRow.mockResolvedValue({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      catalogCardId: 11,
+      deletedItemIds: [111],
+      deletedQuantity: 2,
+    });
   });
 
   it('renders only the Owned Collection and keeps sellable cards highlighted and prioritized', async () => {
@@ -598,6 +612,193 @@ describe('CollectionView', () => {
     expect(screen.queryByText('Page Card 051')).toBeNull();
     expect(screen.getByText('Showing 1–50 of 75 (1 of 2)')).toBeTruthy();
     expect(screen.getByText('0 card(s) selected')).toBeTruthy();
+  });
+
+  it('uses a single accessible ellipsis menu per collection row and dismisses it on outside click or Escape', async () => {
+    const user = userEvent.setup();
+    render(<CollectionView />);
+
+    await screen.findByText('Sell Extra Card');
+    const sellActions = screen.getByRole('button', {
+      name: /actions for sell extra card/i,
+    });
+    const foilActions = screen.getByRole('button', {
+      name: /actions for shiny swap card/i,
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^adjust count$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^delete row$/i })).toBeNull();
+
+    await user.click(sellActions);
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /adjust count/i })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /delete row/i })).toBeTruthy();
+
+    await user.click(foilActions);
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    await user.click(sellActions);
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('adjusts every Normal and Foil source count with validation while preserving the active search', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCollectionSellability.mockResolvedValueOnce({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: 2,
+        sellFoilQty: 1,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows: [
+        {
+          ...baseRow,
+          catalogCardId: 20,
+          productName: 'Dual Finish Card',
+          normalQty: 4,
+          foilQty: 2,
+          totalQty: 6,
+          sellNormalQty: 2,
+          sellFoilQty: 1,
+          sourceItems: [
+            {
+              collectionItemId: 201,
+              finish: 'Normal',
+              finishKind: 'normal',
+              quantity: 4,
+              recommendedSellQuantity: 2,
+              condition: 'Near Mint',
+              language: 'EN',
+            },
+            {
+              collectionItemId: 202,
+              finish: 'Foil',
+              finishKind: 'foil',
+              quantity: 2,
+              recommendedSellQuantity: 1,
+              condition: 'Lightly Played',
+              language: 'EN',
+            },
+          ],
+          transferItems: [
+            {
+              collectionItemId: 201,
+              finish: 'Normal',
+              finishKind: 'normal',
+              quantity: 4,
+              recommendedSellQuantity: 2,
+              condition: 'Near Mint',
+              language: 'EN',
+            },
+            {
+              collectionItemId: 202,
+              finish: 'Foil',
+              finishKind: 'foil',
+              quantity: 2,
+              recommendedSellQuantity: 1,
+              condition: 'Lightly Played',
+              language: 'EN',
+            },
+          ],
+        },
+      ],
+    });
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Dual Finish Card')).toBeTruthy();
+    const searchInput = screen.getByRole('searchbox', { name: /search collection/i });
+    await user.type(searchInput, 'dual');
+    await user.click(
+      screen.getByLabelText(/move dual finish card to selling inventory/i),
+    );
+    expect(screen.getByText('3 card(s) selected')).toBeTruthy();
+    await user.click(
+      screen.getByRole('button', { name: /actions for dual finish card/i }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: /adjust count/i }));
+
+    const dialog = screen.getByRole('dialog', { name: /adjust count for dual finish card/i });
+    const normalInput = within(dialog).getByLabelText('Normal · Near Mint · EN');
+    const foilInput = within(dialog).getByLabelText('Foil · Lightly Played · EN');
+    expect(normalInput).toHaveValue(4);
+    expect(foilInput).toHaveValue(2);
+
+    await user.clear(normalInput);
+    await user.type(normalInput, '1.5');
+    await user.click(within(dialog).getByRole('button', { name: /^save counts$/i }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      /non-negative whole number/i,
+    );
+    expect(apiMocks.adjustCollectionRow).not.toHaveBeenCalled();
+
+    await user.clear(normalInput);
+    await user.type(normalInput, '5');
+    await user.clear(foilInput);
+    await user.type(foilInput, '0');
+    await user.click(within(dialog).getByRole('button', { name: /^save counts$/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.adjustCollectionRow).toHaveBeenCalledWith(1, 20, {
+        items: [
+          { collectionItemId: 201, quantity: 5 },
+          { collectionItemId: 202, quantity: 0 },
+        ],
+      });
+    });
+    expect(screen.queryByRole('dialog', { name: /adjust count/i })).toBeNull();
+    expect(searchInput).toHaveValue('dual');
+    expect(screen.getByText('0 card(s) selected')).toBeTruthy();
+    expect(apiMocks.getCollectionSellability).toHaveBeenLastCalledWith(1);
+    expect(screen.getByText(/updated counts for dual finish card/i)).toBeTruthy();
+  });
+
+  it('confirms aggregate row deletion before deleting all represented owned source items', async () => {
+    const user = userEvent.setup();
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Sell Extra Card')).toBeTruthy();
+    const openDelete = async () => {
+      await user.click(
+        screen.getByRole('button', { name: /actions for sell extra card/i }),
+      );
+      await user.click(screen.getByRole('menuitem', { name: /delete row/i }));
+    };
+
+    await openDelete();
+    const dialog = screen.getByRole('dialog', { name: /delete sell extra card/i });
+    expect(dialog).toHaveTextContent('Sell Extra Card');
+    expect(dialog).toHaveTextContent(/all normal and foil source counts/i);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: /delete sell extra card/i })).toBeNull();
+    expect(apiMocks.deleteCollectionRow).not.toHaveBeenCalled();
+
+    await openDelete();
+    await user.click(
+      within(screen.getByRole('dialog', { name: /delete sell extra card/i })).getByRole(
+        'button',
+        { name: /cancel/i },
+      ),
+    );
+    expect(apiMocks.deleteCollectionRow).not.toHaveBeenCalled();
+
+    await openDelete();
+    await user.click(
+      within(screen.getByRole('dialog', { name: /delete sell extra card/i })).getByRole(
+        'button',
+        { name: /^delete row$/i },
+      ),
+    );
+    await waitFor(() => {
+      expect(apiMocks.deleteCollectionRow).toHaveBeenCalledWith(1, 11, {
+        collectionItemIds: [111],
+      });
+    });
+    expect(apiMocks.getCollectionSellability).toHaveBeenLastCalledWith(1);
+    expect(screen.getByText(/deleted sell extra card from owned collection/i)).toBeTruthy();
   });
 
   it('uses a CSV-only drag-and-drop target for owned collection imports', async () => {

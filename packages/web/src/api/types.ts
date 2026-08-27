@@ -571,6 +571,27 @@ export interface CollectionImportCommitResponse extends CollectionImportPreviewR
   items?: unknown[];
 }
 
+export interface CollectionRowCountAdjustment {
+  collectionItemId: number;
+  quantity: number;
+}
+
+export interface AdjustCollectionRowRequest {
+  items: CollectionRowCountAdjustment[];
+}
+
+export interface DeleteCollectionRowRequest {
+  collectionItemIds: number[];
+}
+
+export interface CollectionRowMutationResponse {
+  collection: CollectionSummary;
+  catalogCardId: number;
+  updatedItems?: CollectionSellabilityItemRef[];
+  deletedItemIds: number[];
+  deletedQuantity?: number;
+}
+
 export interface CollectionTransferItemRequest {
   collectionItemId: number;
   quantity: number;

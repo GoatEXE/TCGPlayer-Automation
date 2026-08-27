@@ -27,6 +27,18 @@ describe('route registration', () => {
         url: '/api/collections/:id/transfer-to-inventory',
       }),
     ).toBe(true);
+    expect(
+      app.hasRoute({
+        method: 'PATCH',
+        url: '/api/collections/:id/rows/:catalogCardId',
+      }),
+    ).toBe(true);
+    expect(
+      app.hasRoute({
+        method: 'DELETE',
+        url: '/api/collections/:id/rows/:catalogCardId',
+      }),
+    ).toBe(true);
 
     expect(
       app.hasRoute({ method: 'POST', url: '/api/collections/scan-preview' }),
