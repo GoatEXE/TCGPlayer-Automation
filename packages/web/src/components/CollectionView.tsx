@@ -191,11 +191,8 @@ export function CollectionView({
     useState<CollectionTransferPreviewResponse | null>(null);
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
-  const [clearConfirmText, setClearConfirmText] = useState('');
-  const [clearLoading, setClearLoading] = useState(false);
-  const [clearSuccess, setClearSuccess] = useState<string | null>(null);
-  const [collectionRefreshKey, setCollectionRefreshKey] = useState(0);
   const [collectionPage, setCollectionPage] = useState(1);
+  const [collectionSearchQuery, setCollectionSearchQuery] = useState('');
 
   useEffect(() => {
     let ignore = false;
@@ -246,13 +243,29 @@ export function CollectionView({
     loadSellability(selectedCollectionId);
   }, [selectedCollectionId]);
 
+  const filteredRows = useMemo(() => {
+    const query = collectionSearchQuery.trim().toLowerCase();
+    if (!query) return sellability?.rows ?? [];
+
+    return (sellability?.rows ?? []).filter((row) =>
+      [
+        row.productName,
+        row.title,
+        row.setName,
+        row.setCode,
+        row.collectorNumber,
+        row.normalizedNumber,
+      ].some((value) => value?.toLowerCase().includes(query)),
+    );
+  }, [collectionSearchQuery, sellability]);
+
   const sortedRows = useMemo(() => {
-    return [...(sellability?.rows ?? [])].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const rankDiff = recommendationRank(a) - recommendationRank(b);
       if (rankDiff !== 0) return rankDiff;
       return a.productName.localeCompare(b.productName);
     });
-  }, [sellability]);
+  }, [filteredRows]);
   const collectionTotalPages = Math.max(
     1,
     Math.ceil(sortedRows.length / COLLECTION_ITEMS_PER_PAGE),
@@ -289,6 +302,14 @@ export function CollectionView({
 
   const handleCollectionPageChange = (page: number) => {
     setCollectionPage(Math.max(1, Math.min(page, collectionTotalPages)));
+    setTransferSelection({});
+    setTransferPreview(null);
+    setTransferSuccess(null);
+  };
+
+  const handleCollectionSearchChange = (value: string) => {
+    setCollectionSearchQuery(value);
+    setCollectionPage(1);
     setTransferSelection({});
     setTransferPreview(null);
     setTransferSuccess(null);
@@ -359,38 +380,6 @@ export function CollectionView({
     }
   };
 
-  const handleClearCollection = async () => {
-    if (selectedCollectionId === null || clearConfirmText !== 'CLEAR COLLECTION') return;
-
-    const collectionName = selectedCollection?.name ?? 'this collection';
-    if (
-      !confirm(
-        `Clear ${collectionName}? This removes rows from this collection only and cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-
-    setClearLoading(true);
-    setError(null);
-    setClearSuccess(null);
-    try {
-      const response = await api.clearCollection(
-        selectedCollectionId,
-        clearConfirmText,
-      );
-      const removed = response.deleted ?? response.removed ?? 0;
-      setClearSuccess(`Cleared ${removed} collection row(s) from ${collectionName}.`);
-      setClearConfirmText('');
-      setCollectionRefreshKey((key) => key + 1);
-      await loadSellability(selectedCollectionId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear collection');
-    } finally {
-      setClearLoading(false);
-    }
-  };
-
   const handleKindChange = async (
     row: CollectionSellabilityRow,
     nextKind: CardKind,
@@ -424,7 +413,6 @@ export function CollectionView({
       )}
 
       <CollectionImportUpload
-        key={collectionRefreshKey}
         collectionId={selectedCollectionId}
         onImportCommitted={async () => {
           if (selectedCollectionId !== null) {
@@ -457,39 +445,28 @@ export function CollectionView({
             To Be Sold: {toBeSoldCollection.name}
           </div>
         )}
+
+        <form
+          className="search-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setCollectionPage(1);
+          }}
+        >
+          <input
+            type="search"
+            aria-label="Search collection"
+            placeholder="Search by card, set, or number..."
+            value={collectionSearchQuery}
+            onChange={(event) => handleCollectionSearchChange(event.target.value)}
+            className="search-input"
+          />
+          <button type="submit" className="search-button" aria-label="Search collection">
+            🔍
+          </button>
+        </form>
       </div>
 
-      {selectedCollection && (
-        <div className="collection-clear-panel" aria-label="Clear selected collection">
-          <div>
-            <h3>Clear {selectedIsToBeSold ? 'To Be Sold Collection' : 'Owned Collection'}</h3>
-            <p>
-              Destructive: removes rows from {selectedCollection.name} only. It does not delete catalog data, Selling Inventory, listed cards, sales, or TCGPlayer listings.
-            </p>
-          </div>
-          <div className="collection-clear-controls">
-            <label htmlFor="collection-clear-confirm">
-              Type <strong>CLEAR COLLECTION</strong> to enable clearing
-            </label>
-            <input
-              id="collection-clear-confirm"
-              className="shipment-input"
-              value={clearConfirmText}
-              onChange={(event) => setClearConfirmText(event.target.value)}
-              placeholder="CLEAR COLLECTION"
-            />
-            <button
-              type="button"
-              className="button-danger"
-              disabled={clearConfirmText !== 'CLEAR COLLECTION' || clearLoading}
-              onClick={handleClearCollection}
-            >
-              {clearLoading ? 'Clearing…' : `Clear ${selectedCollection.name}`}
-            </button>
-          </div>
-          {clearSuccess && <div className="import-result success">{clearSuccess}</div>}
-        </div>
-      )}
 
       {sellability && (
         <div className="collection-summary-grid" aria-label="Sellability summary">
@@ -622,7 +599,11 @@ export function CollectionView({
           <p>⏳ Loading collection recommendations...</p>
         </div>
       ) : sortedRows.length === 0 ? (
-        <div className="table-empty">No collection cards found.</div>
+        <div className="table-empty collection-search-empty" role="status">
+          {collectionSearchQuery.trim()
+            ? `No collection cards match "${collectionSearchQuery.trim()}".`
+            : 'No collection cards found.'}
+        </div>
       ) : (
         <>
           <div className="table-container">

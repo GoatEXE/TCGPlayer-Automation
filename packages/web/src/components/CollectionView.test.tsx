@@ -102,7 +102,6 @@ function paginationRows(count: number) {
 describe('CollectionView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('confirm', vi.fn(() => true));
     apiMocks.getCollections.mockResolvedValue({
       collections: [
         { id: 1, name: 'Default', purpose: 'owned' },
@@ -339,7 +338,6 @@ describe('CollectionView', () => {
       inserted: 1,
       updated: 0,
     });
-    apiMocks.clearCollection.mockResolvedValue({ deleted: 5 });
   });
 
   it('renders the Owned Collection import card first without a standalone Collection header', async () => {
@@ -480,6 +478,105 @@ describe('CollectionView', () => {
     expect(await screen.findByText('Refreshed Card')).toBeTruthy();
     expect(screen.queryByText('Page Card 051')).toBeNull();
     expect(screen.queryByText(/showing \d+–\d+ of/i)).toBeNull();
+  });
+
+  it('searches collection card names, set names, and collector numbers case-insensitively', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCollectionSellability.mockResolvedValueOnce({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: 9,
+        sellFoilQty: 0,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows: [
+        {
+          ...baseRow,
+          catalogCardId: 4000,
+          productName: 'Needle Card',
+          setName: 'Needle Set',
+          collectorNumber: '123',
+          normalizedNumber: '123',
+        },
+        {
+          ...baseRow,
+          catalogCardId: 4001,
+          productName: 'Other Card',
+          setName: 'Other Set',
+          collectorNumber: '456',
+          normalizedNumber: '456',
+        },
+      ],
+    });
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Needle Card')).toBeTruthy();
+    const searchInput = screen.getByRole('searchbox', { name: /search collection/i });
+
+    await user.type(searchInput, 'nEeDlE cArD');
+    expect(screen.getByText('Needle Card')).toBeTruthy();
+    expect(screen.queryByText('Other Card')).toBeNull();
+
+    await user.clear(searchInput);
+    await user.type(searchInput, 'nEeDlE sEt');
+    expect(screen.getByText('Needle Card')).toBeTruthy();
+    expect(screen.queryByText('Other Card')).toBeNull();
+
+    await user.clear(searchInput);
+    await user.type(searchInput, '123');
+    expect(screen.getByText('Needle Card')).toBeTruthy();
+    expect(screen.queryByText('Other Card')).toBeNull();
+
+    await user.clear(searchInput);
+    await user.type(searchInput, 'no matches');
+    expect(await screen.findByText(/no collection cards match "no matches"/i)).toBeTruthy();
+    expect(screen.getByLabelText(/sellability summary/i)).toHaveTextContent(
+      'Sell Normal9',
+    );
+  });
+
+  it('filters before pagination and resets the page and hidden selections when search changes', async () => {
+    const user = userEvent.setup();
+    const rows = paginationRows(75).map((row, index) => ({
+      ...row,
+      setName: index < 51 ? 'Searchable Set' : 'Other Set',
+    }));
+    apiMocks.getCollectionSellability.mockResolvedValueOnce({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: 75,
+        sellFoilQty: 0,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows,
+    });
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(await screen.findByText('Page Card 060')).toBeTruthy();
+    await user.click(screen.getByLabelText(/move page card 060 to selling inventory/i));
+    expect(screen.getByText('1 card(s) selected')).toBeTruthy();
+
+    const searchInput = screen.getByRole('searchbox', { name: /search collection/i });
+    await user.type(searchInput, 'searchable set');
+
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    expect(screen.queryByText('Page Card 051')).toBeNull();
+    expect(screen.queryByText('Page Card 060')).toBeNull();
+    expect(screen.getByText('Showing 1–50 of 51 (1 of 2)')).toBeTruthy();
+    expect(screen.getByText('0 card(s) selected')).toBeTruthy();
+    expect(screen.getByLabelText(/sellability summary/i)).toHaveTextContent(
+      'Sell Normal75',
+    );
+
+    await user.clear(searchInput);
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    expect(screen.queryByText('Page Card 051')).toBeNull();
+    expect(screen.getByText('Showing 1–50 of 75 (1 of 2)')).toBeTruthy();
+    expect(screen.getByText('0 card(s) selected')).toBeTruthy();
   });
 
   it('uses a CSV-only drag-and-drop target for owned collection imports', async () => {
@@ -669,6 +766,7 @@ describe('CollectionView', () => {
       expect(apiMocks.commitCollectionImport).toHaveBeenCalledWith(1, file, 'merge');
     });
     expect(apiMocks.importCards).not.toHaveBeenCalled();
+    expect(apiMocks.clearCollection).not.toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/inserted 1, updated 1/i)).toBeTruthy();
   });
@@ -713,31 +811,26 @@ describe('CollectionView', () => {
       });
     });
     expect(onInventoryChanged).toHaveBeenCalled();
+    expect(apiMocks.clearCollection).not.toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/moved 2 card\(s\) to selling inventory/i)).toBeTruthy();
   });
 
-  it('requires typed confirmation before clearing the selected collection and refreshes', async () => {
+  it('does not expose destructive collection clearing or call the clear API during normal interactions', async () => {
     const user = userEvent.setup();
     render(<CollectionView />);
 
-    const clearButton = await screen.findByRole('button', { name: /clear default/i });
-    expect(clearButton).toBeDisabled();
-    expect(screen.getByText(/does not delete catalog data/i)).toBeTruthy();
+    await screen.findByLabelText(/sellability summary/i);
+    expect(screen.queryByLabelText(/clear selected collection/i)).toBeNull();
+    expect(screen.queryByLabelText(/type clear collection/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /clear/i })).toBeNull();
+    expect(screen.queryByText(/destructive: removes rows/i)).toBeNull();
 
-    await user.type(screen.getByLabelText(/type clear collection/i), 'CLEAR COLLECTION');
-    expect(clearButton).toBeEnabled();
-    await user.click(clearButton);
-
+    await user.selectOptions(screen.getByLabelText('Collection'), '2');
     await waitFor(() => {
-      expect(apiMocks.clearCollection).toHaveBeenCalledWith(
-        1,
-        'CLEAR COLLECTION',
-      );
+      expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(2);
     });
-    expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
-    expect(apiMocks.importCards).not.toHaveBeenCalled();
-    expect(screen.getByText(/cleared 5 collection row/i)).toBeTruthy();
+    expect(apiMocks.clearCollection).not.toHaveBeenCalled();
   });
 
   it('uses staging labels and disables zero-quantity rows in To Be Sold collection', async () => {

@@ -26,7 +26,6 @@ const apiMocks = vi.hoisted(() => ({
   commitCollectionImport: vi.fn(),
   previewCollectionTransferToInventory: vi.fn(),
   commitCollectionTransferToInventory: vi.fn(),
-  clearCollection: vi.fn(),
   importCards: vi.fn(),
   createSale: vi.fn(),
   createBulkOrder: vi.fn(),
@@ -210,7 +209,6 @@ describe('App view tabs', () => {
       },
       items: [],
     });
-    apiMocks.clearCollection.mockResolvedValue({ deleted: 0 });
     apiMocks.importCards.mockResolvedValue({
       imported: 0,
       updated: 0,
@@ -408,7 +406,7 @@ describe('App view tabs', () => {
     expect(
       screen.getByText(/never imports into selling inventory/i),
     ).toBeTruthy();
-    expect(screen.getByText('Collection Sell Candidate')).toBeTruthy();
+    expect(await screen.findByText('Collection Sell Candidate')).toBeTruthy();
     expect(apiMocks.getCollections).toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);
     expect(apiMocks.createSale).not.toHaveBeenCalled();

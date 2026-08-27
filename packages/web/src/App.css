@@ -977,55 +977,6 @@ body {
   font-weight: 600;
 }
 
-.collection-clear-panel {
-  margin-bottom: 1.25rem;
-  padding: 1rem;
-  border: 1px solid #fecaca;
-  border-radius: var(--radius);
-  background: #fef2f2;
-}
-
-.collection-clear-panel h3 {
-  margin: 0;
-  color: #991b1b;
-  font-size: 1rem;
-}
-
-.collection-clear-panel p {
-  margin: 0.35rem 0 0;
-  color: #7f1d1d;
-  font-size: 0.88rem;
-}
-
-.collection-clear-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-top: 0.9rem;
-}
-
-.collection-clear-controls label {
-  color: #7f1d1d;
-  font-size: 0.85rem;
-}
-
-.button-danger {
-  background: var(--color-error);
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.button-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .collection-transfer-panel {
   margin-bottom: 1.25rem;
   padding: 1rem;
