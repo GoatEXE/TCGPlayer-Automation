@@ -102,6 +102,52 @@ describe('transitionOrderStatus', () => {
     expect(database.insert).not.toHaveBeenCalled();
   });
 
+  it('restores a cancelled fully gifted card to a resale-eligible listed state', async () => {
+    const saleUpdate = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    const cardUpdate = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    const database = {
+      update: vi
+        .fn()
+        .mockReturnValueOnce({ set: saleUpdate })
+        .mockReturnValueOnce({ set: cardUpdate }),
+      insert: vi
+        .fn()
+        .mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: 101,
+                quantity: 0,
+                status: 'gifted',
+                attentionReason: null,
+              },
+            ]),
+          }),
+        }),
+      }),
+    };
+
+    await transitionOrderStatus(
+      database,
+      [makeSale({ cardId: 101, lineItemType: 'gift' })],
+      'cancelled',
+    );
+
+    expect(cardUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quantity: 1,
+        status: 'listed',
+        attentionReason: null,
+      }),
+    );
+  });
+
   it('restores each linked card once when cancelling an order with duplicate card lines', async () => {
     const saleUpdate = vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue(undefined),

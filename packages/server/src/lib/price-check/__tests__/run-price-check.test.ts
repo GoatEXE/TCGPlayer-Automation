@@ -62,6 +62,40 @@ vi.mock('../../tcgtracking/client.js', () => ({
 
 import { runPriceCheck } from '../run-price-check.js';
 
+const containsText = (
+  value: unknown,
+  needle: string,
+  seen = new Set<unknown>(),
+): boolean => {
+  if (typeof value === 'string') {
+    return value.includes(needle);
+  }
+
+  if (!value || typeof value !== 'object' || seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if (
+    'value' in value &&
+    typeof (value as { value?: unknown }).value === 'string' &&
+    (value as { value: string }).value.includes(needle)
+  ) {
+    return true;
+  }
+
+  if (
+    'queryChunks' in value &&
+    Array.isArray((value as { queryChunks?: unknown[] }).queryChunks)
+  ) {
+    return (value as { queryChunks: unknown[] }).queryChunks.some((item) =>
+      containsText(item, needle, seen),
+    );
+  }
+
+  return Object.values(value).some((item) => containsText(item, needle, seen));
+};
+
 describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,11 +106,11 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     env.LISTED_PRICE_ATTENTION_MIN_DIFF_CENTS = 5;
 
     dbSelect.mockReturnValue({ from: dbFrom });
-    dbFrom.mockResolvedValue([]);
+    dbFrom.mockReturnValue({ where: dbWhere });
 
     dbUpdate.mockReturnValue({ set: dbSet });
     dbSet.mockReturnValue({ where: dbWhere });
-    dbWhere.mockResolvedValue(undefined);
+    dbWhere.mockResolvedValue([]);
 
     dbInsert.mockReturnValue({ values: dbValues });
     dbValues.mockReturnValue({ returning: dbReturning });
@@ -94,8 +128,48 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
+  it.each(['manual', 'scheduled'] as const)(
+    'never updates or records price history for sold/gifted cards during %s price checks',
+    async (source) => {
+      dbWhere.mockResolvedValueOnce([
+        {
+          id: 200,
+          tcgProductId: 123,
+          productName: 'Sold Card',
+          condition: 'Near Mint',
+          status: 'sold',
+          marketPrice: '1.25',
+          listingPrice: '1.00',
+        },
+        {
+          id: 201,
+          tcgProductId: 456,
+          productName: 'Gifted Missing-Price Card',
+          condition: 'Near Mint',
+          status: 'gifted',
+          marketPrice: null,
+          listingPrice: null,
+        },
+      ]);
+
+      const result = await runPriceCheck({ source });
+
+      expect(containsText(dbWhere.mock.calls[0][0], 'sold')).toBe(true);
+      expect(containsText(dbWhere.mock.calls[0][0], 'gifted')).toBe(true);
+      expect(calculatePrice).not.toHaveBeenCalled();
+      expect(dbUpdate).not.toHaveBeenCalled();
+      expect(dbInsert).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        updated: 0,
+        notFound: 0,
+        needsAttentionCards: [],
+        needsAttentionHistoryIds: [],
+      });
+    },
+  );
+
   it('repairs non-listed null-market needs_attention rows when pricing is found', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 153,
         tcgProductId: 684213,
@@ -141,7 +215,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('marks cards as needs_attention when market price is missing', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 10,
         tcgProductId: 123,
@@ -229,7 +303,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('includes a missing-price card in needs_attention alerts even when it is already in needs_attention', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 11,
         tcgProductId: 123,
@@ -278,7 +352,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('preserves manual listing prices for generic needs_attention cards when source pricing is still missing', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 18,
         tcgProductId: 123,
@@ -340,7 +414,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('repairs only explicit legacy misaligned collection rows by treating tcgplayerId as product id', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 12,
         tcgplayerId: 123,
@@ -406,7 +480,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('does not treat arbitrary tcgplayerId values as product ids without the legacy misalignment signature', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 13,
         tcgplayerId: 123,
@@ -438,7 +512,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('marks listed cards as needs_attention when listing price drift exceeds threshold', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 1,
         tcgProductId: 123,
@@ -532,7 +606,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('keeps listed cards listed when listing price drift stays below threshold', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 7,
         tcgProductId: 123,
@@ -584,7 +658,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('keeps listed cards listed when percent drift meets threshold but absolute diff stays below the minimum', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 16,
         tcgProductId: 123,
@@ -634,7 +708,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('marks listed cards as needs_attention when percent drift and absolute diff both meet threshold', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 17,
         tcgProductId: 123,
@@ -703,7 +777,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('restores listed-origin needs_attention cards back to listed when drift is resolved', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 14,
         tcgProductId: 123,
@@ -753,7 +827,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('keeps listed-origin needs_attention cards in needs_attention and includes them in alert payloads when drift remains unresolved', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 15,
         tcgProductId: 123,
@@ -818,7 +892,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('does not auto-restore generic needs_attention cards to listed when pricing is healthy', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 16,
         tcgProductId: 123,
@@ -866,7 +940,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('uses foil pricing on the next price check when condition includes foil', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 17,
         tcgProductId: 123,
@@ -910,7 +984,7 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
   });
 
   it('applies a card floor price for non-listed cards when calculated listing price remains non-null', async () => {
-    dbFrom.mockResolvedValueOnce([
+    dbWhere.mockResolvedValueOnce([
       {
         id: 2,
         tcgProductId: 123,
@@ -969,64 +1043,64 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     });
   });
 
-  it('adds add_listing CSV diff rows when a non-listed card becomes matched', async () => {
-    dbFrom.mockResolvedValueOnce([
+  it('keeps a positive price below the former gift threshold matched with a normal recommendation', async () => {
+    dbWhere.mockResolvedValueOnce([
       {
         id: 8,
         tcgProductId: 123,
-        productName: 'Relist Me',
+        productName: 'Penny Card',
         condition: 'Near Mint',
         marketPrice: '0.02',
         listingPrice: null,
-        status: 'gift',
+        status: 'matched',
         notes: null,
       },
     ]);
     calculatePrice.mockReturnValue({
-      listingPrice: 0.5,
+      listingPrice: 0.03,
       status: 'matched',
-      reason: 'price recovered',
+      reason: 'priced at 98%',
     });
     dbReturning.mockResolvedValueOnce([{ id: 710 }]);
 
     const result = await runPriceCheck({ source: 'scheduled' });
 
+    expect(dbSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        marketPrice: '0.51',
+        listingPrice: '0.03',
+        status: 'matched',
+        attentionReason: null,
+      }),
+    );
     expect(dbValues).toHaveBeenCalledWith(
       expect.objectContaining({
         cardId: 8,
-        previousStatus: 'gift',
+        previousStatus: 'matched',
         newStatus: 'matched',
         adjustedToPrice: null,
       }),
     );
-
-    expect(result.csvDiff.rows).toEqual([
-      expect.objectContaining({
-        action: 'add_listing',
-        cardId: 8,
-        previousStatus: 'gift',
-        newStatus: 'matched',
-      }),
-    ]);
+    expect(result.csvDiff.rows).toEqual([]);
   });
 
-  it('marks listed cards as needs_attention when current recommendation falls below the gift threshold', async () => {
-    dbFrom.mockResolvedValueOnce([
+  it('keeps a listed card listed when its positive recommendation is below the retired threshold', async () => {
+    dbWhere.mockResolvedValueOnce([
       {
         id: 2,
         tcgProductId: 123,
         productName: 'Yasuo',
         condition: 'Near Mint',
         marketPrice: '1.25',
-        listingPrice: '1.00',
+        listingPrice: '0.03',
         status: 'listed',
         notes: null,
       },
     ]);
     calculatePrice.mockReturnValue({
-      listingPrice: null,
-      status: 'gift',
-      reason: 'no listing price',
+      listingPrice: 0.03,
+      status: 'matched',
+      reason: 'positive market price',
     });
     dbReturning.mockResolvedValueOnce([{ id: 702 }]);
 
@@ -1035,57 +1109,22 @@ describe('runPriceCheck max single-cycle listing-price drop safeguard', () => {
     expect(dbSet).toHaveBeenCalledWith(
       expect.objectContaining({
         marketPrice: '0.51',
-        listingPrice: '1.00',
-        status: 'needs_attention',
-        attentionReason: 'listed_below_threshold',
+        listingPrice: '0.03',
+        status: 'listed',
+        attentionReason: null,
       }),
     );
     expect(dbValues).toHaveBeenCalledWith(
       expect.objectContaining({
         cardId: 2,
         source: 'scheduled',
-        newListingPrice: '1',
+        newListingPrice: '0.03',
         adjustedToPrice: null,
         previousStatus: 'listed',
-        newStatus: 'needs_attention',
-        driftPercent: null,
+        newStatus: 'listed',
       }),
     );
-    expect(result).toMatchObject({
-      updated: 1,
-      notFound: 0,
-      drifted: 0,
-      driftedCards: [],
-      driftedHistoryIds: [],
-      needsAttentionCards: [
-        {
-          cardId: 2,
-          historyId: 702,
-          source: 'scheduled',
-          displayName: 'Yasuo',
-          productName: 'Yasuo',
-          attentionReason: 'listed_below_threshold',
-          previousStatus: 'listed',
-          newStatus: 'needs_attention',
-          previousMarketPrice: 1.25,
-          newMarketPrice: 0.51,
-          currentListingPrice: 1,
-          recommendedListingPrice: null,
-          driftPercent: null,
-        },
-      ],
-      needsAttentionHistoryIds: [702],
-      csvDiff: {
-        rows: [
-          expect.objectContaining({
-            action: 'remove_listing',
-            cardId: 2,
-            previousStatus: 'listed',
-            newStatus: 'needs_attention',
-            newListingPrice: 1,
-          }),
-        ],
-      },
-    });
+    expect(result.needsAttentionCards).toEqual([]);
+    expect(result.csvDiff.rows).toEqual([]);
   });
 });

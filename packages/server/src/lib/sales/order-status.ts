@@ -49,11 +49,10 @@ export async function getOrderSaleRows(
 }
 
 function getRestoredCardState(lineItemType: 'sale' | 'gift', card: any) {
-  if (lineItemType === 'gift') {
-    return { status: 'gift', attentionReason: null };
-  }
-
-  if (card.status === 'sold') {
+  // Both paid and gift cancellations return fully depleted inventory to a
+  // resale-eligible state. Partial lines preserve their listed-origin review
+  // state because they never reached a terminal status.
+  if (card.status === 'sold' || card.status === 'gifted') {
     return { status: 'listed', attentionReason: null };
   }
 

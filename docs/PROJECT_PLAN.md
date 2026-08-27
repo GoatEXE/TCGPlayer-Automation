@@ -93,7 +93,7 @@ Represents a physical card you own and want to sell.
 | `condition`      | enum       | NM, LP, MP, HP, DMG                               |
 | `quantity`       | int        | How many duplicates of this specific card          |
 | `source`         | enum       | `csv_import` / `manual_entry`                     |
-| `status`         | enum       | `pending` / `matched` / `listed` / `needs_attention` / `gift` / `gifted` / `sold` / `error` |
+| `status`         | enum       | Active: `pending` / `matched` / `listed` / `needs_attention` / `error`; terminal history: `gifted` / `sold` (the database retains legacy `gift` only for migration compatibility) |
 | `rawCsvData`     | jsonb?     | Original CSV row for debugging                    |
 | `createdAt`      | timestamp  |                                                   |
 | `updatedAt`      | timestamp  |                                                   |
@@ -102,8 +102,7 @@ Represents a physical card you own and want to sell.
 - `pending` → Card imported but not yet priced
 - `matched` → Card has market price, calculated listing price, ready to list
 - `listed` → Card is actually listed for sale on TCGPlayer (manual workflow at Level 1)
-- `gift` → Market price < $0.05, available as a freebie in bulk order recording
-- `gifted` → Gift-pool quantity has been depleted through an order; removed from active inventory while preserving history
+- `gifted` → A card fully depleted through a gift/freebie order; removed from active inventory while preserving history
 - `needs_attention` → No market price found, requires manual review or retry. Listed-origin needs-attention cards remain eligible for paid order attachment.
 - `sold` → Listed quantity has been depleted through paid sales
 - `error` → Processing error occurred
@@ -341,9 +340,9 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [N/A] Create API endpoint: `POST /api/listings/create-all` (no API access for automated listing)
 - [N/A] Add error handling and partial failure support (manual listing workflow at Level 1)
 - [x] Handle cards with no market price data — skip listing, set card status to `needs_attention`, trigger notification, queue for retry on next price check cycle
-- [x] Cards with market price < $0.05: mark as `gift` — these are freebies to include in orders to encourage positive reviews
-- [x] Cards with market price >= $0.05: eligible for listing at 98% market price
-- [x] No hard minimum listing floor — list everything $0.05+ to maximize inventory for order consolidation
+- [x] **Superseded:** active `gift` status / $0.05 gift-pool threshold. Every positive finite market price receives the normal recommended listing price.
+- [x] Gift/freebie handling is selected per eligible attached order line at $0.00; it is not an inventory status or price threshold.
+- [x] No hard minimum listing floor — every positive finite price remains eligible for the normal recommendation.
 - [x] Track profitability per ORDER (after $0.30 fee split), not per individual card
 - [x] Foil price fallback — when Normal pricing unavailable, fall back to Foil pricing with `isFoilPrice` indicator
 - [x] Build simple "review and confirm" UI step — show user what will be listed at what price before pushing
@@ -358,7 +357,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 | GET    | `/api/cards/search`        | N/A    | Search TCGPlayer catalog (no API)       |
 | PATCH  | `/api/cards/:id`           | ✅     | Update card details                     |
 | DELETE | `/api/cards/:id`           | ✅     | Remove card                             |
-| GET    | `/api/cards/stats`         | ✅     | Status counts (pending/matched/gift)    |
+| GET    | `/api/cards/stats`         | ✅     | Status counts, including terminal sold/gifted history |
 | POST   | `/api/cards/:id/reprice`   | ✅     | Re-price single card                    |
 | POST   | `/api/cards/reprice-all`   | ✅     | Bulk re-price all cards                 |
 | POST   | `/api/cards/fetch-prices`  | ✅     | Fetch latest prices from TCGTracking API |
@@ -470,8 +469,7 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
 - [x] Add safeguards: max price drop per adjustment (e.g., no more than 20% drop in a single adjustment to catch API anomalies)
 - [x] Add backend support for a floor price option per card (optional, default: none) to prevent listing below a minimum
 - [x] Add backend/API support for per-card `floorPriceCents`; main Card Inventory UI floor controls are currently hidden
-- [x] During price checks, evaluate active listings that should be REMOVED (market price dropped below $0.05) — delist and set card status to `gift`
-- [x] During price checks, evaluate `gift` cards that should be LISTED (market price rose above $0.05) — queue for relisting at 98% market (`matched` status)
+- [x] **Superseded:** price-check transitions between an active `gift` pool and listings at a $0.05 threshold. Price checks refresh only active inventory; positive finite prices retain normal recommendations, while missing/non-finite/zero/negative prices require attention. Terminal `sold` and `gifted` history is never repriced.
 - [x] Generate CSV diff per price check cycle: new listings to add, listings to remove, price changes
 
 ### 5.3 Monitoring UI
@@ -501,12 +499,12 @@ TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,TC
   - `sale_status_history` audit table + transition state machine + cancellation quantity-restore
   - Pipeline widget, inline OrderStatusSelect, batch actions, per-row history expansion
   - API sync scheduler blocked on TCGPlayer credentials
-- [x] **Order recording workflow** — Inventory attaches paid-eligible cards and gift-pool freebies to an order
+- [x] **Order recording workflow** — Inventory attaches paid-eligible cards and selected gift/freebie lines to an order
   - Single-card `POST /api/sales` remains available for paid sales and returns `lineItemType: 'sale'`
   - Bulk order recording uses `POST /api/sales/bulk` with required `tcgplayerOrderId`, default `orderStatus: 'confirmed'`, optional buyer/date/notes, editable `shippingCollectedCents`, and `lines`
   - `lines` entries use `{ cardId, quantitySold, salePriceCents, lineItemType: 'sale' | 'gift' }`
   - Paid lines require listed or listed-origin `needs_attention` cards and a positive price
-  - Gift lines require gift-pool cards and a zero price; gift depletion moves cards to `gifted`
+  - Gift lines use selected listed or listed-origin `needs_attention` cards at zero price; full depletion moves cards to terminal `gifted`
   - Sales stats and performance exclude gift rows by default; invoices and packing slips include gift lines grouped by TCGPlayer Order ID
   - Performance revenue includes product sale totals plus shipping collected once per order. TCGPlayer shipping collected is revenue, not postage cost.
   - Sale/order recording UI sends `shippingCollectedCents`; the default comes from expense settings, with backend default 149 cents.
@@ -646,7 +644,7 @@ Fast, disk-efficient, good workspace support. No strong opinion here — npm or 
 
 1. **TCGPlayer API closure:** TCGPlayer Seller API is closed to new applicants as of 2026. **Workaround:** Price data comes from TCGTracking API (free, no auth). Listing is manual via TCGPlayer seller portal (Level 1 seller workflow). This app generates CSV exports and pricing recommendations; actual listing is done by hand.
 2. **No market price handling:** Do NOT list the card. Mark it as `needs_attention` in the UI, send a Telegram notification ("Card X couldn't be listed: no market price data"), and on the next price check cycle, re-attempt to find a market price. If a price is found, auto-list it at 98% market. This combines graceful skipping, user notification, and automatic retry.
-3. **Minimum listing price:** Cards under $0.05 → gift pool (freebies for positive reviews). Everything $0.05+ gets listed. No hard floor — consolidation strategy prioritizes inventory breadth. Re-evaluated each price check cycle — auto-listed if market price rises above threshold. See `docs/research/tcgplayer-fees/FEE_ANALYSIS.md` for profitability analysis.
+3. **Active inventory pricing:** Every positive finite market price receives the normal recommended listing price. There is no active gift pool or minimum-listing-price setting; missing, non-finite, zero, and negative prices require attention. Gift/freebie order lines are recorded from selected listings at $0.00, and fully depleted cards become terminal `gifted`. See [Current contract](CURRENT_CONTRACT.md).
 4. **Hosting/access:** Local network only, no external access. Telegram integration will use **polling mode** (not webhooks) to avoid needing inbound connections.
 5. **Seller account:** Dustin does not have one yet; will apply. This is a known dependency for Phase 1 POC validation.
 

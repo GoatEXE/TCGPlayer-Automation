@@ -10,6 +10,8 @@ import {
   or,
   isNull,
   inArray,
+  notInArray,
+  gt,
   getTableColumns,
 } from 'drizzle-orm';
 import { db } from '../db/index.js';
@@ -42,8 +44,37 @@ interface StatsResponse {
   matched: number;
   listed: number;
   needs_attention: number;
-  gift: number;
+  sold: number;
+  gifted: number;
   error: number;
+}
+
+const queryableCardStatuses = [
+  'pending',
+  'matched',
+  'listed',
+  'needs_attention',
+  'gifted',
+  'sold',
+  'error',
+] as const;
+
+const patchableCardStatuses = [
+  'pending',
+  'matched',
+  'listed',
+  'needs_attention',
+  'error',
+] as const;
+
+const inactiveInventoryStatuses: Card['status'][] = [
+  'gift',
+  'gifted',
+  'sold',
+];
+
+function isTerminalInventoryCard(card: Pick<Card, 'status'>): boolean {
+  return card.status === 'gifted' || card.status === 'sold';
 }
 
 interface CardListItem extends Card {
@@ -58,13 +89,7 @@ interface CardsListResponse {
 }
 
 interface UpdateCardBody {
-  status?:
-    | 'pending'
-    | 'matched'
-    | 'listed'
-    | 'needs_attention'
-    | 'gift'
-    | 'error';
+  status?: (typeof patchableCardStatuses)[number];
   quantity?: number;
   listingPrice?: number;
   floorPriceCents?: number | null;
@@ -108,6 +133,18 @@ interface PriceCheckStatusResponse {
 
 interface PriceHistoryResponse {
   history: PriceHistory[];
+}
+
+function isQueryableCardStatus(
+  status: string,
+): status is (typeof queryableCardStatuses)[number] {
+  return (queryableCardStatuses as readonly string[]).includes(status);
+}
+
+function isPatchableCardStatus(
+  status: string,
+): status is (typeof patchableCardStatuses)[number] {
+  return (patchableCardStatuses as readonly string[]).includes(status);
 }
 
 function sanitizeNumericString(value: string | null | undefined): string | null {
@@ -339,13 +376,24 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     const limitNum = parseInt(limit, 10);
     const offset = (pageNum - 1) * limitNum;
 
+    if (status === 'gift') {
+      return reply.code(400).send({
+        error: 'status=gift is retired; use Gifted for terminal gift history',
+      });
+    }
+    if (status && status !== 'all' && !isQueryableCardStatus(status)) {
+      return reply.code(400).send({ error: 'Invalid card status filter' });
+    }
+
     try {
-      // Build where conditions
-      const conditions = [];
+      // Inventory never includes depleted rows. Terminal rows remain in the
+      // database for sales and gift history, but a zero-quantity row has no
+      // inventory value regardless of the requested status.
+      const conditions = [gt(cards.quantity, 0)];
       if (status && status !== 'all') {
         conditions.push(eq(cards.status, status as any));
       } else {
-        conditions.push(sql`${cards.status} not in ('sold', 'gifted')`);
+        conditions.push(notInArray(cards.status, inactiveInventoryStatuses));
       }
       if (search) {
         conditions.push(ilike(cards.productName, `%${search}%`));
@@ -437,7 +485,8 @@ export async function cardsRoutes(fastify: FastifyInstance) {
         matched: statsMap.matched || 0,
         listed: statsMap.listed || 0,
         needs_attention: statsMap.needs_attention || 0,
-        gift: statsMap.gift || 0,
+        sold: statsMap.sold || 0,
+        gifted: statsMap.gifted || 0,
         error: statsMap.error || 0,
       });
     } catch (error) {
@@ -456,6 +505,18 @@ export async function cardsRoutes(fastify: FastifyInstance) {
     const cardId = parseInt(id, 10);
 
     try {
+      if ((updates.status as string | undefined) === 'gift') {
+        return reply.code(400).send({
+          error: 'status gift is retired and cannot be assigned',
+        });
+      }
+      if (
+        updates.status !== undefined &&
+        !isPatchableCardStatus(updates.status)
+      ) {
+        return reply.code(400).send({ error: 'Invalid card status' });
+      }
+
       const updateData: any = { ...updates, updatedAt: new Date() };
       let existingCard: Card | undefined;
 
@@ -595,6 +656,11 @@ export async function cardsRoutes(fastify: FastifyInstance) {
       if (!card) {
         return reply.code(404).send({ error: 'Card not found' });
       }
+      if (isTerminalInventoryCard(card)) {
+        return reply.code(409).send({
+          error: 'Terminal sold or gifted cards cannot be repriced',
+        });
+      }
 
       // Calculate new price. If this row has no local market price (for example
       // an older collection transfer created before transfer pricing was fixed),
@@ -661,16 +727,26 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   // POST /reprice-all - Reprice all cards
   fastify.post('/reprice-all', async (request, reply) => {
     try {
-      // Fetch all cards with a market price
+      // Terminal history and retired legacy gift rows are never repriced.
       const cardsToReprice = await db
         .select()
         .from(cards)
-        .where(isNotNull(cards.marketPrice));
+        .where(
+          and(
+            isNotNull(cards.marketPrice),
+            notInArray(cards.status, inactiveInventoryStatuses),
+          ),
+        );
 
       let updated = 0;
 
-      // Update each card with new pricing
+      // Keep the guard even though the query filters terminal rows so a stale
+      // result cannot resurrect historical inventory.
       for (const card of cardsToReprice) {
+        if (isTerminalInventoryCard(card)) {
+          continue;
+        }
+
         const marketPrice = parseFloat(card.marketPrice!);
         const pricingResult = calculatePrice({ marketPrice });
 

@@ -24,8 +24,6 @@ interface CardTableProps {
   onUpdateCard: (id: number, data: Partial<Card>) => Promise<Card>;
   onRecordSale?: (data: CreateSaleRequest) => Promise<void>;
   onBulkSell?: (order: CreateBulkOrderRequest) => Promise<void>;
-  giftCards?: Card[];
-  onPrepareBulkSell?: () => Promise<void>;
   bulkMode?: 'all' | 'list' | 'sell';
   enableSellFlow?: boolean;
   defaultShippingCollectedCents?: number;
@@ -151,8 +149,6 @@ export function CardTable({
   onUpdateCard,
   onRecordSale,
   onBulkSell,
-  giftCards = [],
-  onPrepareBulkSell,
   bulkMode,
   enableSellFlow,
   defaultShippingCollectedCents = 149,
@@ -188,7 +184,6 @@ export function CardTable({
   const [manualListingSaving, setManualListingSaving] = useState(false);
   const [manualListingError, setManualListingError] = useState<string | null>(null);
   const [showBulkSellModal, setShowBulkSellModal] = useState(false);
-  const [preparingBulkSell, setPreparingBulkSell] = useState(false);
   const [needsAttentionReviewQueue, setNeedsAttentionReviewQueue] = useState<ReviewPricingGroup[] | null>(null);
   const [needsAttentionReviewIndex, setNeedsAttentionReviewIndex] = useState(0);
   const [needsAttentionReviewLoading, setNeedsAttentionReviewLoading] = useState(false);
@@ -247,20 +242,25 @@ export function CardTable({
     }
   };
 
-  const sortedCards = onSortChange ? cards : [...cards].sort((a, b) => {
-    if (!sortField) return 0;
+  // Keep Inventory safe if a stale or malformed API response includes a
+  // depleted row. Historical rows remain available through sales APIs.
+  const inventoryCards = cards.filter((card) => card.quantity > 0);
+  const sortedCards = onSortChange
+    ? inventoryCards
+    : [...inventoryCards].sort((a, b) => {
+        if (!sortField) return 0;
 
-    const aVal =
-      sortField === 'productName' ? a.title || a.productName : a[sortField];
-    const bVal =
-      sortField === 'productName' ? b.title || b.productName : b[sortField];
+        const aVal =
+          sortField === 'productName' ? a.title || a.productName : a[sortField];
+        const bVal =
+          sortField === 'productName' ? b.title || b.productName : b[sortField];
 
-    if (aVal === null || aVal === undefined) return 1;
-    if (bVal === null || bVal === undefined) return -1;
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
 
-    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+        const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        return sortDirection === 'asc' ? comparison : -comparison;
+      });
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this card?')) return;
@@ -406,22 +406,15 @@ export function CardTable({
     }
   };
 
-  const handleOpenBulkSell = async () => {
+  const handleOpenBulkSell = () => {
     if (selectedSellableCards.length === 0) return;
-    setPreparingBulkSell(true);
-    try {
-      await onPrepareBulkSell?.();
-      setShowBulkSellModal(true);
-    } finally {
-      setPreparingBulkSell(false);
-    }
+    setShowBulkSellModal(true);
   };
 
   const effectiveBulkMode = bulkMode ?? (enableSellFlow ? 'sell' : 'list');
   const isListedOriginAttention = (card: Card) =>
     card.attentionReason === 'listed_price_drift' ||
-    card.attentionReason === 'listed_missing_price' ||
-    card.attentionReason === 'listed_below_threshold';
+    card.attentionReason === 'listed_missing_price';
   const isSellEligible = (card: Card) =>
     card.status === 'listed' ||
     (card.status === 'needs_attention' && isListedOriginAttention(card));
@@ -690,14 +683,8 @@ export function CardTable({
         <div className="selection-actions">
           {(effectiveBulkMode === 'sell' ||
             (effectiveBulkMode === 'all' && selectedSellableCards.length > 0)) && (
-            <button
-              onClick={handleOpenBulkSell}
-              disabled={preparingBulkSell}
-              className="button-primary"
-            >
-              {preparingBulkSell
-                ? '⏳ Loading gifts…'
-                : `💰 Attach ${selectedSellableCards.length} to Order`}
+            <button onClick={handleOpenBulkSell} className="button-primary">
+              {`💰 Attach ${selectedSellableCards.length} to Order`}
             </button>
           )}
           {(effectiveBulkMode === 'list' ||
@@ -1433,7 +1420,6 @@ export function CardTable({
       {showBulkSellModal && onBulkSell && (
         <BulkSellModal
           cards={selectedSellableCards}
-          giftCards={giftCards}
           onSubmit={async (order) => {
             await onBulkSell(order);
             const soldIds = new Set(

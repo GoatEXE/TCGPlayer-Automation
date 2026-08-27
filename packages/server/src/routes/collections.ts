@@ -644,7 +644,7 @@ async function findTransferTargetCard(params: {
   number: string | null;
   condition: string;
 }) {
-  const statusFilter = inArray(cards.status, ['matched', 'needs_attention', 'gift']);
+  const statusFilter = inArray(cards.status, ['matched', 'needs_attention']);
   const filters = [eq(cards.condition, params.condition), statusFilter];
 
   if (params.tcgProductId) {
@@ -888,7 +888,7 @@ async function commitTransferPlan(
         .where(
           and(
             eq(cards.id, item.targetCardId),
-            inArray(cards.status, ['matched', 'needs_attention', 'gift']),
+            inArray(cards.status, ['matched', 'needs_attention']),
           ),
         )
         .limit(1);

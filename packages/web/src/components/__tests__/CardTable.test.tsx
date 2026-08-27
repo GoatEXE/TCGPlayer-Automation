@@ -1627,7 +1627,7 @@ describe('CardTable Record Sale button', () => {
           makeCard({ id: 1, status: 'matched', productName: 'Matched Card' }),
           makeCard({ id: 2, status: 'pending', productName: 'Pending Card' }),
           makeCard({ id: 3, status: 'sold', productName: 'Sold Card' }),
-          makeCard({ id: 4, status: 'gift', productName: 'Gift Card' }),
+          makeCard({ id: 4, status: 'gifted', productName: 'Gifted Card' }),
         ]}
       />,
     );
@@ -1858,6 +1858,38 @@ describe('CardTable sell flow (enableSellFlow)', () => {
     // Should show Mark as Listed button, not Attach to Order
     expect(screen.getByText(/mark 1 as listed/i)).toBeInTheDocument();
     expect(screen.queryByText(/attach.*to order/i)).not.toBeInTheDocument();
+  });
+
+  it('does not render zero-quantity active or terminal rows', () => {
+    render(
+      <CardTable
+        {...defaultTableProps}
+        cards={[
+          makeCard({
+            id: 1,
+            quantity: 0,
+            status: 'matched',
+            productName: 'Depleted Active Card',
+          }),
+          makeCard({
+            id: 2,
+            quantity: 0,
+            status: 'sold',
+            productName: 'Depleted Sold Card',
+          }),
+          makeCard({
+            id: 3,
+            quantity: 1,
+            status: 'listed',
+            productName: 'Available Card',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText('Depleted Active Card')).not.toBeInTheDocument();
+    expect(screen.queryByText('Depleted Sold Card')).not.toBeInTheDocument();
+    expect(screen.getByText('Available Card')).toBeInTheDocument();
   });
 
   it('when bulkMode=list, listed card checkboxes are disabled', () => {

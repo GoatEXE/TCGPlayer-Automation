@@ -152,8 +152,24 @@ function getNextPaidCardStatus(card: {
   return { status: 'listed', attentionReason: null };
 }
 
-function getNextGiftCardStatus(remainingQuantity: number) {
-  return remainingQuantity === 0 ? 'gifted' : 'gift';
+function getNextGiftCardStatus(
+  card: {
+    status: Card['status'];
+    attentionReason: Card['attentionReason'];
+  },
+  remainingQuantity: number,
+) {
+  if (remainingQuantity === 0) {
+    return { status: 'gifted' as const, attentionReason: null };
+  }
+
+  // A partial freebie must remain eligible for later resale. Preserve a
+  // listed-origin attention state so it still receives pricing review.
+  return getNextPaidCardStatus({
+    status: card.status,
+    quantity: remainingQuantity,
+    attentionReason: card.attentionReason,
+  });
 }
 
 export async function salesRoutes(fastify: FastifyInstance) {
@@ -412,10 +428,10 @@ export async function salesRoutes(fastify: FastifyInstance) {
             }
 
             if (line.lineItemType === 'gift') {
-              if (card.status !== 'gift') {
+              if (!canRecordPaidSaleForCard(card)) {
                 throw new SalesRouteError(
                   400,
-                  'Gift lines require cards with status gift',
+                  'Gift lines require cards with status listed or listed-origin needs_attention',
                 );
               }
 
@@ -446,10 +462,7 @@ export async function salesRoutes(fastify: FastifyInstance) {
             const remainingQuantity = card.quantity - line.quantitySold;
             const nextCardState =
               line.lineItemType === 'gift'
-                ? {
-                    status: getNextGiftCardStatus(remainingQuantity),
-                    attentionReason: null,
-                  }
+                ? getNextGiftCardStatus(card, remainingQuantity)
                 : getNextPaidCardStatus({
                     status: card.status,
                     quantity: remainingQuantity,

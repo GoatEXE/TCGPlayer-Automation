@@ -8,7 +8,6 @@ const STATUS_CONFIG = {
   pending: { label: 'Pending', color: '#6b7280' },
   matched: { label: 'Ready to List', color: '#8b5cf6' },
   listed: { label: 'Listed', color: '#10b981' },
-  gift: { label: 'Gift', color: '#3b82f6' },
   gifted: { label: 'Gifted', color: '#64748b' },
   needs_attention: { label: 'Needs Attention', color: '#f59e0b' },
   sold: { label: 'Sold', color: '#6366f1' },

@@ -36,7 +36,10 @@ const containsColumnName = (
     return value.some((item) => containsColumnName(item, columnName, seen));
   }
 
-  if ('queryChunks' in value && Array.isArray((value as { queryChunks?: unknown[] }).queryChunks)) {
+  if (
+    'queryChunks' in value &&
+    Array.isArray((value as { queryChunks?: unknown[] }).queryChunks)
+  ) {
     return (value as { queryChunks: unknown[] }).queryChunks.some((item) =>
       containsColumnName(item, columnName, seen),
     );
@@ -85,6 +88,49 @@ const containsText = (
   }
 
   return Object.values(value).some((item) => containsText(item, needle, seen));
+};
+
+const containsExactText = (
+  value: unknown,
+  needle: string,
+  seen = new Set<unknown>(),
+): boolean => {
+  if (typeof value === 'string') {
+    return value === needle;
+  }
+
+  if (!value || typeof value !== 'object' || seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsExactText(item, needle, seen));
+  }
+
+  return Object.values(value).some((item) =>
+    containsExactText(item, needle, seen),
+  );
+};
+
+const containsExactValue = (
+  value: unknown,
+  needle: unknown,
+  seen = new Set<unknown>(),
+): boolean => {
+  if (value === needle) return true;
+  if (!value || typeof value !== 'object' || seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsExactValue(item, needle, seen));
+  }
+
+  return Object.values(value).some((item) =>
+    containsExactValue(item, needle, seen),
+  );
 };
 
 // Mock the database
@@ -387,8 +433,8 @@ describe('GET /api/cards', () => {
         id: 2,
         productName: 'Card 2',
         quantity: 2,
-        status: 'gift' as const,
-        attentionReason: 'listed_price_drift',
+        status: 'matched' as const,
+        attentionReason: null,
         floorPriceCents: null,
         importedAt: new Date('2026-03-29T10:00:00.000Z'),
         lastCheckedAt: null,
@@ -436,7 +482,7 @@ describe('GET /api/cards', () => {
     expect(body.cards[0].attentionReason).toBeNull();
     expect(body.cards[1].lastCheckedAt).toBeNull();
     expect(body.cards[1].floorPriceCents).toBeNull();
-    expect(body.cards[1].attentionReason).toBe('listed_price_drift');
+    expect(body.cards[1].attentionReason).toBeNull();
   });
 
   it('excludes sold and gifted cards by default when no status filter is provided', async () => {
@@ -468,6 +514,12 @@ describe('GET /api/cards', () => {
     expect(response.statusCode).toBe(200);
     expect(countWhere).toHaveBeenCalledTimes(1);
     expect(dataWhere).toHaveBeenCalledTimes(1);
+    expect(containsText(countWhere.mock.calls[0][0], 'sold')).toBe(true);
+    expect(containsText(countWhere.mock.calls[0][0], 'gifted')).toBe(true);
+    expect(containsExactText(countWhere.mock.calls[0][0], 'gift')).toBe(true);
+    expect(containsText(dataWhere.mock.calls[0][0], 'sold')).toBe(true);
+    expect(containsText(dataWhere.mock.calls[0][0], 'gifted')).toBe(true);
+    expect(containsExactText(dataWhere.mock.calls[0][0], 'gift')).toBe(true);
   });
 
   it('treats status=all like the default active inventory filter', async () => {
@@ -618,64 +670,31 @@ describe('GET /api/cards', () => {
     expect(response.statusCode).toBe(200);
     expect(containsText(countWhere.mock.calls[0][0], 'sold')).toBe(true);
     expect(containsText(countWhere.mock.calls[0][0], 'gifted')).toBe(true);
+    expect(containsExactText(countWhere.mock.calls[0][0], 'gift')).toBe(true);
     expect(containsText(dataWhere.mock.calls[0][0], 'sold')).toBe(true);
     expect(containsText(dataWhere.mock.calls[0][0], 'gifted')).toBe(true);
+    expect(containsExactText(dataWhere.mock.calls[0][0], 'gift')).toBe(true);
   });
 
-  it('should filter cards by status', async () => {
-    const mockCards = [
-      {
-        id: 1,
-        productName: 'Gift Card',
-        quantity: 1,
-        status: 'gift' as const,
-        importedAt: new Date(),
-        lastCheckedAt: null,
-      },
-    ];
-
-    const mockOffset = vi.fn().mockResolvedValue(mockCards);
-    const mockLimit = vi.fn().mockReturnValue({ offset: mockOffset });
-    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
-    const mockWhere = vi.fn().mockReturnValue({
-      orderBy: mockOrderBy,
-    });
-
-    let selectCallCount = 0;
-    vi.mocked(db.select).mockImplementation(() => {
-      selectCallCount++;
-      if (selectCallCount === 1) {
-        return {
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([{ count: 1 }]),
-          }),
-        } as any;
-      }
-
-      return {
-        from: vi.fn().mockReturnValue({
-          where: mockWhere,
-        }),
-      } as any;
-    });
-
+  it('rejects the retired gift status query without querying active inventory', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/cards?status=gift',
     });
 
-    expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
-    expect(body.cards).toBeDefined();
-    expect(body.cards[0].lastCheckedAt).toBeNull();
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'status=gift is retired; use Gifted for terminal gift history',
+    });
+    expect(db.select).not.toHaveBeenCalled();
   });
 
-  it('allows explicit status=sold queries', async () => {
+  it('allows explicit status=sold queries when quantity is positive', async () => {
     const mockCards = [
       {
         id: 9,
         productName: 'Sold Card',
-        quantity: 0,
+        quantity: 1,
         status: 'sold' as const,
         importedAt: new Date(),
         lastCheckedAt: null,
@@ -716,12 +735,12 @@ describe('GET /api/cards', () => {
     expect(JSON.parse(response.body).cards[0].status).toBe('sold');
   });
 
-  it('allows explicit status=gifted queries', async () => {
+  it('allows explicit status=gifted queries when quantity is positive', async () => {
     const mockCards = [
       {
         id: 10,
         productName: 'Gifted Card',
-        quantity: 0,
+        quantity: 1,
         status: 'gifted' as const,
         importedAt: new Date(),
         lastCheckedAt: null,
@@ -761,6 +780,57 @@ describe('GET /api/cards', () => {
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body).cards[0].status).toBe('gifted');
   });
+
+  it.each([
+    ['default inventory', undefined],
+    ['all inventory', 'all'],
+    ['active status', 'listed'],
+    ['sold history status', 'sold'],
+    ['gifted history status', 'gifted'],
+  ] as const)(
+    'excludes zero-quantity rows from %s results',
+    async (_label, status) => {
+      const countWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      const dataWhere = vi.fn().mockReturnValue({
+        orderBy: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            offset: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      });
+
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          return {
+            from: vi.fn().mockReturnValue({ where: countWhere }),
+          } as any;
+        }
+
+        return {
+          from: vi.fn().mockReturnValue({ where: dataWhere }),
+        } as any;
+      });
+
+      const query = status ? `?status=${status}` : '';
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/cards${query}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({ cards: [], total: 0 });
+      expect(containsColumnName(countWhere.mock.calls[0][0], 'quantity')).toBe(
+        true,
+      );
+      expect(containsExactValue(countWhere.mock.calls[0][0], 0)).toBe(true);
+      expect(containsColumnName(dataWhere.mock.calls[0][0], 'quantity')).toBe(
+        true,
+      );
+      expect(containsExactValue(dataWhere.mock.calls[0][0], 0)).toBe(true);
+    },
+  );
 
   it('should search cards by productName', async () => {
     const mockCards = [
@@ -824,7 +894,7 @@ describe('GET /api/cards/stats', () => {
     const mockStats = [
       { status: null, count: 10 },
       { status: 'listed', count: 5 },
-      { status: 'gift', count: 3 },
+      { status: 'gifted', count: 3 },
       { status: 'needs_attention', count: 2 },
     ];
 
@@ -844,7 +914,8 @@ describe('GET /api/cards/stats', () => {
     expect(body).toHaveProperty('total');
     expect(body).toHaveProperty('pending');
     expect(body).toHaveProperty('listed');
-    expect(body).toHaveProperty('gift');
+    expect(body).not.toHaveProperty('gift');
+    expect(body).toHaveProperty('gifted', 3);
     expect(body).toHaveProperty('needs_attention');
     expect(body).toHaveProperty('error');
   });
@@ -1268,6 +1339,20 @@ describe('PATCH /api/cards/:id', () => {
     expect(updateArgs.attentionReason).toBeUndefined();
   });
 
+  it('rejects PATCH attempts to restore the retired gift status', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/cards/1',
+      payload: { status: 'gift' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'status gift is retired and cannot be assigned',
+    });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('should return 404 for non-existent card', async () => {
     vi.mocked(db.update).mockReturnValue({
       set: vi.fn().mockReturnValue({
@@ -1418,8 +1503,8 @@ describe('POST /api/cards/:id/reprice', () => {
 
     vi.mocked(calculatePrice).mockReturnValue({
       listingPrice: null,
-      status: 'gift' as const,
-      reason: 'Market price below minimum threshold',
+      status: 'needs_attention' as const,
+      reason: 'No usable market price available',
     });
 
     let updateArgs: any = null;
@@ -1598,6 +1683,44 @@ describe('POST /api/cards/:id/reprice', () => {
     );
   });
 
+  it.each([
+    ['sold', '2.00'],
+    ['gifted', null],
+  ] as const)(
+    'rejects a terminal %s card before repricing or fetching a missing price',
+    async (status, marketPrice) => {
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            {
+              id: 200,
+              productName: 'Terminal Card',
+              status,
+              marketPrice,
+              listingPrice: '1.00',
+              importedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ]),
+        }),
+      } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/cards/200/reprice',
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'Terminal sold or gifted cards cannot be repriced',
+      });
+      expect(calculatePrice).not.toHaveBeenCalled();
+      expect(mockGetSets).not.toHaveBeenCalled();
+      expect(mockGetPricing).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    },
+  );
+
   it('should return 404 for non-existent card', async () => {
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -1656,9 +1779,9 @@ describe('POST /api/cards/reprice-all', () => {
         reason: 'Priced at 98% of market',
       })
       .mockReturnValueOnce({
-        listingPrice: null,
-        status: 'gift' as const,
-        reason: 'Market price below minimum threshold',
+        listingPrice: 0.1,
+        status: 'matched' as const,
+        reason: 'Priced at 98% of market',
       });
 
     const updateCalls: any[] = [];
@@ -1683,7 +1806,7 @@ describe('POST /api/cards/reprice-all', () => {
       floorPriceCents: 200,
     });
     expect(applyFloorPriceCents).toHaveBeenNthCalledWith(2, {
-      listingPrice: null,
+      listingPrice: 0.1,
       floorPriceCents: 50,
     });
     expect(updateCalls).toEqual([
@@ -1694,13 +1817,47 @@ describe('POST /api/cards/reprice-all', () => {
       }),
       expect.objectContaining({
         listingPrice: '0.09',
-        status: 'needs_attention',
+        status: 'listed',
         updatedAt: expect.any(Date),
       }),
     ]);
 
     const body = JSON.parse(response.body);
     expect(body.updated).toBe(2);
+  });
+
+  it('filters and skips sold/gifted terminal cards before bulk repricing', async () => {
+    const selectWhere = vi.fn().mockResolvedValue([
+      {
+        id: 200,
+        productName: 'Sold Card',
+        status: 'sold',
+        marketPrice: '2.00',
+        listingPrice: '1.96',
+      },
+      {
+        id: 201,
+        productName: 'Gifted Card',
+        status: 'gifted',
+        marketPrice: '1.00',
+        listingPrice: null,
+      },
+    ]);
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: selectWhere }),
+    } as any);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/cards/reprice-all',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(containsText(selectWhere.mock.calls[0][0], 'sold')).toBe(true);
+    expect(containsText(selectWhere.mock.calls[0][0], 'gifted')).toBe(true);
+    expect(calculatePrice).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+    expect(JSON.parse(response.body)).toEqual({ updated: 0 });
   });
 });
 
@@ -2182,7 +2339,9 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     const mockPricingResult1 = {
@@ -2273,7 +2432,9 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     vi.mocked(calculatePrice).mockReturnValue({
@@ -2350,7 +2511,9 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     const response = await app.inject({
@@ -2415,7 +2578,9 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     const mockPricingResult = {
@@ -2504,7 +2669,9 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     const mockPricingResult = {
@@ -2592,7 +2759,9 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     const mockPricingResult = {
@@ -2626,7 +2795,7 @@ describe('POST /api/cards/fetch-prices', () => {
     expect(updateCallArgs.notes).toBe(null); // Foil note should be removed (returns null when empty)
   });
 
-  it('should update cards that drop below $0.05 to gift status', async () => {
+  it('keeps cards with a positive price below $0.05 on the normal listing path', async () => {
     const mockSets = [
       {
         id: 24344,
@@ -2675,13 +2844,15 @@ describe('POST /api/cards/fetch-prices', () => {
     mockGetPricing.mockResolvedValue(mockPricing);
 
     vi.mocked(db.select).mockReturnValue({
-      from: vi.fn().mockResolvedValue(mockCards),
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockCards),
+      }),
     } as any);
 
     const mockPricingResult = {
-      listingPrice: null,
-      status: 'gift' as const,
-      reason: 'Market price below minimum threshold',
+      listingPrice: 0.03,
+      status: 'matched' as const,
+      reason: 'Priced at 98% of market',
     };
 
     vi.mocked(calculatePrice).mockReturnValue(mockPricingResult);
@@ -2804,7 +2975,9 @@ describe('POST /api/cards/price-check-settings', () => {
     expect(
       priceCheckMocks.updateListedPriceAttentionThresholdPercent,
     ).toHaveBeenCalledWith(7.5, expect.any(Object));
-    expect(priceCheckMocks.updatePriceCheckIntervalHours).not.toHaveBeenCalled();
+    expect(
+      priceCheckMocks.updatePriceCheckIntervalHours,
+    ).not.toHaveBeenCalled();
     expect(JSON.parse(response.body)).toEqual({
       enabled: true,
       intervalHours: 6,
@@ -2837,7 +3010,9 @@ describe('POST /api/cards/price-check-settings', () => {
     expect(
       priceCheckMocks.updateListedPriceAttentionMinDiffCents,
     ).toHaveBeenCalledWith(9, expect.any(Object));
-    expect(priceCheckMocks.updatePriceCheckIntervalHours).not.toHaveBeenCalled();
+    expect(
+      priceCheckMocks.updatePriceCheckIntervalHours,
+    ).not.toHaveBeenCalled();
     expect(
       priceCheckMocks.updateListedPriceAttentionThresholdPercent,
     ).not.toHaveBeenCalled();
@@ -2877,7 +3052,8 @@ describe('POST /api/cards/price-check-settings', () => {
 
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body)).toEqual({
-      error: 'listedPriceAttentionThresholdPercent must be a non-negative number',
+      error:
+        'listedPriceAttentionThresholdPercent must be a non-negative number',
     });
     expect(
       priceCheckMocks.updateListedPriceAttentionThresholdPercent,
@@ -2895,7 +3071,9 @@ describe('POST /api/cards/price-check-settings', () => {
     expect(JSON.parse(response.body)).toEqual({
       error: 'listedPriceAttentionMinDiffCents must be a non-negative integer',
     });
-    expect(priceCheckMocks.updateListedPriceAttentionMinDiffCents).not.toHaveBeenCalled();
+    expect(
+      priceCheckMocks.updateListedPriceAttentionMinDiffCents,
+    ).not.toHaveBeenCalled();
   });
 
   it('returns 400 when no price check settings are provided', async () => {
@@ -3151,8 +3329,8 @@ describe('POST /api/cards/mark-listed', () => {
     const mockCards = [
       {
         id: 1,
-        productName: 'Gift Card',
-        status: 'gift' as const,
+        productName: 'Pending Card',
+        status: 'pending' as const,
         updatedAt: new Date(),
       },
       {
@@ -3180,8 +3358,8 @@ describe('POST /api/cards/mark-listed', () => {
     const body = JSON.parse(response.body);
     expect(body.updated).toBe(0);
     expect(body.errors).toHaveLength(2);
-    expect(body.errors[0]).toContain('Gift Card');
-    expect(body.errors[0]).toContain('gift');
+    expect(body.errors[0]).toContain('Pending Card');
+    expect(body.errors[0]).toContain('pending');
     expect(body.errors[1]).toContain('Listed Card');
     expect(body.errors[1]).toContain('listed');
   });

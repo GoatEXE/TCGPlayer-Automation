@@ -70,6 +70,7 @@ Server startup runs Drizzle migrations automatically by default; managed deploym
 
 ## Documentation
 
+- [Current contract](docs/CURRENT_CONTRACT.md): active inventory, pricing, order, and historical gift-line semantics
 - [Project plan](docs/PROJECT_PLAN.md): architecture, workflow decisions, phase history, and implementation status
 - [Development guide](docs/DEVELOPMENT.md): Docker profiles, local scripts, migrations, and operational commands
 - [CI/CD](docs/operations/CI-CD.md): one-time approval cutover and automatic protected-`master`, exact-revision production releases

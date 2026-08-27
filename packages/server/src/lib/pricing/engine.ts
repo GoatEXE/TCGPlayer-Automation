@@ -1,6 +1,5 @@
 import type { PricingInput, PricingResult } from './types.js';
 
-const DEFAULT_MIN_LISTING_PRICE_CENTS = 5;
 const DEFAULT_PRICE_MULTIPLIER = 0.98;
 
 export function applyFloorPriceCents({
@@ -17,38 +16,28 @@ export function applyFloorPriceCents({
   return Math.max(listingPrice, floorPriceCents / 100);
 }
 
+/**
+ * Builds the normal Ready-to-List recommendation. Every positive market price
+ * is eligible; only unavailable, non-finite, zero, or negative values need
+ * manual attention. The retired `gift` status is deliberately never emitted.
+ */
 export function calculatePrice(input: PricingInput): PricingResult {
-  const {
-    marketPrice,
-    minListingPriceCents = DEFAULT_MIN_LISTING_PRICE_CENTS,
-    priceMultiplier = DEFAULT_PRICE_MULTIPLIER,
-  } = input;
+  const { marketPrice, priceMultiplier = DEFAULT_PRICE_MULTIPLIER } = input;
 
-  // Handle null/invalid market price
-  if (marketPrice === null || !Number.isFinite(marketPrice)) {
+  if (
+    marketPrice === null ||
+    !Number.isFinite(marketPrice) ||
+    marketPrice <= 0
+  ) {
     return {
       listingPrice: null,
       status: 'needs_attention',
-      reason: 'No market price available',
+      reason: 'No usable market price available',
     };
   }
 
-  // Convert minimum threshold from cents to dollars
-  const minThreshold = minListingPriceCents / 100;
-
-  // Check if below minimum threshold
-  if (marketPrice < minThreshold) {
-    return {
-      listingPrice: null,
-      status: 'gift',
-      reason: 'Market price below minimum threshold',
-    };
-  }
-
-  // Calculate listing price and round to nearest cent
   const calculatedPrice = marketPrice * priceMultiplier;
   const listingPrice = Math.round(calculatedPrice * 100) / 100;
-
   const multiplierPercent = Math.round(priceMultiplier * 100);
 
   return {

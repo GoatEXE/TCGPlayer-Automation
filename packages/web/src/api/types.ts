@@ -15,15 +15,10 @@ export interface Card {
     | 'matched'
     | 'listed'
     | 'needs_attention'
-    | 'gift'
     | 'gifted'
     | 'sold'
     | 'error';
-  attentionReason?:
-    | 'listed_price_drift'
-    | 'listed_missing_price'
-    | 'listed_below_threshold'
-    | null;
+  attentionReason?: 'listed_price_drift' | 'listed_missing_price' | null;
   marketPrice: string | null;
   listingPrice: string | null;
   floorPriceCents: number | null;
@@ -40,10 +35,9 @@ export interface CardStats {
   pending: number;
   matched: number;
   listed: number;
-  gift: number;
   needs_attention: number;
   sold: number;
-  gifted?: number;
+  gifted: number;
   error: number;
 }
 
@@ -616,14 +610,7 @@ export interface CollectionTransferPreviewRow {
   inventoryCondition?: string | null;
   action: 'create' | 'update' | 'blocked' | string;
   targetCardId?: number | null;
-  status:
-    | 'matched'
-    | 'needs_attention'
-    | 'gift'
-    | 'pending'
-    | 'error'
-    | null
-    | string;
+  status: 'matched' | 'needs_attention' | 'pending' | 'error' | null | string;
   marketPrice?: number | string | null;
   listingPrice?: number | string | null;
   warnings: CollectionTransferMessage[];

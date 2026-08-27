@@ -142,7 +142,7 @@ Use `.env.example` as the source of truth for environment variables. Important g
 - Docker profile and host ports: `COMPOSE_PROFILES`, `APP_HOST_PORT`, `DEV_APP_HOST_PORT`, `VITE_HOST_PORT`
 - Database: `POSTGRES_*`, `DATABASE_URL`
 - Redis: `REDIS_URL`
-- Pricing: `MIN_LISTING_PRICE_CENTS`, `LISTING_PRICE_MULTIPLIER`, `MAX_PRICE_DROP_PERCENT`
+- Pricing: `LISTING_PRICE_MULTIPLIER`, `MAX_PRICE_DROP_PERCENT`
 - Scheduler: `PRICE_CHECK_INTERVAL_HOURS`
 - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, notification toggles
 - Seller info for invoice and packing slip templates

@@ -9,6 +9,8 @@ import {
   boolean,
 } from 'drizzle-orm/pg-core';
 
+// `gift` remains in the PostgreSQL enum only because historical
+// price_history rows reference it. Active card workflows must never assign it.
 export const cardStatusEnum = pgEnum('card_status', [
   'pending',
   'matched',
@@ -20,6 +22,8 @@ export const cardStatusEnum = pgEnum('card_status', [
   'sold',
 ]);
 
+// Keep the retired reason label in the enum for forward-only migration
+// compatibility. New active workflows only use drift and missing-price reasons.
 export const cardAttentionReasonValues = [
   'listed_price_drift',
   'listed_missing_price',
@@ -39,7 +43,9 @@ export function isListedOriginAttentionReason(
   return (
     value !== null &&
     value !== undefined &&
-    (cardAttentionReasonValues as readonly string[]).includes(value)
+    (['listed_price_drift', 'listed_missing_price'] as const).includes(
+      value as 'listed_price_drift' | 'listed_missing_price',
+    )
   );
 }
 
