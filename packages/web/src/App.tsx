@@ -21,7 +21,6 @@ import type {
   UpdateExpenseSettingsRequest,
 } from './api/types';
 import { SalesTable } from './components/SalesTable';
-import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
 import { SalesStatsBar } from './components/SalesStatsBar';
 import { SalesPipelineCard } from './components/SalesPipelineCard';
@@ -375,11 +374,6 @@ export function App() {
     fetchExpenseSettings();
   }, []);
 
-  const handleImportComplete = () => {
-    fetchStats();
-    fetchCards();
-  };
-
   const handleReprice = async (id: number) => {
     try {
       const updatedCard = await api.repriceCard(id);
@@ -728,10 +722,6 @@ export function App() {
       </header>
 
       <main className="app-main">
-        {activeView === 'inventory' && (
-          <ImportUpload onImportComplete={handleImportComplete} />
-        )}
-
         <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
 
         {activeView === 'sales-history' ? (

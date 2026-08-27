@@ -242,6 +242,29 @@ describe('App view tabs', () => {
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
   });
 
+  it('keeps legacy selling imports out of Inventory and exposes owned collection import from Collection', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(apiMocks.getCards).toHaveBeenCalled();
+    });
+    expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
+    expect(screen.queryByText(/drop csv or txt file here/i)).toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: /collection/i }));
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 3,
+        name: /import to owned collection/i,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText(/owned collection csv file/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
+  });
+
   it('opens scheduler settings from the compact header button and restores focus on close', async () => {
     const user = userEvent.setup();
 
@@ -319,7 +342,7 @@ describe('App view tabs', () => {
     });
   });
 
-  it('switches to Collection mode without mutating selling inventory', async () => {
+  it('switches to Collection without mutating selling inventory', async () => {
     const user = userEvent.setup();
 
     apiMocks.getCollectionSellability.mockResolvedValue({
@@ -366,24 +389,14 @@ describe('App view tabs', () => {
 
     render(<App />);
 
-    expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: /import to selling inventory/i,
-      }),
-    ).toBeTruthy();
+    expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
 
     await user.click(screen.getByRole('tab', { name: /collection/i }));
 
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Collection' }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole('heading', {
-        level: 2,
-        name: /import to selling inventory/i,
-      }),
-    ).toBeNull();
+    expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
     expect(
       screen.getByText(/never imports into selling inventory/i),
