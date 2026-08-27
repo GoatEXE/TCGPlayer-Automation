@@ -833,22 +833,61 @@ body {
 
 .collection-import-card {
   margin-bottom: 1.25rem;
-  padding: 1rem;
-  border: 1px solid var(--color-border);
+  padding: 1.5rem 2rem;
   border-radius: var(--radius);
-  background: var(--color-surface);
+  background: var(--color-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .collection-import-header h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.25rem;
 }
 
-.collection-import-header p,
-.collection-import-mode-note {
+.collection-import-header p {
   margin: 0.35rem 0 0;
   color: var(--color-text-muted);
   font-size: 0.88rem;
+}
+
+.collection-import-dropzone {
+  margin-top: 1rem;
+  padding: 3rem 2rem;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.collection-import-dropzone:hover,
+.collection-import-dropzone.active {
+  border-color: var(--color-primary);
+  background-color: var(--color-surface);
+}
+
+.collection-import-dropzone:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.collection-import-dropzone-text {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.1rem;
+}
+
+.collection-import-dropzone-hint {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.collection-import-selected-file {
+  margin: 0.75rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
 }
 
 .collection-import-controls,
@@ -857,46 +896,27 @@ body {
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin-top: 0.9rem;
+  margin-top: 1rem;
 }
 
 .collection-import-file {
   display: none;
 }
 
-.collection-import-file-name {
-  color: var(--color-text-muted);
-  font-size: 0.88rem;
-}
-
-.collection-import-mode {
-  display: grid;
-  gap: 0.6rem;
-  margin: 1rem 0 0;
-  padding: 0.85rem;
-  border: 1px solid var(--color-border);
+.collection-import-result {
+  margin-top: 1rem;
+  padding: 1rem;
   border-radius: var(--radius);
-  background: var(--color-bg);
 }
 
-.collection-import-mode legend {
-  padding: 0 0.25rem;
-  font-weight: 700;
+.collection-import-result.error {
+  border: 1px solid var(--color-error);
+  background: #fee2e2;
+  color: #991b1b;
 }
 
-.collection-import-mode-option {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.55rem;
-  align-items: start;
-}
-
-.collection-import-mode-option small {
-  display: block;
-  margin-top: 0.15rem;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  line-height: 1.35;
+.collection-import-result p {
+  margin: 0;
 }
 
 .collection-import-preview {
@@ -1437,8 +1457,13 @@ body {
   }
 
   .app-header,
-  .cards-section {
+  .cards-section,
+  .collection-import-card {
     padding: 1rem;
+  }
+
+  .collection-import-dropzone {
+    padding: 2rem 1rem;
   }
 
   .filters {

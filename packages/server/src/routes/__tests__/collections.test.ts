@@ -228,6 +228,129 @@ describe('collection routes', () => {
     expect(db.update).not.toHaveBeenCalledWith(cards);
   });
 
+  it('adds an additive import quantity to an existing Owned Collection row without touching Selling Inventory', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(selectRows([{ id: 1, name: 'Default', purpose: 'owned' }]) as any)
+      .mockReturnValueOnce(selectRows([{ id: 100 }]) as any)
+      .mockReturnValueOnce(selectRows([
+        {
+          id: 500,
+          collectionId: 1,
+          catalogCardId: 100,
+          condition: 'Near Mint',
+          finish: 'Normal',
+          language: 'EN',
+          quantity: 4,
+          notes: null,
+        },
+      ]) as any);
+
+    const updateValues = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          { id: 500, collectionId: 1, catalogCardId: 100, quantity: 7 },
+        ]),
+      }),
+    });
+    vi.mocked(db.update).mockReturnValue({ set: updateValues } as any);
+
+    const csv = `Product ID,TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,Printing,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL\n685590,9197684,Riftbound: League of Legends Trading Card Game,Unleashed,Voracious Gromp,,100/219,Common,Near Mint,Normal,0.07,,,,3,,,https://tcgplayer-cdn.tcgplayer.com/product/685590_in_400x400.jpg`;
+    const form = new FormData();
+    form.append('file', new Blob([csv], { type: 'text/csv' }), 'collection.csv');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/collections/1/import',
+      payload: form,
+      headers: getFormHeaders(form),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      mode: 'merge',
+      inserted: 0,
+      updated: 1,
+      items: [expect.objectContaining({ id: 500, quantity: 7 })],
+    });
+    expect(db.update).toHaveBeenCalledWith(collectionItems);
+    expect(updateValues).toHaveBeenCalledWith(expect.objectContaining({ quantity: 7 }));
+    expect(db.insert).not.toHaveBeenCalledWith(collectionItems);
+    expect(db.insert).not.toHaveBeenCalledWith(cards);
+    expect(db.update).not.toHaveBeenCalledWith(cards);
+  });
+
+  it('creates a missing Owned Collection row with the imported quantity without touching Selling Inventory', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(selectRows([{ id: 1, name: 'Default', purpose: 'owned' }]) as any)
+      .mockReturnValueOnce(selectRows([{ id: 100 }]) as any)
+      .mockReturnValueOnce(selectRows([]) as any);
+
+    const collectionItemValues = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([
+        { id: 501, collectionId: 1, catalogCardId: 100, quantity: 3 },
+      ]),
+    });
+    vi.mocked(db.insert).mockImplementation((table) => {
+      if (table === collectionItems) {
+        return { values: collectionItemValues } as any;
+      }
+      return {} as any;
+    });
+
+    const csv = `Product ID,TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,Printing,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL\n685590,9197684,Riftbound: League of Legends Trading Card Game,Unleashed,Voracious Gromp,,100/219,Common,Near Mint,Normal,0.07,,,,3,,,https://tcgplayer-cdn.tcgplayer.com/product/685590_in_400x400.jpg`;
+    const form = new FormData();
+    form.append('file', new Blob([csv], { type: 'text/csv' }), 'collection.csv');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/collections/1/import',
+      payload: form,
+      headers: getFormHeaders(form),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      mode: 'merge',
+      inserted: 1,
+      updated: 0,
+      items: [expect.objectContaining({ id: 501, quantity: 3 })],
+    });
+    expect(db.insert).toHaveBeenCalledWith(collectionItems);
+    expect(collectionItemValues).toHaveBeenCalledWith(expect.objectContaining({ quantity: 3 }));
+    expect(db.insert).not.toHaveBeenCalledWith(cards);
+    expect(db.update).not.toHaveBeenCalledWith(cards);
+  });
+
+  it('reports unresolved collection CSV rows without creating Owned Collection or Selling Inventory rows', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(selectRows([{ id: 1, name: 'Default', purpose: 'owned' }]) as any)
+      .mockReturnValueOnce(selectRows([]) as any)
+      .mockReturnValueOnce(selectRows([]) as any);
+
+    const csv = `Product ID,TCGplayer Id,Product Line,Set Name,Product Name,Title,Number,Rarity,Condition,Printing,TCG Market Price,TCG Direct Low,TCG Low Price With Shipping,TCG Low Price,Total Quantity,Add to Quantity,TCG Marketplace Price,Photo URL\n,,Riftbound: League of Legends Trading Card Game,Unknown Set,Unresolved Card,,999,Common,Near Mint,Normal,0.07,,,,2,,,`;
+    const form = new FormData();
+    form.append('file', new Blob([csv], { type: 'text/csv' }), 'collection.csv');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/collections/1/import',
+      payload: form,
+      headers: getFormHeaders(form),
+    });
+
+    expect(response.statusCode).toBe(207);
+    expect(JSON.parse(response.body)).toMatchObject({
+      mode: 'merge',
+      inserted: 0,
+      updated: 0,
+      summary: { unresolvedRows: 1, totalQuantity: 2 },
+      rows: [expect.objectContaining({ status: 'unresolved', quantity: 2 })],
+    });
+    expect(db.insert).not.toHaveBeenCalledWith(collectionItems);
+    expect(db.insert).not.toHaveBeenCalledWith(cards);
+    expect(db.update).not.toHaveBeenCalledWith(cards);
+  });
+
   it('sellability response includes transfer-ready source collection item references', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(selectRows([{ id: 1, name: 'Default', purpose: 'owned' }]) as any)

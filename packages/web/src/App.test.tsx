@@ -252,6 +252,9 @@ describe('App view tabs', () => {
     });
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.queryByText(/drop csv or txt file here/i)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /open collection csv file picker/i }),
+    ).toBeNull();
 
     await user.click(screen.getByRole('tab', { name: /collection/i }));
 
@@ -260,6 +263,9 @@ describe('App view tabs', () => {
         level: 3,
         name: /import to owned collection/i,
       }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /open collection csv file picker/i }),
     ).toBeTruthy();
     expect(screen.getByLabelText(/owned collection csv file/i)).toBeTruthy();
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
@@ -393,9 +399,10 @@ describe('App view tabs', () => {
 
     await user.click(screen.getByRole('tab', { name: /collection/i }));
 
-    expect(
-      await screen.findByRole('heading', { level: 2, name: 'Collection' }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Collection' })).toBeNull();
+    expect(document.querySelector('.collection-section')?.firstElementChild).toHaveClass(
+      'collection-import-card',
+    );
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
     expect(

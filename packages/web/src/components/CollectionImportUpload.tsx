@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import type {
   CollectionImportCommitResponse,
-  CollectionImportMode,
   CollectionImportPreviewResponse,
 } from '../api/types';
 
@@ -25,7 +24,6 @@ export function CollectionImportUpload({
   onImportCommitted,
 }: CollectionImportUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [mode, setMode] = useState<CollectionImportMode>('set');
   const [preview, setPreview] = useState<CollectionImportPreviewResponse | null>(
     null,
   );
@@ -34,40 +32,85 @@ export function CollectionImportUpload({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewRequestIdRef = useRef(0);
 
-  const resetForFile = (file: File | null) => {
-    setSelectedFile(file);
+  const previewFile = async (
+    file: File,
+    targetCollectionId: number,
+    requestId: number,
+  ) => {
+    try {
+      const response = await api.previewCollectionImport(
+        targetCollectionId,
+        file,
+        'merge',
+      );
+      if (previewRequestIdRef.current === requestId) {
+        setPreview(response);
+      }
+    } catch (err) {
+      if (previewRequestIdRef.current === requestId) {
+        setError(err instanceof Error ? err.message : 'Collection import preview failed');
+      }
+    } finally {
+      if (previewRequestIdRef.current === requestId) {
+        setIsPreviewing(false);
+      }
+    }
+  };
+
+  const selectFile = (file: File | null) => {
+    const requestId = ++previewRequestIdRef.current;
     setPreview(null);
     setCommitResult(null);
-    setError(null);
-  };
+    setIsPreviewing(false);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    resetForFile(event.target.files?.[0] ?? null);
-  };
+    if (!file) {
+      setSelectedFile(null);
+      setError(null);
+      return;
+    }
 
-  const handlePreview = async () => {
-    if (!collectionId || !selectedFile) return;
-    if (!selectedFile.name.match(/\.csv$/i)) {
+    if (!file.name.match(/\.csv$/i)) {
+      setSelectedFile(null);
       setError('Please choose a TCGPlayer collection .csv file.');
       return;
     }
 
-    setIsPreviewing(true);
+    setSelectedFile(file);
     setError(null);
-    setCommitResult(null);
-    try {
-      const response = await api.previewCollectionImport(
-        collectionId,
-        selectedFile,
-        mode,
-      );
-      setPreview(response);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Collection import preview failed');
-    } finally {
-      setIsPreviewing(false);
+    if (!collectionId) {
+      setError('Collection is still loading. Please select the CSV again once it is ready.');
+      return;
+    }
+
+    setIsPreviewing(true);
+    void previewFile(file, collectionId, requestId);
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = '';
+    selectFile(file);
+  };
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragActive(false);
+    selectFile(event.dataTransfer.files?.[0] ?? null);
+  };
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragActive(true);
+  };
+
+  const handleDropzoneKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      fileInputRef.current?.click();
     }
   };
 
@@ -80,7 +123,7 @@ export function CollectionImportUpload({
       const response = await api.commitCollectionImport(
         collectionId,
         selectedFile,
-        mode,
+        'merge',
       );
       setCommitResult(response);
       setPreview(response);
@@ -93,7 +136,9 @@ export function CollectionImportUpload({
   };
 
   const warnings = allWarnings(preview);
-  const canCommit = Boolean(preview && selectedFile && collectionId && !isCommitting);
+  const canCommit = Boolean(
+    preview && selectedFile && collectionId && !isPreviewing && !isCommitting,
+  );
 
   return (
     <section className="collection-import-card" aria-label="Import to Owned Collection">
@@ -101,88 +146,59 @@ export function CollectionImportUpload({
         <div>
           <h3>Import to Owned Collection</h3>
           <p>
-            Upload a TCGPlayer collection CSV to merge quantities into this owned collection. This never imports into Selling Inventory.
+            Each imported CSV quantity is added to a matching Owned Collection row. If no matching row exists, it is created with that imported quantity. This never imports into Selling Inventory.
           </p>
         </div>
       </div>
 
-      <div className="collection-import-controls">
+      <div
+        className={`collection-import-dropzone ${dragActive ? 'active' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Open collection CSV file picker"
+        aria-describedby="collection-import-dropzone-hint"
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={handleDropzoneKeyDown}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setDragActive(false)}
+      >
         <input
           ref={fileInputRef}
           type="file"
           accept=".csv,text/csv"
+          onClick={(event) => event.stopPropagation()}
           onChange={handleFileSelect}
           className="collection-import-file"
           aria-label="Owned collection CSV file"
         />
-        <button
-          type="button"
-          className="button-secondary"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          Choose CSV
-        </button>
-        <span className="collection-import-file-name">
-          {selectedFile ? selectedFile.name : 'No file selected'}
-        </span>
-        <button
-          type="button"
-          className="button-primary"
-          onClick={handlePreview}
-          disabled={!collectionId || !selectedFile || isPreviewing || isCommitting}
-        >
-          {isPreviewing ? 'Previewing…' : 'Preview Import'}
-        </button>
+        <p className="collection-import-dropzone-text">
+          📁 Drop a TCGPlayer collection CSV here, or click to browse
+        </p>
+        <p id="collection-import-dropzone-hint" className="collection-import-dropzone-hint">
+          CSV files only. Review the import before committing; this does not import into Selling Inventory.
+        </p>
+        <p className="collection-import-selected-file" aria-live="polite">
+          {selectedFile ? `Selected: ${selectedFile.name}` : 'No file selected'}
+        </p>
       </div>
 
-      <fieldset className="collection-import-mode" aria-label="Collection import mode">
-        <legend>Import mode</legend>
-        <label className="collection-import-mode-option">
-          <input
-            type="radio"
-            name="collection-import-mode"
-            value="set"
-            checked={mode === 'set'}
-            onChange={() => {
-              setMode('set');
-              setPreview(null);
-              setCommitResult(null);
-            }}
-          />
-          <span>
-            <strong>Set quantities from CSV</strong>
-            <small>
-              Recommended for current TCGPlayer collection exports. Updates quantities for rows in this file; does not delete collection rows missing from the file.
-            </small>
-          </span>
-        </label>
-        <label className="collection-import-mode-option">
-          <input
-            type="radio"
-            name="collection-import-mode"
-            value="merge"
-            checked={mode === 'merge'}
-            onChange={() => {
-              setMode('merge');
-              setPreview(null);
-              setCommitResult(null);
-            }}
-          />
-          <span>
-            <strong>Add to existing quantities</strong>
-            <small>
-              Adds CSV quantities on top of existing owned collection counts. Use only for new incremental acquisitions to avoid duplicates.
-            </small>
-          </span>
-        </label>
-      </fieldset>
+      {isPreviewing && (
+        <div className="collection-import-controls" role="status" aria-live="polite">
+          Previewing collection CSV…
+        </div>
+      )}
 
-      {error && <div className="import-result error">{error}</div>}
+      {error && (
+        <div className="collection-import-result error" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
 
       {preview && (
         <div className="collection-import-preview" aria-label="Collection import preview">
           <div className="collection-import-selected-mode">
-            Preview mode: <strong>{preview.mode === 'merge' ? 'Add to existing quantities' : 'Set quantities from CSV'}</strong>
+            Import behavior: <strong>Add imported quantities to Owned Collection</strong>
           </div>
 
           <div className="collection-summary-grid collection-import-summary">
@@ -273,7 +289,7 @@ export function CollectionImportUpload({
               {isCommitting ? 'Importing…' : 'Commit Import to Owned Collection'}
             </button>
             {commitResult && (
-              <span className="collection-import-success">
+              <span className="collection-import-success" role="status">
                 Imported. Inserted {commitResult.inserted}, updated {commitResult.updated}.
               </span>
             )}

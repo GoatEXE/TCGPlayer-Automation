@@ -385,16 +385,16 @@ export function CollectionView({
 
   return (
     <section className="cards-section collection-section">
-      <div className="section-header collection-header">
-        <div>
-          <h2>Collection</h2>
-          <p className="section-subtitle">
-            {selectedIsToBeSold
-              ? 'To Be Sold staging cards ready to move into internal Selling Inventory. This does not list anything on TCGPlayer.'
-              : 'Owned cards and sellability recommendations. Set-aside suggestions do not mutate selling inventory.'}
-          </p>
+      {selectedIsToBeSold && (
+        <div className="section-header collection-header">
+          <div>
+            <h2>To Be Sold Collection</h2>
+            <p className="section-subtitle">
+              To Be Sold staging cards ready to move into internal Selling Inventory. This does not list anything on TCGPlayer.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <CollectionImportUpload
         key={collectionRefreshKey}

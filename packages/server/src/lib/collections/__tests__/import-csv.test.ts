@@ -81,14 +81,14 @@ describe('parseTcgplayerCollectionCsv', () => {
     });
   });
 
-  it('uses Total Quantity over Add to Quantity for snapshot collection exports', () => {
+  it('uses Total Quantity as the imported quantity when Add to Quantity is also present', () => {
     const result = parseTcgplayerCollectionCsv(
       csv({ ...baseRow, 'Total Quantity': '3', 'Add to Quantity': '99' }),
     );
 
     expect(result.rows[0].quantity).toBe(3);
     expect(result.rows[0].warnings).toEqual([
-      'Add to Quantity is present but ignored because collection imports use Total Quantity as the snapshot quantity',
+      'Add to Quantity is present but ignored because collection imports use Total Quantity as the imported quantity',
     ]);
   });
 

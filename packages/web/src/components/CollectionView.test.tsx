@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
 import { CollectionView } from './CollectionView';
@@ -203,7 +203,7 @@ describe('CollectionView', () => {
     apiMocks.updateCatalogCardMetadata.mockResolvedValue({ card: {} });
     apiMocks.previewCollectionImport.mockResolvedValue({
       collection: { id: 1, name: 'Default', purpose: 'owned' },
-      mode: 'set',
+      mode: 'merge',
       source: 'tcgplayer_collection_csv',
       summary: {
         totalRows: 2,
@@ -234,7 +234,7 @@ describe('CollectionView', () => {
     });
     apiMocks.commitCollectionImport.mockResolvedValue({
       collection: { id: 1, name: 'Default', purpose: 'owned' },
-      mode: 'set',
+      mode: 'merge',
       source: 'tcgplayer_collection_csv',
       inserted: 1,
       updated: 1,
@@ -306,16 +306,23 @@ describe('CollectionView', () => {
     apiMocks.clearCollection.mockResolvedValue({ deleted: 5 });
   });
 
-  it('renders collection recommendations with key states prioritized', async () => {
+  it('renders the Owned Collection import card first without a standalone Collection header', async () => {
     render(<CollectionView />);
 
-    expect(
-      await screen.findByRole('heading', { level: 2, name: 'Collection' }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Collection' })).toBeNull();
+    const collectionSection = document.querySelector('.collection-section');
+    expect(collectionSection?.firstElementChild).toHaveClass('collection-import-card');
+    expect(collectionSection?.querySelector('.section-header')).toBeNull();
+
     await waitFor(() => {
       expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);
     });
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'Owned cards and sellability recommendations. Set-aside suggestions do not mutate selling inventory.',
+      ),
+    ).toBeNull();
     expect(screen.getByText(/never imports into selling inventory/i)).toBeTruthy();
 
     expect(await screen.findByLabelText(/sellability summary/i)).toHaveTextContent(
@@ -332,49 +339,118 @@ describe('CollectionView', () => {
     expect(screen.getByText('Token/Rune excluded')).toBeTruthy();
   });
 
-  it('previews and commits owned collection CSV import without using selling inventory import', async () => {
+  it('uses a CSV-only drag-and-drop target for owned collection imports', async () => {
     const user = userEvent.setup();
     render(<CollectionView />);
 
-    await screen.findByRole('heading', { level: 3, name: /import to owned collection/i });
-    const file = new File(['Product ID,Quantity\n2021,2\n'], 'collection.csv', {
+    const dropzone = await screen.findByRole('button', {
+      name: /open collection csv file picker/i,
+    });
+    const fileInput = screen.getByLabelText(/owned collection csv file/i);
+    const clickSpy = vi.spyOn(fileInput, 'click');
+
+    expect(fileInput).toHaveAttribute('accept', '.csv,text/csv');
+    expect(screen.getByText(/drop a tcgplayer collection csv here/i)).toBeTruthy();
+    expect(screen.getByText(/csv files only/i)).toBeTruthy();
+
+    await user.click(dropzone);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.dragOver(dropzone, {
+      dataTransfer: { files: [new File(['invalid'], 'invalid.txt')] },
+    });
+    expect(dropzone).toHaveClass('active');
+    fireEvent.drop(dropzone, {
+      dataTransfer: { files: [new File(['invalid'], 'invalid.txt')] },
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/\.csv file/i);
+
+    const csv = new File(['Product ID,Quantity\n2021,2\n'], 'dropped.csv', {
+      type: 'text/csv',
+    });
+    fireEvent.dragOver(dropzone, { dataTransfer: { files: [csv] } });
+    fireEvent.drop(dropzone, { dataTransfer: { files: [csv] } });
+
+    expect(dropzone).not.toHaveClass('active');
+    expect(screen.getByText(/selected: dropped\.csv/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, csv, 'merge');
+    });
+    expect(screen.queryByRole('button', { name: /preview import/i })).toBeNull();
+    expect(await screen.findByLabelText(/collection import preview/i)).toBeTruthy();
+  });
+
+  it('announces automatic preview loading, blocks commit, and replaces preview errors when a file is reselected', async () => {
+    const user = userEvent.setup();
+    let rejectPreview: (reason?: unknown) => void = () => {};
+    apiMocks.previewCollectionImport.mockImplementationOnce(
+      () => new Promise((_, reject) => {
+        rejectPreview = reject;
+      }),
+    );
+    render(<CollectionView />);
+
+    const fileInput = await screen.findByLabelText(/owned collection csv file/i);
+    const firstFile = new File(['Product ID,Quantity\n2021,2\n'], 'first.csv', {
+      type: 'text/csv',
+    });
+    await user.upload(fileInput, firstFile);
+
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, firstFile, 'merge');
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/previewing collection csv/i);
+    expect(screen.queryByRole('button', { name: /preview import/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /commit import to owned collection/i }),
+    ).toBeNull();
+
+    rejectPreview(new Error('Preview unavailable'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Preview unavailable');
+
+    const secondFile = new File(['Product ID,Quantity\n2022,1\n'], 'second.csv', {
+      type: 'text/csv',
+    });
+    await user.upload(fileInput, secondFile);
+
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, secondFile, 'merge');
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+    expect(await screen.findByLabelText(/collection import preview/i)).toBeTruthy();
+  });
+
+  it('keeps the latest selected file preview when an earlier preview finishes later', async () => {
+    const user = userEvent.setup();
+    let resolveFirst: (value: unknown) => void = () => {};
+    apiMocks.previewCollectionImport.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    render(<CollectionView />);
+
+    const fileInput = await screen.findByLabelText(/owned collection csv file/i);
+    const firstFile = new File(['Product ID,Quantity\n2021,1\n'], 'first.csv', {
+      type: 'text/csv',
+    });
+    const secondFile = new File(['Product ID,Quantity\n2022,1\n'], 'second.csv', {
       type: 'text/csv',
     });
 
-    expect(screen.getByLabelText(/set quantities from csv/i)).toBeChecked();
-    expect(screen.getByText(/does not delete collection rows missing from the file/i)).toBeTruthy();
-    expect(screen.getByText(/adds csv quantities on top/i)).toBeTruthy();
-
-    await user.upload(screen.getByLabelText(/owned collection csv file/i), file);
-    await user.click(screen.getByRole('button', { name: /preview import/i }));
-
+    await user.upload(fileInput, firstFile);
     await waitFor(() => {
-      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, file, 'set');
+      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, firstFile, 'merge');
     });
-    expect(apiMocks.importCards).not.toHaveBeenCalled();
+    await user.upload(fileInput, secondFile);
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, secondFile, 'merge');
+    });
     expect(await screen.findByLabelText(/collection import preview/i)).toHaveTextContent(
-      'Preview mode: Set quantities from CSV',
-    );
-    expect(screen.getByLabelText(/collection import preview/i)).toHaveTextContent(
-      'Rows Parsed2/2',
-    );
-    expect(screen.getByText('Imported Owned Card')).toBeTruthy();
-
-    await user.click(
-      screen.getByRole('button', { name: /commit import to owned collection/i }),
+      'Imported Owned Card',
     );
 
-    await waitFor(() => {
-      expect(apiMocks.commitCollectionImport).toHaveBeenCalledWith(1, file, 'set');
-    });
-    expect(apiMocks.importCards).not.toHaveBeenCalled();
-    expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(/inserted 1, updated 1/i)).toBeTruthy();
-  });
-
-  it('passes additive merge mode when Add to existing quantities is selected', async () => {
-    const user = userEvent.setup();
-    apiMocks.previewCollectionImport.mockResolvedValueOnce({
+    resolveFirst({
       collection: { id: 1, name: 'Default', purpose: 'owned' },
       mode: 'merge',
       source: 'tcgplayer_collection_csv',
@@ -389,24 +465,69 @@ describe('CollectionView', () => {
         foilQuantity: 0,
         warnings: [],
       },
-      rows: [],
+      rows: [
+        {
+          rowNumber: 2,
+          catalogCardId: 22,
+          tcgProductId: 2022,
+          productName: 'Stale Preview Card',
+          setName: 'Origins',
+          number: '022',
+          condition: 'Near Mint',
+          finish: 'Normal',
+          quantity: 1,
+          status: 'matched',
+          warnings: [],
+        },
+      ],
     });
+    await Promise.resolve();
+
+    expect(screen.getByLabelText(/collection import preview/i)).toHaveTextContent(
+      'Imported Owned Card',
+    );
+    expect(screen.queryByText('Stale Preview Card')).toBeNull();
+  });
+
+  it('automatically previews and explicitly commits owned collection CSV imports additively without using selling inventory import', async () => {
+    const user = userEvent.setup();
     render(<CollectionView />);
 
-    const file = new File(['Product ID,Quantity\n2021,1\n'], 'increment.csv', {
+    await screen.findByRole('heading', { level: 3, name: /import to owned collection/i });
+    const file = new File(['Product ID,Quantity\n2021,2\n'], 'collection.csv', {
       type: 'text/csv',
     });
-    await user.click(screen.getByLabelText(/add to existing quantities/i));
+
+    expect(screen.queryByRole('radiogroup', { name: /collection import mode/i })).toBeNull();
+    expect(screen.queryByLabelText(/set quantities from csv/i)).toBeNull();
+    expect(screen.queryByLabelText(/add to existing quantities/i)).toBeNull();
+    expect(screen.getByText(/each imported csv quantity is added to a matching owned collection row/i)).toBeTruthy();
+
     await user.upload(screen.getByLabelText(/owned collection csv file/i), file);
-    await user.click(screen.getByRole('button', { name: /preview import/i }));
+    expect(screen.queryByRole('button', { name: /preview import/i })).toBeNull();
 
     await waitFor(() => {
       expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(1, file, 'merge');
     });
-    expect(await screen.findByLabelText(/collection import preview/i)).toHaveTextContent(
-      'Preview mode: Add to existing quantities',
-    );
     expect(apiMocks.importCards).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText(/collection import preview/i)).toHaveTextContent(
+      'Import behavior: Add imported quantities to Owned Collection',
+    );
+    expect(screen.getByLabelText(/collection import preview/i)).toHaveTextContent(
+      'Rows Parsed2/2',
+    );
+    expect(screen.getByText('Imported Owned Card')).toBeTruthy();
+
+    await user.click(
+      screen.getByRole('button', { name: /commit import to owned collection/i }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.commitCollectionImport).toHaveBeenCalledWith(1, file, 'merge');
+    });
+    expect(apiMocks.importCards).not.toHaveBeenCalled();
+    expect(apiMocks.getCollectionSellability).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/inserted 1, updated 1/i)).toBeTruthy();
   });
 
   it('previews and commits transfer to Selling Inventory and disables excluded rows', async () => {
@@ -543,6 +664,9 @@ describe('CollectionView', () => {
 
     render(<CollectionView />);
 
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /to be sold collection/i }),
+    ).toBeTruthy();
     expect(
       await screen.findByText(/to be sold staging cards ready to move/i),
     ).toBeTruthy();
