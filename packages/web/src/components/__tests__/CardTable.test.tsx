@@ -1133,40 +1133,56 @@ describe('CardTable row actions menu', () => {
     });
   });
 
-  it('opens TCGPlayer inventory for Needs Attention cards with a Product ID', async () => {
-    const user = userEvent.setup();
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+  it.each([
+    ['Ready to List', 'matched'],
+    ['Listed', 'listed'],
+    ['Pending', 'pending'],
+    ['Needs Attention', 'needs_attention'],
+    ['Gift', 'gift'],
+    ['Gifted', 'gifted'],
+    ['Sold', 'sold'],
+    ['Error', 'error'],
+  ] as const)(
+    'opens the named Open in TCG action from the $0 row menu when a Product ID is available',
+    async (_statusLabel, status) => {
+      const user = userEvent.setup();
+      const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+      const productName = `${_statusLabel} Card`;
 
-    render(
-      <CardTable
-        cards={[
-          makeCard({
-            id: 1,
-            status: 'needs_attention',
-            tcgProductId: 685490,
-            productName: 'Turn to Dust',
-          }),
-        ]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
-      />,
-    );
+      render(
+        <CardTable
+          cards={[
+            makeCard({
+              id: 1,
+              status,
+              tcgProductId: 685490,
+              productName,
+            }),
+          ]}
+          onReprice={() => {}}
+          onDelete={() => {}}
+          onMarkListed={() => {}}
+          onUnlist={() => {}}
+          onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+        />,
+      );
 
-    await user.click(screen.getByRole('button', { name: /actions for turn to dust/i }));
-    await user.click(
-      screen.getByRole('menuitem', { name: /open tcgplayer inventory/i }),
-    );
+      await user.click(
+        screen.getByRole('button', {
+          name: new RegExp(`actions for ${productName}`, 'i'),
+        }),
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Open in TCG' }));
 
-    expect(openSpy).toHaveBeenCalledWith(
-      'https://store.tcgplayer.com/admin/product/manage/685490?OnlyMyInventory=false&SearchValue=Turn%20to%20Dust&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true',
-      'tcgplayer-inventory',
-    );
+      expect(openSpy).toHaveBeenCalledWith(
+        `https://store.tcgplayer.com/admin/product/manage/685490?OnlyMyInventory=false&SearchValue=${encodeURIComponent(productName)}&CategoryId=0&SetNameId=0&Rarity=0&DidSearch=true`,
+        'tcgplayer-inventory',
+      );
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
 
-    openSpy.mockRestore();
-  });
+      openSpy.mockRestore();
+    },
+  );
 
   it('uses the display title in the TCGPlayer inventory search value', async () => {
     const user = userEvent.setup();
@@ -1192,9 +1208,7 @@ describe('CardTable row actions menu', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /actions for turn to dust - foil/i }));
-    await user.click(
-      screen.getByRole('menuitem', { name: /open tcgplayer inventory/i }),
-    );
+    await user.click(screen.getByRole('menuitem', { name: 'Open in TCG' }));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining('SearchValue=Turn%20to%20Dust%20-%20Foil'),
@@ -1204,7 +1218,7 @@ describe('CardTable row actions menu', () => {
     openSpy.mockRestore();
   });
 
-  it('does not show TCGPlayer inventory action without Needs Attention and Product ID', async () => {
+  it('does not show Open in TCG without a TCGPlayer Product ID', async () => {
     const user = userEvent.setup();
 
     render(
@@ -1212,15 +1226,15 @@ describe('CardTable row actions menu', () => {
         cards={[
           makeCard({
             id: 1,
-            status: 'needs_attention',
+            status: 'matched',
             tcgProductId: null,
-            productName: 'Missing Product ID',
+            productName: 'Ready to List Without Product ID',
           }),
           makeCard({
             id: 2,
             status: 'listed',
-            tcgProductId: 685490,
-            productName: 'Listed Card',
+            tcgProductId: null,
+            productName: 'Listed Without Product ID',
           }),
         ]}
         onReprice={() => {}}
@@ -1231,14 +1245,22 @@ describe('CardTable row actions menu', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /actions for missing product id/i }));
+    await user.click(
+      screen.getByRole('button', {
+        name: /actions for ready to list without product id/i,
+      }),
+    );
     expect(
-      screen.queryByRole('menuitem', { name: /open tcgplayer inventory/i }),
+      screen.queryByRole('menuitem', { name: 'Open in TCG' }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /actions for listed card/i }));
+    await user.click(
+      screen.getByRole('button', {
+        name: /actions for listed without product id/i,
+      }),
+    );
     expect(
-      screen.queryByRole('menuitem', { name: /open tcgplayer inventory/i }),
+      screen.queryByRole('menuitem', { name: 'Open in TCG' }),
     ).not.toBeInTheDocument();
   });
 
