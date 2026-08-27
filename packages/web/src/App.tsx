@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api/client';
 import type {
   Card,
@@ -21,14 +21,13 @@ import type {
   UpdateExpenseSettingsRequest,
 } from './api/types';
 import { SalesTable } from './components/SalesTable';
-import { ImportUpload } from './components/ImportUpload';
 import { StatsBar } from './components/StatsBar';
 import { SalesStatsBar } from './components/SalesStatsBar';
 import { SalesPipelineCard } from './components/SalesPipelineCard';
 import { ShipmentFormModal } from './components/ShipmentFormModal';
 import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
-import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
-import { NotificationHistoryPanel } from './components/NotificationHistoryPanel';
+import { PriceCheckSettingsModal } from './components/PriceCheckSettingsModal';
+import { NotificationHistoryModal } from './components/NotificationHistoryModal';
 import { CardTable } from './components/CardTable';
 import type { SortDirection, SortField } from './components/CardTable';
 import { Pagination } from './components/Pagination';
@@ -70,6 +69,10 @@ export function App() {
     useState<PriceCheckStatus | null>(null);
   const [priceCheckLoading, setPriceCheckLoading] = useState(true);
   const [priceCheckError, setPriceCheckError] = useState(false);
+  const [isPriceCheckSettingsOpen, setIsPriceCheckSettingsOpen] =
+    useState(false);
+  const priceCheckSettingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasPriceCheckSettingsOpenRef = useRef(false);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
   const [salesTotalItems, setSalesTotalItems] = useState(0);
@@ -87,6 +90,10 @@ export function App() {
   >([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState(false);
+  const [isNotificationHistoryOpen, setIsNotificationHistoryOpen] =
+    useState(false);
+  const notificationHistoryTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasNotificationHistoryOpenRef = useRef(false);
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -112,6 +119,20 @@ export function App() {
     useState<Expense | null>(null);
 
   const itemsPerPage = 50;
+
+  useEffect(() => {
+    if (wasPriceCheckSettingsOpenRef.current && !isPriceCheckSettingsOpen) {
+      priceCheckSettingsTriggerRef.current?.focus();
+    }
+    wasPriceCheckSettingsOpenRef.current = isPriceCheckSettingsOpen;
+  }, [isPriceCheckSettingsOpen]);
+
+  useEffect(() => {
+    if (wasNotificationHistoryOpenRef.current && !isNotificationHistoryOpen) {
+      notificationHistoryTriggerRef.current?.focus();
+    }
+    wasNotificationHistoryOpenRef.current = isNotificationHistoryOpen;
+  }, [isNotificationHistoryOpen]);
 
   const shouldHideFromActiveInventory = (card: Card) =>
     card.status === 'sold' ||
@@ -225,7 +246,7 @@ export function App() {
     }
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     setNotificationsLoading(true);
     setNotificationsError(false);
     try {
@@ -237,7 +258,7 @@ export function App() {
     } finally {
       setNotificationsLoading(false);
     }
-  };
+  }, []);
 
   const fetchExpenses = async () => {
     setExpensesLoading(true);
@@ -309,9 +330,9 @@ export function App() {
   }, [activeView, salesPage, salesSearch, salesStatusFilter]);
 
   useEffect(() => {
-    if (activeView !== 'notifications') return;
+    if (!isNotificationHistoryOpen) return;
     fetchNotifications();
-  }, [activeView]);
+  }, [fetchNotifications, isNotificationHistoryOpen]);
 
   useEffect(() => {
     if (activeView !== 'performance') return;
@@ -352,11 +373,6 @@ export function App() {
     fetchPriceCheckStatus();
     fetchExpenseSettings();
   }, []);
-
-  const handleImportComplete = () => {
-    fetchStats();
-    fetchCards();
-  };
 
   const handleReprice = async (id: number) => {
     try {
@@ -602,12 +618,6 @@ export function App() {
       return;
     }
 
-    if (view === 'notifications') {
-      setIsExpenseModalOpen(false);
-      setSelectedExpenseForEdit(null);
-      return;
-    }
-
     if (view === 'performance') {
       setExpensePage(1);
       setIsExpenseModalOpen(false);
@@ -679,26 +689,39 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>📦 TCGPlayer Automation</h1>
+        <div className="app-header-top">
+          <h1>📦 TCGPlayer Automation</h1>
+          <div className="header-icon-actions">
+            <button
+              ref={notificationHistoryTriggerRef}
+              type="button"
+              className="notification-history-trigger"
+              onClick={() => setIsNotificationHistoryOpen(true)}
+              aria-label="Notifications"
+              title="Notifications"
+              aria-haspopup="dialog"
+              aria-expanded={isNotificationHistoryOpen}
+            >
+              <span aria-hidden="true">🔔</span>
+            </button>
+            <button
+              ref={priceCheckSettingsTriggerRef}
+              type="button"
+              className="price-check-settings-trigger"
+              onClick={() => setIsPriceCheckSettingsOpen(true)}
+              aria-label="Price Check Settings"
+              title="Price Check Settings"
+              aria-haspopup="dialog"
+              aria-expanded={isPriceCheckSettingsOpen}
+            >
+              <span aria-hidden="true">⚙</span>
+            </button>
+          </div>
+        </div>
         <StatsBar stats={stats} loading={statsLoading} />
       </header>
 
       <main className="app-main">
-        <div className="actions-row">
-          {activeView === 'inventory' && (
-            <ImportUpload onImportComplete={handleImportComplete} />
-          )}
-          <PriceCheckStatusCard
-            status={priceCheckStatus}
-            loading={priceCheckLoading}
-            error={priceCheckError}
-            onUpdateInterval={handleUpdateInterval}
-            onUpdateListedPriceAttentionThreshold={
-              handleUpdateListedPriceAttentionThreshold
-            }
-          />
-        </div>
-
         <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
 
         {activeView === 'sales-history' ? (
@@ -761,17 +784,6 @@ export function App() {
               totalItems={salesTotalItems}
               itemsPerPage={itemsPerPage}
               onPageChange={setSalesPage}
-            />
-          </section>
-        ) : activeView === 'notifications' ? (
-          <section className="cards-section">
-            <div className="section-header">
-              <h2>Notifications</h2>
-            </div>
-            <NotificationHistoryPanel
-              events={notificationEvents}
-              loading={notificationsLoading}
-              error={notificationsError}
             />
           </section>
         ) : activeView === 'collection' ? (
@@ -1033,6 +1045,28 @@ export function App() {
           </section>
         )}
       </main>
+
+      {isPriceCheckSettingsOpen && (
+        <PriceCheckSettingsModal
+          status={priceCheckStatus}
+          loading={priceCheckLoading}
+          error={priceCheckError}
+          onClose={() => setIsPriceCheckSettingsOpen(false)}
+          onUpdateInterval={handleUpdateInterval}
+          onUpdateListedPriceAttentionThreshold={
+            handleUpdateListedPriceAttentionThreshold
+          }
+        />
+      )}
+
+      {isNotificationHistoryOpen && (
+        <NotificationHistoryModal
+          events={notificationEvents}
+          loading={notificationsLoading}
+          error={notificationsError}
+          onClose={() => setIsNotificationHistoryOpen(false)}
+        />
+      )}
     </div>
   );
 }
