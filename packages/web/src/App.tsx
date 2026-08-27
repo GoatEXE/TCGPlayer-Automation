@@ -1032,7 +1032,13 @@ export function App() {
               onBulkSell={handleBulkSell}
               giftCards={giftCards}
               onPrepareBulkSell={fetchGiftCards}
-              bulkMode={statusFilter === 'matched' ? 'list' : 'sell'}
+              bulkMode={
+                statusFilter === 'all'
+                  ? 'all'
+                  : statusFilter === 'matched'
+                    ? 'list'
+                    : 'sell'
+              }
               enableSellFlow
               defaultShippingCollectedCents={
                 expenseSettings?.defaultShippingCollectedCents ?? 149

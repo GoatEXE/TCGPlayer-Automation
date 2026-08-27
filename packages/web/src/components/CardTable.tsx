@@ -26,7 +26,7 @@ interface CardTableProps {
   onBulkSell?: (order: CreateBulkOrderRequest) => Promise<void>;
   giftCards?: Card[];
   onPrepareBulkSell?: () => Promise<void>;
-  bulkMode?: 'list' | 'sell';
+  bulkMode?: 'all' | 'list' | 'sell';
   enableSellFlow?: boolean;
   defaultShippingCollectedCents?: number;
   needsAttentionCount?: number;
@@ -382,15 +382,18 @@ export function CardTable({
   };
 
   const handleOpenReview = () => {
-    if (selectedIds.size === 0) return;
+    if (selectedMatchedCards.length === 0) return;
     setShowReviewModal(true);
   };
 
   const handleConfirmMarkListed = async () => {
     setMarkingListed(true);
     try {
-      await onMarkListed(Array.from(selectedIds));
-      setSelectedIds(new Set()); // Clear selection on success
+      await onMarkListed(selectedMatchedCards.map((card) => card.id));
+      const markedIds = new Set(selectedMatchedCards.map((card) => card.id));
+      setSelectedIds(
+        (current) => new Set([...current].filter((id) => !markedIds.has(id))),
+      );
       setShowReviewModal(false);
     } finally {
       setMarkingListed(false);
@@ -404,6 +407,7 @@ export function CardTable({
   };
 
   const handleOpenBulkSell = async () => {
+    if (selectedSellableCards.length === 0) return;
     setPreparingBulkSell(true);
     try {
       await onPrepareBulkSell?.();
@@ -422,10 +426,22 @@ export function CardTable({
     card.status === 'listed' ||
     (card.status === 'needs_attention' && isListedOriginAttention(card));
 
-  // Filter cards that can be selected
+  // Filter cards that can be selected.
   const matchedCards = sortedCards.filter((card) => card.status === 'matched');
   const sellableCards = sortedCards.filter(isSellEligible);
-  const selectableCards = effectiveBulkMode === 'sell' ? sellableCards : matchedCards;
+  const selectableCards =
+    effectiveBulkMode === 'list'
+      ? matchedCards
+      : effectiveBulkMode === 'sell'
+        ? sellableCards
+        : sortedCards.filter(
+            (card) => card.status === 'matched' || isSellEligible(card),
+          );
+  const selectedCards = sortedCards.filter((card) => selectedIds.has(card.id));
+  const selectedMatchedCards = selectedCards.filter(
+    (card) => card.status === 'matched',
+  );
+  const selectedSellableCards = selectedCards.filter(isSellEligible);
   const needsAttentionReviewCards = sortedCards.filter(
     (card) => card.status === 'needs_attention',
   );
@@ -672,7 +688,8 @@ export function CardTable({
       )}
       {selectedIds.size > 0 && (
         <div className="selection-actions">
-          {effectiveBulkMode === 'sell' ? (
+          {(effectiveBulkMode === 'sell' ||
+            (effectiveBulkMode === 'all' && selectedSellableCards.length > 0)) && (
             <button
               onClick={handleOpenBulkSell}
               disabled={preparingBulkSell}
@@ -680,9 +697,11 @@ export function CardTable({
             >
               {preparingBulkSell
                 ? '⏳ Loading gifts…'
-                : `💰 Attach ${selectedIds.size} to Order`}
+                : `💰 Attach ${selectedSellableCards.length} to Order`}
             </button>
-          ) : (
+          )}
+          {(effectiveBulkMode === 'list' ||
+            (effectiveBulkMode === 'all' && selectedMatchedCards.length > 0)) && (
             <button
               onClick={handleOpenReview}
               disabled={markingListed}
@@ -690,7 +709,7 @@ export function CardTable({
             >
               {markingListed
                 ? '⏳ Marking...'
-                : `📋 Mark ${selectedIds.size} as Listed`}
+                : `📋 Mark ${selectedMatchedCards.length} as Listed`}
             </button>
           )}
           <button
@@ -713,7 +732,13 @@ export function CardTable({
                 }
                 onChange={handleSelectAll}
                 disabled={selectableCards.length === 0}
-                title={effectiveBulkMode === 'sell' ? 'Select all order-eligible cards' : 'Select all matched cards'}
+                title={
+                  effectiveBulkMode === 'all'
+                    ? 'Select all eligible cards'
+                    : effectiveBulkMode === 'sell'
+                      ? 'Select all order-eligible cards'
+                      : 'Select all matched cards'
+                }
               />
             </th>
             <SortableHeader field="status">Status</SortableHeader>
@@ -735,6 +760,21 @@ export function CardTable({
           {sortedCards.map((card) => {
             const isMatched = card.status === 'matched';
             const isListed = card.status === 'listed';
+            const isSelectable =
+              effectiveBulkMode === 'list'
+                ? isMatched
+                : effectiveBulkMode === 'sell'
+                  ? isSellEligible(card)
+                  : isMatched || isSellEligible(card);
+            const selectionTitle = isMatched
+              ? 'Select for bulk listing'
+              : isSellEligible(card)
+                ? 'Select for attach to order'
+                : effectiveBulkMode === 'all'
+                  ? 'Only Ready to List, listed, or listed-origin attention cards can be selected'
+                  : effectiveBulkMode === 'sell'
+                    ? 'Only listed or listed-origin attention cards can be selected'
+                    : 'Only Ready to List cards can be selected';
             const canEditListingPrice =
               card.status === 'listed' || card.status === 'needs_attention';
             const isSelected = selectedIds.has(card.id);
@@ -753,16 +793,8 @@ export function CardTable({
                     onChange={(e) =>
                       handleSelectCard(card.id, e.target.checked)
                     }
-                    disabled={effectiveBulkMode === 'sell' ? !isSellEligible(card) : !isMatched}
-                    title={
-                      effectiveBulkMode === 'sell'
-                        ? isSellEligible(card)
-                          ? 'Select for attach to order'
-                          : 'Only listed or listed-origin attention cards can be selected'
-                        : isMatched
-                          ? 'Select for bulk listing'
-                          : 'Only matched cards can be selected'
-                    }
+                    disabled={!isSelectable}
+                    title={selectionTitle}
                   />
                 </td>
                 <td>
@@ -1373,7 +1405,7 @@ export function CardTable({
       })()}
       {showReviewModal && (
         <ReviewListModal
-          cards={sortedCards.filter((card) => selectedIds.has(card.id))}
+          cards={selectedMatchedCards}
           onConfirm={handleConfirmMarkListed}
           onCancel={handleCancelReview}
           loading={markingListed}
@@ -1403,12 +1435,17 @@ export function CardTable({
       })()}
       {showBulkSellModal && onBulkSell && (
         <BulkSellModal
-          cards={cards.filter((c) => selectedIds.has(c.id))}
+          cards={selectedSellableCards}
           giftCards={giftCards}
           onSubmit={async (order) => {
             await onBulkSell(order);
+            const soldIds = new Set(
+              selectedSellableCards.map((card) => card.id),
+            );
+            setSelectedIds(
+              (current) => new Set([...current].filter((id) => !soldIds.has(id))),
+            );
             setShowBulkSellModal(false);
-            setSelectedIds(new Set());
           }}
           onClose={() => {
             setShowBulkSellModal(false);
