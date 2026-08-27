@@ -1597,6 +1597,53 @@ describe('App record sale + bulk sell integration', () => {
     });
   });
 
+  it('Inventory All lets Ready to List cards use the bulk-listing selection control', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCards.mockResolvedValue({
+      cards: [
+        {
+          id: 1,
+          tcgplayerId: 100,
+          tcgProductId: null,
+          productLine: 'Riftbound',
+          setName: 'Origins',
+          productName: 'Ready to List Card',
+          title: null,
+          number: '001',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'matched',
+          marketPrice: '1.00',
+          listingPrice: '0.98',
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+
+    render(<App />);
+
+    await screen.findByText('Ready to List Card');
+
+    const checkbox = screen.getByTitle('Select for bulk listing');
+    expect(checkbox).not.toBeDisabled();
+
+    await user.click(checkbox);
+
+    expect(
+      screen.getByRole('button', { name: /mark 1 as listed/i }),
+    ).toBeInTheDocument();
+  });
+
   it('Inventory enables listed rows for attach-to-order selection', async () => {
     apiMocks.getCards.mockResolvedValue({
       cards: [
