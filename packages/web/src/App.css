@@ -821,16 +821,6 @@ body {
 }
 
 /* Collection */
-.collection-header {
-  align-items: flex-start;
-}
-
-.section-subtitle {
-  margin: 0.35rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-}
-
 .collection-import-card {
   margin-bottom: 1.25rem;
   padding: 1.5rem 2rem;
@@ -1034,15 +1024,6 @@ body {
   margin-bottom: 1rem;
 }
 
-.collection-selector {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-}
-
-.collection-pill,
 .collection-badge {
   display: inline-flex;
   align-items: center;
@@ -1052,12 +1033,6 @@ body {
   font-size: 0.74rem;
   font-weight: 700;
   margin-left: 0.35rem;
-}
-
-.collection-pill {
-  background: #eef2ff;
-  color: #3730a3;
-  margin-left: 0;
 }
 
 .collection-summary-grid {
@@ -1153,10 +1128,6 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .collection-selector {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
 
 /* Table */

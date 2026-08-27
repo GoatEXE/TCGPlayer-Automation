@@ -22,16 +22,6 @@ const CARD_KIND_OPTIONS: CardKind[] = [
 ];
 const COLLECTION_ITEMS_PER_PAGE = 50;
 
-function chooseDefaultCollection(collections: CollectionSummary[]) {
-  return (
-    collections.find((collection) => collection.purpose === 'owned') ??
-    collections.find((collection) => collection.isDefault) ??
-    collections.find((collection) => collection.name.toLowerCase() === 'default') ??
-    collections[0] ??
-    null
-  );
-}
-
 function recommendationRank(row: CollectionSellabilityRow) {
   if (row.sellNormalQty > 0 || row.sellFoilQty > 0) return 0;
   if (row.opportunityType === 'foil_swap') return 1;
@@ -46,13 +36,6 @@ function formatKind(kind: string) {
 
 function recommendedSellQty(row: CollectionSellabilityRow) {
   return row.sellNormalQty + row.sellFoilQty;
-}
-
-function rowMoveQuantity(row: CollectionSellabilityRow, isToBeSold: boolean) {
-  return recommendedTransferItems(row, isToBeSold).reduce(
-    (sum, item) => sum + item.quantity,
-    0,
-  );
 }
 
 const TRANSFER_WARNING_COPY: Record<string, string> = {
@@ -109,10 +92,7 @@ function itemForFinish(row: CollectionSellabilityRow, finish: 'normal' | 'foil')
   return sourceItems.find((item) => itemFinishKind(item) === finish) ?? null;
 }
 
-function recommendedTransferItems(
-  row: CollectionSellabilityRow,
-  isToBeSold: boolean,
-) {
+function recommendedTransferItems(row: CollectionSellabilityRow) {
   if (row.transferItems && row.transferItems.length > 0) {
     return row.transferItems
       .map((item) => {
@@ -129,13 +109,9 @@ function recommendedTransferItems(
       );
   }
 
-  const hasRecommendation = row.sellNormalQty > 0 || row.sellFoilQty > 0;
-  const normalTarget = hasRecommendation || !isToBeSold ? row.sellNormalQty : row.normalQty;
-  const foilTarget = hasRecommendation || !isToBeSold ? row.sellFoilQty : row.foilQty;
-
   return [
-    { item: itemForFinish(row, 'normal'), quantity: normalTarget },
-    { item: itemForFinish(row, 'foil'), quantity: foilTarget },
+    { item: itemForFinish(row, 'normal'), quantity: row.sellNormalQty },
+    { item: itemForFinish(row, 'foil'), quantity: row.sellFoilQty },
   ]
     .map(({ item, quantity }) => {
       const id = item ? itemId(item) : null;
@@ -151,9 +127,9 @@ function recommendedTransferItems(
     );
 }
 
-function canTransferRow(row: CollectionSellabilityRow, isToBeSold: boolean) {
+function canTransferRow(row: CollectionSellabilityRow) {
   if (row.excluded || (row.blockers?.length ?? 0) > 0) return false;
-  return recommendedTransferItems(row, isToBeSold).length > 0;
+  return recommendedTransferItems(row).length > 0;
 }
 
 function buildTransferRequest(selection: TransferSelection): CollectionTransferRequest {
@@ -176,8 +152,7 @@ export function CollectionView({
   onCatalogMetadataUpdated,
   onInventoryChanged,
 }: CollectionViewProps) {
-  const [collections, setCollections] = useState<CollectionSummary[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(
+  const [ownedCollection, setOwnedCollection] = useState<CollectionSummary | null>(
     null,
   );
   const [sellability, setSellability] =
@@ -203,9 +178,10 @@ export function CollectionView({
       try {
         const response = await api.getCollections();
         if (ignore) return;
-        setCollections(response.collections);
-        const defaultCollection = chooseDefaultCollection(response.collections);
-        setSelectedCollectionId((current) => current ?? defaultCollection?.id ?? null);
+        setOwnedCollection(
+          response.collections.find((collection) => collection.purpose === 'owned') ??
+            null,
+        );
       } catch (err) {
         if (!ignore) {
           setError(err instanceof Error ? err.message : 'Failed to load collections');
@@ -238,10 +214,12 @@ export function CollectionView({
     }
   };
 
+  const ownedCollectionId = ownedCollection?.id ?? null;
+
   useEffect(() => {
-    if (selectedCollectionId === null) return;
-    loadSellability(selectedCollectionId);
-  }, [selectedCollectionId]);
+    if (ownedCollectionId === null) return;
+    loadSellability(ownedCollectionId);
+  }, [ownedCollectionId]);
 
   const filteredRows = useMemo(() => {
     const query = collectionSearchQuery.trim().toLowerCase();
@@ -283,17 +261,6 @@ export function CollectionView({
     );
   }, [collectionTotalPages]);
 
-  const toBeSoldCollection = collections.find(
-    (collection) =>
-      collection.purpose === 'to_be_sold' ||
-      collection.name.toLowerCase() === 'to be sold',
-  );
-  const selectedCollection = collections.find(
-    (collection) => collection.id === selectedCollectionId,
-  );
-  const selectedIsToBeSold =
-    selectedCollection?.purpose === 'to_be_sold' ||
-    selectedCollection?.name.toLowerCase() === 'to be sold';
   const transferRequest = buildTransferRequest(transferSelection);
   const transferSelectedQuantity = transferRequest.items.reduce(
     (sum, item) => sum + item.quantity,
@@ -320,7 +287,7 @@ export function CollectionView({
     setTransferSuccess(null);
     setTransferSelection((current) => {
       const next = { ...current };
-      for (const item of recommendedTransferItems(row, selectedIsToBeSold)) {
+      for (const item of recommendedTransferItems(row)) {
         if (checked) {
           next[item.collectionItemId] = item.quantity;
         } else {
@@ -341,13 +308,13 @@ export function CollectionView({
   };
 
   const handleTransferPreview = async () => {
-    if (selectedCollectionId === null || transferRequest.items.length === 0) return;
+    if (ownedCollectionId === null || transferRequest.items.length === 0) return;
     setTransferLoading(true);
     setError(null);
     setTransferSuccess(null);
     try {
       const response = await api.previewCollectionTransferToInventory(
-        selectedCollectionId,
+        ownedCollectionId,
         transferRequest,
       );
       setTransferPreview(response);
@@ -359,19 +326,19 @@ export function CollectionView({
   };
 
   const handleTransferCommit = async () => {
-    if (selectedCollectionId === null || transferRequest.items.length === 0) return;
+    if (ownedCollectionId === null || transferRequest.items.length === 0) return;
     setTransferLoading(true);
     setError(null);
     try {
       const response = await api.commitCollectionTransferToInventory(
-        selectedCollectionId,
+        ownedCollectionId,
         transferRequest,
       );
       setTransferPreview(response);
       setTransferSuccess(
         `Moved ${response.summary.transferQuantity ?? 0} card(s) to Selling Inventory.`,
       );
-      await loadSellability(selectedCollectionId);
+      await loadSellability(ownedCollectionId);
       await onInventoryChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to move to Selling Inventory');
@@ -388,8 +355,8 @@ export function CollectionView({
     setError(null);
     try {
       await api.updateCatalogCardMetadata(row.catalogCardId, { cardKind: nextKind });
-      if (selectedCollectionId !== null) {
-        await loadSellability(selectedCollectionId);
+      if (ownedCollectionId !== null) {
+        await loadSellability(ownedCollectionId);
       }
       onCatalogMetadataUpdated?.();
     } catch (err) {
@@ -401,71 +368,38 @@ export function CollectionView({
 
   return (
     <section className="cards-section collection-section">
-      {selectedIsToBeSold && (
-        <div className="section-header collection-header">
-          <div>
-            <h2>To Be Sold Collection</h2>
-            <p className="section-subtitle">
-              To Be Sold staging cards ready to move into internal Selling Inventory. This does not list anything on TCGPlayer.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <CollectionImportUpload
-        collectionId={selectedCollectionId}
-        onImportCommitted={async () => {
-          if (selectedCollectionId !== null) {
-            await loadSellability(selectedCollectionId);
-          }
-        }}
-      />
-
-      <div className="collection-toolbar">
-        <label className="collection-selector" htmlFor="collection-select">
-          Collection
-          <select
-            id="collection-select"
-            className="shipment-select"
-            value={selectedCollectionId ?? ''}
-            disabled={loadingCollections || collections.length === 0}
-            onChange={(event) => setSelectedCollectionId(Number(event.target.value))}
-          >
-            {collections.map((collection) => (
-              <option key={collection.id} value={collection.id}>
-                {collection.name}
-                {collection.purpose ? ` (${collection.purpose.replace(/_/g, ' ')})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {toBeSoldCollection && (
-          <div className="collection-pill" aria-label="To Be Sold collection">
-            To Be Sold: {toBeSoldCollection.name}
-          </div>
-        )}
-
-        <form
-          className="search-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setCollectionPage(1);
-          }}
-        >
-          <input
-            type="search"
-            aria-label="Search collection"
-            placeholder="Search by card, set, or number..."
-            value={collectionSearchQuery}
-            onChange={(event) => handleCollectionSearchChange(event.target.value)}
-            className="search-input"
+      {ownedCollection && (
+        <>
+          <CollectionImportUpload
+            collectionId={ownedCollection.id}
+            onImportCommitted={async () => {
+              await loadSellability(ownedCollection.id);
+            }}
           />
-          <button type="submit" className="search-button" aria-label="Search collection">
-            🔍
-          </button>
-        </form>
-      </div>
+
+          <div className="collection-toolbar">
+            <form
+              className="search-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setCollectionPage(1);
+              }}
+            >
+              <input
+                type="search"
+                aria-label="Search collection"
+                placeholder="Search by card, set, or number..."
+                value={collectionSearchQuery}
+                onChange={(event) => handleCollectionSearchChange(event.target.value)}
+                className="search-input"
+              />
+              <button type="submit" className="search-button" aria-label="Search collection">
+                🔍
+              </button>
+            </form>
+          </div>
+        </>
+      )}
 
 
       {sellability && (
@@ -494,9 +428,7 @@ export function CollectionView({
           <div>
             <h3>Move to Selling Inventory</h3>
             <p>
-              {selectedIsToBeSold
-                ? 'Select staged cards to move into internal Selling Inventory as Ready to List. This decreases To Be Sold quantities and does not list anything on TCGPlayer.'
-                : 'Select recommended cards to move into internal Selling Inventory as Ready to List. This decreases the source collection quantity and does not list anything on TCGPlayer.'}
+              Select recommended cards to move into internal Selling Inventory as Ready to List. This decreases Owned Collection quantities and does not list anything on TCGPlayer.
             </p>
           </div>
           <div className="collection-transfer-actions">
@@ -598,6 +530,10 @@ export function CollectionView({
         <div className="table-loading">
           <p>⏳ Loading collection recommendations...</p>
         </div>
+      ) : ownedCollectionId === null ? (
+        <div className="table-empty" role="status">
+          Owned Collection is unavailable. Create or restore an Owned collection before importing or moving cards.
+        </div>
       ) : sortedRows.length === 0 ? (
         <div className="table-empty collection-search-empty" role="status">
           {collectionSearchQuery.trim()
@@ -616,9 +552,9 @@ export function CollectionView({
                 <th>Kind</th>
                 <th>Normal Qty</th>
                 <th>Foil Qty</th>
-                <th>{selectedIsToBeSold ? 'Available' : 'Keep Target'}</th>
-                <th>{selectedIsToBeSold ? 'Move Qty' : 'Recommended Sell'}</th>
-                <th>{selectedIsToBeSold ? 'Transfer State' : 'Reason'}</th>
+                <th>Keep Target</th>
+                <th>Recommended Sell</th>
+                <th>Reason</th>
               </tr>
             </thead>
             <tbody>
@@ -643,8 +579,8 @@ export function CollectionView({
                         <input
                           type="checkbox"
                           aria-label={`Move ${row.productName} to Selling Inventory`}
-                          disabled={!canTransferRow(row, selectedIsToBeSold)}
-                          checked={recommendedTransferItems(row, selectedIsToBeSold).some(
+                          disabled={!canTransferRow(row)}
+                          checked={recommendedTransferItems(row).some(
                             (item) => transferSelection[item.collectionItemId] > 0,
                           )}
                           onChange={(event) =>
@@ -655,7 +591,7 @@ export function CollectionView({
                           {row.excluded ? 'Excluded' : row.opportunityType === 'foil_swap' ? 'Foil' : 'Move'}
                         </span>
                       </label>
-                      {recommendedTransferItems(row, selectedIsToBeSold).map((item) => (
+                      {recommendedTransferItems(row).map((item) => (
                         <input
                           key={item.collectionItemId}
                           type="number"
@@ -710,10 +646,10 @@ export function CollectionView({
                     </td>
                     <td>{row.normalQty}</td>
                     <td>{row.foilQty}</td>
-                    <td>{selectedIsToBeSold ? row.totalQty : (row.keepTarget ?? '—')}</td>
+                    <td>{row.keepTarget ?? '—'}</td>
                     <td>
-                      <strong>{selectedIsToBeSold ? rowMoveQuantity(row, selectedIsToBeSold) : sellQty}</strong>
-                      {!selectedIsToBeSold && (row.sellNormalQty > 0 || row.sellFoilQty > 0) && (
+                      <strong>{sellQty}</strong>
+                      {(row.sellNormalQty > 0 || row.sellFoilQty > 0) && (
                         <span className="collection-muted">
                           {' '}
                           ({row.sellNormalQty} normal / {row.sellFoilQty} foil)
@@ -721,7 +657,7 @@ export function CollectionView({
                       )}
                     </td>
                     <td>
-                      <span>{selectedIsToBeSold ? (canTransferRow(row, selectedIsToBeSold) ? 'Ready to move' : 'Not transferable') : recommendationLabel(row)}</span>
+                      <span>{recommendationLabel(row)}</span>
                       {row.opportunityType === 'foil_swap' && (
                         <span className="collection-badge badge-success">Foil swap</span>
                       )}

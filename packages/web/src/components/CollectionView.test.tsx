@@ -340,32 +340,30 @@ describe('CollectionView', () => {
     });
   });
 
-  it('renders the Owned Collection import card first without a standalone Collection header', async () => {
+  it('renders only the Owned Collection and keeps sellable cards highlighted and prioritized', async () => {
     render(<CollectionView />);
-
-    expect(screen.queryByRole('heading', { level: 2, name: 'Collection' })).toBeNull();
-    const collectionSection = document.querySelector('.collection-section');
-    expect(collectionSection?.firstElementChild).toHaveClass('collection-import-card');
-    expect(collectionSection?.querySelector('.section-header')).toBeNull();
 
     await waitFor(() => {
       expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);
     });
+
+    expect(screen.queryByRole('heading', { level: 2, name: 'Collection' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Collection' })).toBeNull();
+    expect(screen.queryByLabelText(/to be sold collection/i)).toBeNull();
+    expect(screen.queryByRole('heading', { name: /to be sold/i })).toBeNull();
+    const collectionSection = document.querySelector('.collection-section');
+    expect(collectionSection?.firstElementChild).toHaveClass('collection-import-card');
+    expect(collectionSection?.querySelector('.section-header')).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
-    expect(
-      screen.queryByText(
-        'Owned cards and sellability recommendations. Set-aside suggestions do not mutate selling inventory.',
-      ),
-    ).toBeNull();
     expect(screen.getByText(/never imports into selling inventory/i)).toBeTruthy();
 
     expect(await screen.findByLabelText(/sellability summary/i)).toHaveTextContent(
       'Sell Normal2',
     );
-    expect(screen.getByText(/To Be Sold: To Be Sold/i)).toBeTruthy();
 
     const rows = screen.getAllByRole('row').slice(1);
     expect(within(rows[0]).getByText('Sell Extra Card')).toBeTruthy();
+    expect(rows[0]).toHaveClass('collection-row-sellable');
     expect(within(rows[1]).getByText('Shiny Swap Card')).toBeTruthy();
     expect(within(rows[1]).getByText('Foil swap')).toBeTruthy();
     expect(screen.getByText('Mystery Card')).toBeTruthy();
@@ -409,36 +407,59 @@ describe('CollectionView', () => {
     expect(await screen.findByText('Page Card 001')).toBeTruthy();
   });
 
-  it('resets the collection page when the selected collection changes', async () => {
+  it('uses the owned collection id for sellability, import, transfer, and refreshes regardless of legacy collection order', async () => {
     const user = userEvent.setup();
-    const firstCollectionRows = paginationRows(51);
-    apiMocks.getCollectionSellability.mockImplementation(async (collectionId) => ({
-      collection:
-        collectionId === 2
-          ? { id: 2, name: 'To Be Sold', purpose: 'to_be_sold' }
-          : { id: 1, name: 'Default', purpose: 'owned' },
-      summary: {
-        sellNormalQty: collectionId === 2 ? 0 : 51,
-        sellFoilQty: 0,
-        excludedCards: 0,
-        needsClassificationCards: 0,
-      },
-      rows:
-        collectionId === 2
-          ? [{ ...baseRow, catalogCardId: 2000, productName: 'To Be Sold Card' }]
-          : firstCollectionRows,
-    }));
+    apiMocks.getCollections.mockResolvedValueOnce({
+      collections: [
+        { id: 2, name: 'To Be Sold', purpose: 'to_be_sold' },
+        { id: 7, name: 'My Owned Cards', purpose: 'owned' },
+      ],
+    });
     render(<CollectionView />);
 
-    expect(await screen.findByText('Page Card 001')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: /next/i }));
-    expect(await screen.findByText('Page Card 051')).toBeTruthy();
+    expect(await screen.findByText('Sell Extra Card')).toBeTruthy();
+    expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(7);
+    expect(apiMocks.getCollectionSellability).not.toHaveBeenCalledWith(2);
 
-    await user.selectOptions(screen.getByLabelText('Collection'), '2');
+    const file = new File(['Product ID,Quantity\n2021,2\n'], 'owned.csv', {
+      type: 'text/csv',
+    });
+    await user.upload(screen.getByLabelText(/owned collection csv file/i), file);
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionImport).toHaveBeenCalledWith(7, file, 'merge');
+    });
+    await user.click(
+      screen.getByRole('button', { name: /commit import to owned collection/i }),
+    );
+    await waitFor(() => {
+      expect(apiMocks.commitCollectionImport).toHaveBeenCalledWith(7, file, 'merge');
+    });
 
-    expect(await screen.findByText('To Be Sold Card')).toBeTruthy();
-    expect(screen.queryByText('Page Card 051')).toBeNull();
-    expect(screen.queryByText(/showing \d+–\d+ of/i)).toBeNull();
+    await user.click(screen.getByLabelText(/move sell extra card to selling inventory/i));
+    await user.click(screen.getByRole('button', { name: /preview move/i }));
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionTransferToInventory).toHaveBeenCalledWith(7, {
+        items: [{ collectionItemId: 111, quantity: 2 }],
+      });
+    });
+    await user.click(screen.getByRole('button', { name: /^move to selling inventory$/i }));
+    await waitFor(() => {
+      expect(apiMocks.commitCollectionTransferToInventory).toHaveBeenCalledWith(7, {
+        items: [{ collectionItemId: 111, quantity: 2 }],
+      });
+    });
+
+    await user.selectOptions(
+      screen.getByLabelText(/card kind for mystery card/i),
+      'legend',
+    );
+    await waitFor(() => {
+      expect(apiMocks.updateCatalogCardMetadata).toHaveBeenCalledWith(13, {
+        cardKind: 'legend',
+      });
+      expect(apiMocks.getCollectionSellability).toHaveBeenLastCalledWith(7);
+    });
+    expect(apiMocks.getCollectionSellability).not.toHaveBeenCalledWith(2);
   });
 
   it('resets an invalid collection page after refreshed results shrink', async () => {
@@ -817,7 +838,6 @@ describe('CollectionView', () => {
   });
 
   it('does not expose destructive collection clearing or call the clear API during normal interactions', async () => {
-    const user = userEvent.setup();
     render(<CollectionView />);
 
     await screen.findByLabelText(/sellability summary/i);
@@ -825,95 +845,23 @@ describe('CollectionView', () => {
     expect(screen.queryByLabelText(/type clear collection/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /clear/i })).toBeNull();
     expect(screen.queryByText(/destructive: removes rows/i)).toBeNull();
-
-    await user.selectOptions(screen.getByLabelText('Collection'), '2');
-    await waitFor(() => {
-      expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(2);
-    });
     expect(apiMocks.clearCollection).not.toHaveBeenCalled();
   });
 
-  it('uses staging labels and disables zero-quantity rows in To Be Sold collection', async () => {
+  it('handles a missing Owned Collection without requesting or mutating a legacy collection', async () => {
     apiMocks.getCollections.mockResolvedValueOnce({
       collections: [{ id: 2, name: 'To Be Sold', purpose: 'to_be_sold' }],
     });
-    apiMocks.getCollectionSellability.mockResolvedValueOnce({
-      collection: { id: 2, name: 'To Be Sold', purpose: 'to_be_sold' },
-      summary: {
-        sellNormalQty: 0,
-        sellFoilQty: 0,
-        excludedCards: 0,
-        needsClassificationCards: 0,
-      },
-      rows: [
-        {
-          ...baseRow,
-          catalogCardId: 201,
-          productName: 'Staged Card',
-          normalQty: 4,
-          totalQty: 4,
-          sellNormalQty: 0,
-          sourceItems: [
-            {
-              collectionItemId: 2011,
-              finish: 'Normal',
-              finishKind: 'normal',
-              quantity: 4,
-              recommendedSellQuantity: 4,
-              condition: 'Near Mint',
-              language: 'EN',
-            },
-          ],
-          transferItems: [
-            {
-              collectionItemId: 2011,
-              finish: 'Normal',
-              finishKind: 'normal',
-              quantity: 4,
-              recommendedSellQuantity: 4,
-              condition: 'Near Mint',
-              language: 'EN',
-            },
-          ],
-        },
-        {
-          ...baseRow,
-          catalogCardId: 202,
-          productName: 'Zero Staged Card',
-          normalQty: 0,
-          totalQty: 0,
-          sourceItems: [
-            {
-              collectionItemId: 2021,
-              finish: 'Normal',
-              finishKind: 'normal',
-              quantity: 0,
-              recommendedSellQuantity: 0,
-              condition: 'Near Mint',
-              language: 'EN',
-            },
-          ],
-          transferItems: [],
-        },
-      ],
-    });
-
     render(<CollectionView />);
 
-    expect(
-      await screen.findByRole('heading', { level: 2, name: /to be sold collection/i }),
-    ).toBeTruthy();
-    expect(
-      await screen.findByText(/to be sold staging cards ready to move/i),
-    ).toBeTruthy();
-    expect(
-      await screen.findByRole('columnheader', { name: /available/i }),
-    ).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: /move qty/i })).toBeTruthy();
-    expect(screen.queryByRole('columnheader', { name: /keep target/i })).toBeNull();
-    expect(screen.getByText('Ready to move')).toBeTruthy();
-    expect(screen.getByLabelText(/move staged card to selling inventory/i)).toBeEnabled();
-    expect(screen.getByLabelText(/move zero staged card to selling inventory/i)).toBeDisabled();
+    expect(await screen.findByText(/owned collection is unavailable/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/owned collection csv file/i)).toBeNull();
+    expect(screen.queryByLabelText(/move to selling inventory/i)).toBeNull();
+    expect(apiMocks.getCollectionSellability).not.toHaveBeenCalled();
+    expect(apiMocks.previewCollectionImport).not.toHaveBeenCalled();
+    expect(apiMocks.commitCollectionImport).not.toHaveBeenCalled();
+    expect(apiMocks.previewCollectionTransferToInventory).not.toHaveBeenCalled();
+    expect(apiMocks.commitCollectionTransferToInventory).not.toHaveBeenCalled();
   });
 
   it('updates catalog card kind and reloads sellability', async () => {
