@@ -76,6 +76,12 @@ describe('env config', () => {
     expect(loaded.env.RUN_MIGRATIONS_ON_START).toBe(false);
   });
 
+  it('does not expose the retired minimum-listing-price setting', async () => {
+    const { env } = await loadEnvModule();
+
+    expect(env).not.toHaveProperty('MIN_LISTING_PRICE_CENTS');
+  });
+
   it('defaults price check runtime settings when unset', async () => {
     const nextEnv = { ...ORIGINAL_ENV };
     delete nextEnv.PRICE_CHECK_INTERVAL_HOURS;

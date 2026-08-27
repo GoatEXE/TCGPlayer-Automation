@@ -56,13 +56,13 @@ const seedCards = [
     rarity: 'Common',
     condition: 'Near Mint',
     quantity: 6,
-    status: 'gift' as const,
+    status: 'matched' as const,
     marketPrice: '0.04',
     listingPrice: '0.04',
     isFoilPrice: false,
     photoUrl:
       'https://tcgplayer-cdn.tcgplayer.com/product/652777_in_400x400.jpg',
-    notes: 'Below minimum listing threshold',
+    notes: 'Ready to list at the normal recommended price',
     updatedAt: now,
   },
   {

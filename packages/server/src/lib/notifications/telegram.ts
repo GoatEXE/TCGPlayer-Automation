@@ -58,11 +58,6 @@ function getNeedsAttentionPriceTransition(alert: NeedsAttentionAlertInput) {
         from: alert.currentListingPrice,
         to: alert.recommendedListingPrice,
       };
-    case 'listed_below_threshold':
-      return {
-        from: alert.currentListingPrice,
-        to: alert.recommendedListingPrice,
-      };
     case 'listed_missing_price':
       return {
         from: alert.previousMarketPrice ?? alert.currentListingPrice,
@@ -81,12 +76,7 @@ function getNeedsAttentionPriceTransition(alert: NeedsAttentionAlertInput) {
 
 function buildNeedsAttentionEntry(alert: NeedsAttentionAlertInput): string {
   const { from, to } = getNeedsAttentionPriceTransition(alert);
-  const toDisplay =
-    alert.attentionReason === 'listed_below_threshold' && to === null
-      ? 'Gift'
-      : formatPriceOrDash(to);
-
-  return `• ${alert.displayName}: ${formatPriceOrDash(from)} → ${toDisplay}`;
+  return `• ${alert.displayName}: ${formatPriceOrDash(from)} → ${formatPriceOrDash(to)}`;
 }
 
 export function buildNeedsAttentionAlertBatches(

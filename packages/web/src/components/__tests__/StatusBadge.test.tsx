@@ -11,7 +11,7 @@ describe('StatusBadge', () => {
     { status: 'pending', label: 'Pending', color: '#6b7280' },
     { status: 'matched', label: 'Ready to List', color: '#8b5cf6' },
     { status: 'listed', label: 'Listed', color: '#10b981' },
-    { status: 'gift', label: 'Gift', color: '#3b82f6' },
+    { status: 'gifted', label: 'Gifted', color: '#64748b' },
     { status: 'needs_attention', label: 'Needs Attention', color: '#f59e0b' },
     { status: 'error', label: 'Error', color: '#ef4444' },
     { status: 'sold', label: 'Sold', color: '#6366f1' },

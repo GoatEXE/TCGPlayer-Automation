@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, notInArray } from 'drizzle-orm';
 import { env } from '../../config/env.js';
 import { db } from '../../db/index.js';
 import {
@@ -58,6 +58,16 @@ export interface NeedsAttentionCardAlert {
   driftPercent: number | null;
 }
 
+const inactiveInventoryStatuses: Card['status'][] = [
+  'gift',
+  'gifted',
+  'sold',
+];
+
+function isTerminalInventoryCard(card: Pick<Card, 'status'>): boolean {
+  return card.status === 'gifted' || card.status === 'sold';
+}
+
 export interface RunPriceCheckResult {
   updated: number;
   notFound: number;
@@ -73,7 +83,7 @@ export interface RunPriceCheckResult {
 function parseDecimal(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
-  return Number.isNaN(parsed) ? null : parsed;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function extractProductIdFromPhotoUrl(
@@ -207,7 +217,7 @@ function getListedAttentionReason(params: {
   }
 
   if (pricingStatus !== 'matched' || recommendedListingPrice === null) {
-    return 'listed_below_threshold';
+    return 'listed_missing_price';
   }
 
   if (previousListingPrice === null) {
@@ -269,10 +279,7 @@ async function insertPriceHistoryEntry(
 }
 
 function buildNeedsAttentionCardAlert(params: {
-  card: Pick<
-    Card,
-    'id' | 'productName' | 'title' | 'setName' | 'condition'
-  >;
+  card: Pick<Card, 'id' | 'productName' | 'title' | 'setName' | 'condition'>;
   historyId: number;
   source: PriceCheckSource;
   attentionReason: Card['attentionReason'];
@@ -317,7 +324,10 @@ export async function runPriceCheck(
     throw new Error('Failed to fetch sets from TCGTracking');
   }
 
-  const allCards = await db.select().from(cards);
+  const allCards = await db
+    .select()
+    .from(cards)
+    .where(notInArray(cards.status, inactiveInventoryStatuses));
   const pricingByProductId = new Map<string, TCGTrackingProductPrice>();
 
   const errors: string[] = [];
@@ -353,6 +363,13 @@ export async function runPriceCheck(
   const csvDiffRows: PriceCheckCsvDiffRow[] = [];
 
   for (const card of allCards) {
+    // Keep the guard even though the query filters terminal rows: it prevents
+    // any accidental history write or status resurrection if a caller/mock
+    // returns a stale terminal row.
+    if (isTerminalInventoryCard(card)) {
+      continue;
+    }
+
     const resolvedProductId = resolveProductId(card, pricingByProductId);
 
     if (!resolvedProductId) {
@@ -613,7 +630,7 @@ export async function runPriceCheck(
       : cappedListingPrice;
     const persistedListingPrice = wasListedLike
       ? card.listingPrice
-      : newListingPrice?.toString() ?? null;
+      : (newListingPrice?.toString() ?? null);
     const attentionReason =
       newStatus === 'needs_attention' && wasListedLike
         ? getListedAttentionReason({

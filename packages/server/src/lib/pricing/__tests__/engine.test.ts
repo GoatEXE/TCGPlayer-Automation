@@ -3,156 +3,62 @@ import { calculatePrice } from '../engine';
 import type { PricingInput, PricingResult } from '../types';
 
 describe('calculatePrice', () => {
-  it('should return needs_attention for null market price', () => {
-    const input: PricingInput = {
-      marketPrice: null,
-    };
+  it('returns needs_attention for null market price', () => {
+    const input: PricingInput = { marketPrice: null };
 
     const result = calculatePrice(input);
 
     expect(result.status).toBe('needs_attention');
     expect(result.listingPrice).toBeNull();
-    expect(result.reason).toBe('No market price available');
+    expect(result.reason).toBe('No usable market price available');
   });
 
-  it('should return needs_attention for non-finite market prices', () => {
-    const input: PricingInput = {
-      marketPrice: Number.NaN,
-    };
+  it.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    0,
+    -0.01,
+  ])('returns needs_attention for unusable market price %s', (marketPrice) => {
+    const result = calculatePrice({ marketPrice });
 
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('needs_attention');
-    expect(result.listingPrice).toBeNull();
-    expect(result.reason).toBe('No market price available');
+    expect(result).toMatchObject({
+      status: 'needs_attention',
+      listingPrice: null,
+      reason: 'No usable market price available',
+    });
   });
 
-  it('should return gift status for price below minimum threshold ($0.03 < $0.05)', () => {
-    const input: PricingInput = {
-      marketPrice: 0.03,
-      minListingPriceCents: 5,
-    };
+  it('keeps every positive price ready to list, including the former gift threshold range', () => {
+    const result = calculatePrice({ marketPrice: 0.03 });
 
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('gift');
-    expect(result.listingPrice).toBeNull();
-    expect(result.reason).toBe('Market price below minimum threshold');
+    expect(result).toEqual({
+      status: 'matched',
+      listingPrice: 0.03,
+      reason: 'Priced at 98% of market — ready to list',
+    });
   });
 
-  it('should list price at exactly the threshold ($0.05)', () => {
-    const input: PricingInput = {
-      marketPrice: 0.05,
-      minListingPriceCents: 5,
-      priceMultiplier: 0.98,
-    };
-
-    const result = calculatePrice(input);
+  it('calculates a rounded recommendation for a valid market price', () => {
+    const result = calculatePrice({ marketPrice: 2.99, priceMultiplier: 0.98 });
 
     expect(result.status).toBe('matched');
-    expect(result.listingPrice).toBe(0.05); // 0.05 * 0.98 = 0.049, rounds to 0.05
+    expect(result.listingPrice).toBe(2.93);
     expect(result.reason).toContain('98%');
   });
 
-  it('should calculate listing price for $1.00 market price', () => {
-    const input: PricingInput = {
-      marketPrice: 1.0,
-      priceMultiplier: 0.98,
-    };
-
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('matched');
-    expect(result.listingPrice).toBe(0.98);
-    expect(result.reason).toContain('98%');
-  });
-
-  it('should round to nearest cent for $0.49 market price', () => {
-    const input: PricingInput = {
-      marketPrice: 0.49,
-      priceMultiplier: 0.98,
-    };
-
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('matched');
-    expect(result.listingPrice).toBe(0.48); // 0.49 * 0.98 = 0.4802, rounds to 0.48
-    expect(result.reason).toContain('98%');
-  });
-
-  it('should calculate listing price for $2.99 market price', () => {
-    const input: PricingInput = {
-      marketPrice: 2.99,
-      priceMultiplier: 0.98,
-    };
-
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('matched');
-    expect(result.listingPrice).toBe(2.93); // 2.99 * 0.98 = 2.9302, rounds to 2.93
-    expect(result.reason).toContain('98%');
-  });
-
-  it('should use custom multiplier (0.95)', () => {
-    const input: PricingInput = {
-      marketPrice: 1.0,
-      priceMultiplier: 0.95,
-    };
-
-    const result = calculatePrice(input);
+  it('uses a custom multiplier without a minimum-listing-price setting', () => {
+    const result = calculatePrice({ marketPrice: 1, priceMultiplier: 0.95 });
 
     expect(result.status).toBe('matched');
     expect(result.listingPrice).toBe(0.95);
     expect(result.reason).toContain('95%');
   });
 
-  it('should use custom minimum threshold (50 cents)', () => {
-    const input: PricingInput = {
-      marketPrice: 0.49,
-      minListingPriceCents: 50,
-    };
+  it('uses the normal default multiplier when not provided', () => {
+    const input: PricingInput = { marketPrice: 1 };
+    const result: PricingResult = calculatePrice(input);
 
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('gift');
-    expect(result.listingPrice).toBeNull();
-    expect(result.reason).toBe('Market price below minimum threshold');
-  });
-
-  it('should return gift status for zero market price', () => {
-    const input: PricingInput = {
-      marketPrice: 0,
-      minListingPriceCents: 5,
-    };
-
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('gift');
-    expect(result.listingPrice).toBeNull();
-    expect(result.reason).toBe('Market price below minimum threshold');
-  });
-
-  it('should calculate listing price for very high price ($100)', () => {
-    const input: PricingInput = {
-      marketPrice: 100.0,
-      priceMultiplier: 0.98,
-    };
-
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('matched');
-    expect(result.listingPrice).toBe(98.0);
-    expect(result.reason).toContain('98%');
-  });
-
-  it('should use default values when not provided', () => {
-    const input: PricingInput = {
-      marketPrice: 1.0,
-    };
-
-    const result = calculatePrice(input);
-
-    expect(result.status).toBe('matched');
-    expect(result.listingPrice).toBe(0.98); // default 0.98 multiplier
+    expect(result).toMatchObject({ status: 'matched', listingPrice: 0.98 });
   });
 });

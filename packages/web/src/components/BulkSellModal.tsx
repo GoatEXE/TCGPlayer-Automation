@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Card, CreateBulkOrderRequest, OrderStatus } from '../api/types';
 
 interface BulkSellModalProps {
   cards: Card[];
-  giftCards?: Card[];
   onSubmit: (order: CreateBulkOrderRequest) => Promise<void>;
   onClose: () => void;
   defaultShippingCollectedCents?: number;
@@ -12,15 +11,11 @@ interface BulkSellModalProps {
 interface PerCardState {
   quantity: number;
   salePrice: number;
-}
-
-interface GiftLineState {
-  quantity: number;
+  lineItemType: 'sale' | 'gift';
 }
 
 export function BulkSellModal({
   cards,
-  giftCards = [],
   onSubmit,
   onClose,
   defaultShippingCollectedCents = 149,
@@ -35,27 +30,33 @@ export function BulkSellModal({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [giftSearch, setGiftSearch] = useState('');
-  const [selectedGifts, setSelectedGifts] = useState<Map<number, GiftLineState>>(
-    new Map(),
-  );
-
   const [perCard, setPerCard] = useState<PerCardState[]>(() =>
-    cards.map((c) => ({
-      quantity: c.quantity,
-      salePrice: c.listingPrice ? parseFloat(c.listingPrice) : 0,
+    cards.map((card) => ({
+      quantity: card.quantity,
+      salePrice: card.listingPrice ? parseFloat(card.listingPrice) : 0,
+      lineItemType: 'sale',
     })),
   );
-
   const backdropRef = useRef<HTMLDivElement>(null);
+  const hasPaidLine = perCard.some((line) => line.lineItemType === 'sale');
+  const paidLineCount = perCard.filter(
+    (line) => line.lineItemType === 'sale',
+  ).length;
+  const giftLineCount = perCard.length - paidLineCount;
 
   useEffect(() => {
     backdropRef.current?.focus();
   }, []);
 
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) {
+    if (!hasPaidLine) {
+      setShippingCollected('0.00');
+    }
+  }, [hasPaidLine]);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) {
         onClose();
       }
     };
@@ -63,48 +64,50 @@ export function BulkSellModal({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, saving]);
 
-  const filteredGiftCards = useMemo(() => {
-    const query = giftSearch.trim().toLowerCase();
-    if (!query) return giftCards;
-    return giftCards.filter((card) =>
-      (card.title || card.productName).toLowerCase().includes(query),
-    );
-  }, [giftCards, giftSearch]);
-
-  const updatePerCard = (index: number, field: keyof PerCardState, value: number) => {
-    setPerCard((prev) => {
-      const next = [...prev];
+  const updatePerCard = (
+    index: number,
+    field: keyof Pick<PerCardState, 'quantity' | 'salePrice'>,
+    value: number,
+  ) => {
+    setPerCard((previous) => {
+      const next = [...previous];
       next[index] = { ...next[index], [field]: value };
       return next;
     });
   };
 
-  const updateGiftSelection = (card: Card, checked: boolean) => {
-    setSelectedGifts((prev) => {
-      const next = new Map(prev);
-      if (checked) {
-        next.set(card.id, { quantity: Math.min(1, card.quantity) });
-      } else {
-        next.delete(card.id);
-      }
+  const updateLineItemType = (
+    index: number,
+    card: Card,
+    lineItemType: 'sale' | 'gift',
+  ) => {
+    setPerCard((previous) => {
+      const next = [...previous];
+      const originalPrice = card.listingPrice
+        ? parseFloat(card.listingPrice)
+        : 0;
+      next[index] = {
+        ...next[index],
+        lineItemType,
+        salePrice:
+          lineItemType === 'gift'
+            ? 0
+            : next[index].salePrice > 0
+              ? next[index].salePrice
+              : originalPrice,
+      };
       return next;
     });
   };
 
-  const updateGiftQuantity = (cardId: number, quantity: number) => {
-    setSelectedGifts((prev) => {
-      const next = new Map(prev);
-      const current = next.get(cardId);
-      if (current) next.set(cardId, { ...current, quantity });
-      return next;
-    });
-  };
+  const grandTotal = perCard.reduce(
+    (sum, line) =>
+      sum + (line.lineItemType === 'sale' ? line.quantity * line.salePrice : 0),
+    0,
+  );
 
-  const giftLines = giftCards.filter((card) => selectedGifts.has(card.id));
-  const grandTotal = perCard.reduce((sum, pc) => sum + pc.quantity * pc.salePrice, 0);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
 
     const orderId = tcgplayerOrderId.trim();
@@ -113,26 +116,24 @@ export function BulkSellModal({
       return;
     }
 
-    const shippingCollectedCents = parseDollarsToCents(shippingCollected);
+    const shippingCollectedCents = hasPaidLine
+      ? parseDollarsToCents(shippingCollected)
+      : 0;
     if (shippingCollectedCents === null) {
       setError('Shipping collected must be a valid non-negative dollar amount');
       return;
     }
 
-    const lines = [
-      ...cards.map((card, i) => ({
+    const lines = cards.map((card, index) => {
+      const line = perCard[index];
+      return {
         cardId: card.id,
-        quantitySold: perCard[i].quantity,
-        salePriceCents: Math.round(perCard[i].salePrice * 100),
-        lineItemType: 'sale' as const,
-      })),
-      ...giftLines.map((card) => ({
-        cardId: card.id,
-        quantitySold: selectedGifts.get(card.id)?.quantity ?? 1,
-        salePriceCents: 0,
-        lineItemType: 'gift' as const,
-      })),
-    ];
+        quantitySold: line.quantity,
+        salePriceCents:
+          line.lineItemType === 'gift' ? 0 : Math.round(line.salePrice * 100),
+        lineItemType: line.lineItemType,
+      };
+    });
 
     setSaving(true);
     try {
@@ -145,15 +146,19 @@ export function BulkSellModal({
         shippingCollectedCents,
         lines,
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record order');
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Failed to record order',
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget && !saving) {
+  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget && !saving) {
       onClose();
     }
   };
@@ -162,8 +167,8 @@ export function BulkSellModal({
     if (!card.marketPrice) return '—';
     const parsed = parseFloat(card.marketPrice);
     if (!Number.isFinite(parsed)) return '—';
-    const rec = Math.round(parsed * 98) / 100;
-    return `$${rec.toFixed(2)}`;
+    const recommendation = Math.round(parsed * 98) / 100;
+    return `$${recommendation.toFixed(2)}`;
   };
 
   return (
@@ -178,8 +183,16 @@ export function BulkSellModal({
     >
       <div className="modal-content bulk-sell-modal-content">
         <div className="modal-header">
-          <h2>📦 Attach to Order — {cards.length} paid card{cards.length === 1 ? '' : 's'}</h2>
-          <button className="modal-close" onClick={onClose} disabled={saving} aria-label="Close">
+          <h2>
+            📦 Attach to Order — {cards.length} selected card
+            {cards.length === 1 ? '' : 's'}
+          </h2>
+          <button
+            className="modal-close"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close"
+          >
             ✕
           </button>
         </div>
@@ -188,15 +201,40 @@ export function BulkSellModal({
           <div className="bulk-sell-shared-fields">
             <div className="sale-field">
               <label htmlFor="bulk-buyer">Buyer Name</label>
-              <input id="bulk-buyer" type="text" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} disabled={saving} className="sale-input" placeholder="Optional" />
+              <input
+                id="bulk-buyer"
+                type="text"
+                value={buyerName}
+                onChange={(event) => setBuyerName(event.target.value)}
+                disabled={saving}
+                className="sale-input"
+                placeholder="Optional"
+              />
             </div>
             <div className="sale-field">
               <label htmlFor="bulk-order-id">TCGPlayer Order ID *</label>
-              <input id="bulk-order-id" type="text" value={tcgplayerOrderId} onChange={(e) => setTcgplayerOrderId(e.target.value)} disabled={saving} className="sale-input" placeholder="Required for Attach to Order" aria-required="true" />
+              <input
+                id="bulk-order-id"
+                type="text"
+                value={tcgplayerOrderId}
+                onChange={(event) => setTcgplayerOrderId(event.target.value)}
+                disabled={saving}
+                className="sale-input"
+                placeholder="Required for Attach to Order"
+                aria-required="true"
+              />
             </div>
             <div className="sale-field">
               <label htmlFor="bulk-order-status">Order Status</label>
-              <select id="bulk-order-status" value={orderStatus} onChange={(e) => setOrderStatus(e.target.value as OrderStatus)} disabled={saving} className="sale-input">
+              <select
+                id="bulk-order-status"
+                value={orderStatus}
+                onChange={(event) =>
+                  setOrderStatus(event.target.value as OrderStatus)
+                }
+                disabled={saving}
+                className="sale-input"
+              >
                 <option value="confirmed">Confirmed</option>
                 <option value="pending">Pending</option>
                 <option value="shipped">Shipped</option>
@@ -205,26 +243,57 @@ export function BulkSellModal({
             </div>
             <div className="sale-field">
               <label htmlFor="bulk-sold-date">Sold Date</label>
-              <input id="bulk-sold-date" type="datetime-local" value={soldAt} onChange={(e) => setSoldAt(e.target.value)} disabled={saving} className="sale-input" />
+              <input
+                id="bulk-sold-date"
+                type="datetime-local"
+                value={soldAt}
+                onChange={(event) => setSoldAt(event.target.value)}
+                disabled={saving}
+                className="sale-input"
+              />
             </div>
             <div className="sale-field">
-              <label htmlFor="bulk-shipping-collected">Shipping Collected ($)</label>
-              <input id="bulk-shipping-collected" type="number" min={0} step={0.01} value={shippingCollected} onChange={(e) => setShippingCollected(e.target.value)} disabled={saving} className="sale-input" />
+              <label htmlFor="bulk-shipping-collected">
+                Shipping Collected ($)
+              </label>
+              <input
+                id="bulk-shipping-collected"
+                type="number"
+                min={0}
+                step={0.01}
+                value={shippingCollected}
+                onChange={(event) => setShippingCollected(event.target.value)}
+                disabled={saving || !hasPaidLine}
+                className="sale-input"
+              />
             </div>
             <div className="sale-field">
               <label htmlFor="bulk-notes">Notes</label>
-              <textarea id="bulk-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} className="sale-textarea" rows={2} placeholder="Optional" />
+              <textarea
+                id="bulk-notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                disabled={saving}
+                className="sale-textarea"
+                rows={2}
+                placeholder="Optional"
+              />
             </div>
           </div>
 
-          <h3>Paid items</h3>
+          <h3>Order items</h3>
+          <p className="bulk-gift-note">
+            Choose Paid or Gift/freebie for each selected listing. Gift lines
+            are recorded at $0.00.
+          </p>
           <div className="bulk-sell-table-wrap">
             <table className="bulk-sell-table">
               <thead>
                 <tr>
                   <th scope="col">Card Name</th>
+                  <th scope="col">Type</th>
                   <th scope="col">Market</th>
-                  <th scope="col">Rec'd</th>
+                  <th scope="col">Rec&apos;d</th>
                   <th scope="col">Listed</th>
                   <th scope="col">Qty</th>
                   <th scope="col">Sale Price</th>
@@ -232,20 +301,80 @@ export function BulkSellModal({
                 </tr>
               </thead>
               <tbody>
-                {cards.map((card, i) => {
+                {cards.map((card, index) => {
                   const cardName = card.title || card.productName;
-                  const marketDisplay = card.marketPrice ? `$${parseFloat(card.marketPrice).toFixed(2)}` : '—';
-                  const listedDisplay = card.listingPrice ? `$${parseFloat(card.listingPrice).toFixed(2)}` : '—';
-                  const subtotal = perCard[i].quantity * perCard[i].salePrice;
+                  const line = perCard[index];
+                  const isGift = line.lineItemType === 'gift';
+                  const marketDisplay = card.marketPrice
+                    ? `$${parseFloat(card.marketPrice).toFixed(2)}`
+                    : '—';
+                  const listedDisplay = card.listingPrice
+                    ? `$${parseFloat(card.listingPrice).toFixed(2)}`
+                    : '—';
+                  const subtotal = isGift ? 0 : line.quantity * line.salePrice;
                   return (
                     <tr key={card.id}>
                       <td>{cardName}</td>
+                      <td>
+                        <select
+                          aria-label={`Line type for ${cardName}`}
+                          value={line.lineItemType}
+                          onChange={(event) =>
+                            updateLineItemType(
+                              index,
+                              card,
+                              event.target.value as 'sale' | 'gift',
+                            )
+                          }
+                          disabled={saving}
+                          className="sale-input bulk-sell-type-input"
+                        >
+                          <option value="sale">Paid</option>
+                          <option value="gift">Gift / freebie</option>
+                        </select>
+                      </td>
                       <td>{marketDisplay}</td>
                       <td>{recommendedPrice(card)}</td>
                       <td>{listedDisplay}</td>
-                      <td><input type="number" aria-label={`Quantity for ${cardName}`} min={1} max={card.quantity} value={perCard[i].quantity} onChange={(e) => updatePerCard(i, 'quantity', parseInt(e.target.value, 10) || 0)} disabled={saving} className="sale-input bulk-sell-qty-input" /></td>
-                      <td><input type="number" aria-label={`Sale price for ${cardName}`} min={0.01} step={0.01} value={perCard[i].salePrice} onChange={(e) => updatePerCard(i, 'salePrice', parseFloat(e.target.value) || 0)} disabled={saving} className="sale-input bulk-sell-price-input" /></td>
-                      <td>${subtotal.toFixed(2)}</td>
+                      <td>
+                        <input
+                          type="number"
+                          aria-label={`Quantity for ${cardName}`}
+                          min={1}
+                          max={card.quantity}
+                          value={line.quantity}
+                          onChange={(event) =>
+                            updatePerCard(
+                              index,
+                              'quantity',
+                              parseInt(event.target.value, 10) || 0,
+                            )
+                          }
+                          disabled={saving}
+                          className="sale-input bulk-sell-qty-input"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          aria-label={`Sale price for ${cardName}`}
+                          min={isGift ? 0 : 0.01}
+                          step={0.01}
+                          value={line.salePrice}
+                          onChange={(event) =>
+                            updatePerCard(
+                              index,
+                              'salePrice',
+                              parseFloat(event.target.value) || 0,
+                            )
+                          }
+                          disabled={saving || isGift}
+                          className="sale-input bulk-sell-price-input"
+                        />
+                      </td>
+                      <td>
+                        {isGift ? '$0.00 / Freebie' : `$${subtotal.toFixed(2)}`}
+                      </td>
                     </tr>
                   );
                 })}
@@ -253,59 +382,33 @@ export function BulkSellModal({
             </table>
           </div>
 
-          <section className="bulk-gift-section" aria-labelledby="bulk-gift-heading">
-            <div className="bulk-gift-header">
-              <h3 id="bulk-gift-heading">Gifts / freebies</h3>
-              <span className="bulk-gift-note">Gift lines are recorded as $0.00 freebies.</span>
-            </div>
-            <label className="sale-field" htmlFor="bulk-gift-search">
-              Search gift pool
-            </label>
-            <input id="bulk-gift-search" type="text" value={giftSearch} onChange={(e) => setGiftSearch(e.target.value)} disabled={saving} className="sale-input" placeholder="Find gift-pool cards..." />
-            {filteredGiftCards.length === 0 ? (
-              <p className="table-empty">No gift-pool cards found.</p>
-            ) : (
-              <div className="bulk-sell-table-wrap">
-                <table className="bulk-sell-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Add</th>
-                      <th scope="col">Gift Card</th>
-                      <th scope="col">Available</th>
-                      <th scope="col">Gift Qty</th>
-                      <th scope="col">Line</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredGiftCards.map((card) => {
-                      const cardName = card.title || card.productName;
-                      const selected = selectedGifts.has(card.id);
-                      return (
-                        <tr key={card.id}>
-                          <td><input type="checkbox" aria-label={`Add ${cardName} as gift`} checked={selected} onChange={(e) => updateGiftSelection(card, e.target.checked)} disabled={saving} /></td>
-                          <td>{cardName}</td>
-                          <td>{card.quantity}</td>
-                          <td><input type="number" aria-label={`Gift quantity for ${cardName}`} min={1} max={card.quantity} value={selectedGifts.get(card.id)?.quantity ?? 1} onChange={(e) => updateGiftQuantity(card.id, parseInt(e.target.value, 10) || 0)} disabled={saving || !selected} className="sale-input bulk-sell-qty-input" /></td>
-                          <td>$0.00 / Freebie</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
           <div className="bulk-sell-footer">
-            <span className="bulk-sell-card-count">{cards.length} paid / {selectedGifts.size} gift</span>
-            <span className="bulk-sell-grand-total">Paid Total: <strong>${grandTotal.toFixed(2)}</strong></span>
+            <span className="bulk-sell-card-count">
+              {paidLineCount} paid / {giftLineCount} gift
+            </span>
+            <span className="bulk-sell-grand-total">
+              Paid Total: <strong>${grandTotal.toFixed(2)}</strong>
+            </span>
           </div>
 
-          {error && <span className="interval-error" role="alert">{error}</span>}
+          {error && (
+            <span className="interval-error" role="alert">
+              {error}
+            </span>
+          )}
 
           <div className="modal-actions">
-            <button type="button" className="button-secondary" onClick={onClose} disabled={saving}>Cancel</button>
-            <button type="submit" className="button-primary" disabled={saving}>{saving ? '⏳ Saving…' : '📦 Attach to Order'}</button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button type="submit" className="button-primary" disabled={saving}>
+              {saving ? '⏳ Saving…' : '📦 Attach to Order'}
+            </button>
           </div>
         </form>
       </div>
@@ -319,7 +422,7 @@ function parseDollarsToCents(value: string): number | null {
   return Math.round(parsed * 100);
 }
 
-function toDatetimeLocal(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function toDatetimeLocal(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

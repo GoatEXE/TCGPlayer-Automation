@@ -759,7 +759,7 @@ describe('sales routes', () => {
         {
           id: 101,
           productName: 'Gift Card',
-          status: 'gift',
+          status: 'listed',
           attentionReason: null,
           quantity: 1,
         },
@@ -897,7 +897,7 @@ describe('sales routes', () => {
         {
           id: 105,
           productName: 'Gift Card',
-          status: 'gift',
+          status: 'listed',
           attentionReason: null,
           quantity: 1,
         },
@@ -1159,7 +1159,7 @@ describe('sales routes', () => {
       expect(response.statusCode).toBe(201);
     });
 
-    it('rejects gift lines for non-gift cards', async () => {
+    it('accepts a listed card as a gift line and marks it Gifted only when fully depleted', async () => {
       mockCardSelectResult([
         {
           id: 120,
@@ -1168,6 +1168,19 @@ describe('sales routes', () => {
           quantity: 1,
         },
       ]);
+      const updateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+      vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 220, cardId: 120 }]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
 
       const response = await app.inject({
         method: 'POST',
@@ -1185,17 +1198,66 @@ describe('sales routes', () => {
         },
       });
 
-      expect(response.statusCode).toBe(400);
-      expect(JSON.parse(response.body)).toEqual({
-        error: 'Gift lines require cards with status gift',
+      expect(response.statusCode).toBe(201);
+      expect(updateSet).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 0, status: 'gifted' }),
+      );
+    });
+
+    it('allows a listed-origin needs_attention card as a partial gift while preserving its resale state', async () => {
+      mockCardSelectResult([
+        {
+          id: 119,
+          status: 'needs_attention',
+          attentionReason: 'listed_price_drift',
+          quantity: 2,
+        },
+      ]);
+      const updateSet = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
       });
+      vi.mocked(db.update).mockReturnValue({ set: updateSet } as any);
+      vi.mocked(db.insert)
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 219, cardId: 119 }]),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sales/bulk',
+        payload: {
+          tcgplayerOrderId: 'ORDER-BULK-ATTENTION-GIFT',
+          lines: [
+            {
+              cardId: 119,
+              quantitySold: 1,
+              salePriceCents: 0,
+              lineItemType: 'gift',
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(updateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 1,
+          status: 'needs_attention',
+          attentionReason: 'listed_price_drift',
+        }),
+      );
     });
 
     it('rejects gift lines with positive price', async () => {
       mockCardSelectResult([
         {
           id: 121,
-          status: 'gift',
+          status: 'listed',
           attentionReason: null,
           quantity: 1,
         },
@@ -1288,12 +1350,12 @@ describe('sales routes', () => {
       });
     });
 
-    it('keeps gift cards in gift status when quantity remains after a gift line', async () => {
+    it('keeps listed cards resale-eligible when quantity remains after a gift line', async () => {
       mockCardSelectResult([
         {
           id: 124,
           productName: 'Extra Gift Card',
-          status: 'gift',
+          status: 'listed',
           attentionReason: null,
           quantity: 3,
         },
@@ -1345,7 +1407,7 @@ describe('sales routes', () => {
       expect(updateSet).toHaveBeenCalledWith(
         expect.objectContaining({
           quantity: 2,
-          status: 'gift',
+          status: 'listed',
           attentionReason: null,
         }),
       );

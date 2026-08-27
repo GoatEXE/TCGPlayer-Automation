@@ -53,7 +53,6 @@ interface ExpenseFilters {
 
 export function App() {
   const [cards, setCards] = useState<Card[]>([]);
-  const [giftCards, setGiftCards] = useState<Card[]>([]);
   const [stats, setStats] = useState<CardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -115,7 +114,11 @@ export function App() {
   const itemsPerPage = 50;
 
   const shouldHideFromActiveInventory = (card: Card) =>
-    card.status === 'sold' || card.status === 'gifted';
+    card.status === 'sold' ||
+    card.status === 'gifted' ||
+    // The API schema excludes this retired legacy value, but keep the UI safe
+    // if an unmigrated response still contains one.
+    (card.status as string) === 'gift';
 
   const fetchCards = async () => {
     setLoading(true);
@@ -128,12 +131,11 @@ export function App() {
         sortField: cardSortField ?? undefined,
         sortDirection: cardSortDirection,
       });
-      const visibleCards =
-        statusFilter === 'all'
-          ? response.cards.filter(
-              (card) => !shouldHideFromActiveInventory(card),
-            )
-          : response.cards;
+      const visibleCards = response.cards.filter(
+        (card) =>
+          card.quantity > 0 &&
+          (statusFilter !== 'all' || !shouldHideFromActiveInventory(card)),
+      );
       setCards(visibleCards);
       setTotalItems(response.total);
     } catch (err) {
@@ -141,21 +143,6 @@ export function App() {
       alert(err instanceof Error ? err.message : 'Failed to load cards');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchGiftCards = async () => {
-    try {
-      const response = await api.getCards({
-        status: 'gift',
-        page: 1,
-        limit: 200,
-        sortField: 'productName',
-        sortDirection: 'asc',
-      });
-      setGiftCards(response.cards);
-    } catch (err) {
-      console.error('Failed to fetch gift cards:', err);
     }
   };
 
@@ -315,12 +302,6 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (activeView === 'inventory') {
-      fetchGiftCards();
-    }
-  }, [activeView]);
-
-  useEffect(() => {
     if (activeView !== 'sales-history') return;
     fetchSales();
     fetchSalesStats();
@@ -375,7 +356,6 @@ export function App() {
   const handleImportComplete = () => {
     fetchStats();
     fetchCards();
-    fetchGiftCards();
   };
 
   const handleReprice = async (id: number) => {
@@ -509,7 +489,6 @@ export function App() {
     await api.createBulkOrder(order);
     fetchCards();
     fetchStats();
-    fetchGiftCards();
   };
 
   const handleCreateExpense = async (data: CreateExpenseRequest) => {
@@ -691,12 +670,9 @@ export function App() {
   const statusFilters: { value: StatusFilter; label: string }[] = [
     { value: 'all', label: 'All' },
     { value: 'listed', label: 'Listed (On Sale)' },
-    { value: 'gift', label: 'Gift' },
     { value: 'needs_attention', label: 'Needs Attention' },
     { value: 'pending', label: 'Pending' },
     { value: 'matched', label: 'Ready to List' },
-    { value: 'sold', label: 'Sold' },
-    { value: 'gifted', label: 'Gifted' },
     { value: 'error', label: 'Error' },
   ];
 
@@ -1030,8 +1006,6 @@ export function App() {
               onUpdateCard={handleUpdateCard}
               onRecordSale={handleRecordSale}
               onBulkSell={handleBulkSell}
-              giftCards={giftCards}
-              onPrepareBulkSell={fetchGiftCards}
               bulkMode={
                 statusFilter === 'all'
                   ? 'all'

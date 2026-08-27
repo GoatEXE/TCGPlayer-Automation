@@ -12,7 +12,7 @@ The original sell workflow below is retained as historical context for the first
 - Bulk payloads accept optional `buyerName`, `soldAt`, `notes`, and editable `shippingCollectedCents`, plus a `lines` array.
 - Each line is `{ cardId, quantitySold, salePriceCents, lineItemType: 'sale' | 'gift' }`.
 - Paid sale lines require listed or listed-origin `needs_attention` cards and `salePriceCents > 0`.
-- Gift lines require gift-pool cards and `salePriceCents === 0`; they decrement inventory and move cards to `gifted` when quantity reaches 0.
+- Each selected listed or listed-origin `needs_attention` line can be marked Paid or Gift/freebie in the order modal. Gift lines require `salePriceCents === 0`; partial gifts retain their resale-eligible state, full depletion moves the card to `gifted`, and cancellation restores resale eligibility.
 - Sales and stats exclude gift rows by default. Performance revenue includes paid product totals plus shipping collected once per order, and invoices/packing slips include gift lines grouped by TCGPlayer Order ID.
 - `applyEstimatedExpenses` is deprecated/no-op in the backend and removed from the active sale/order UI. Supplies and postage should be tracked through manual expenses/settings instead.
 - Existing single-card `POST /api/sales` still works for paid sales and returns `lineItemType: 'sale'`.

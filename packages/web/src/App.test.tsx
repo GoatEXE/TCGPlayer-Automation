@@ -666,28 +666,17 @@ describe('App view tabs', () => {
     });
   });
 
-  it('renders Sold filter pill and clicking it fetches cards with status=sold', async () => {
-    const user = userEvent.setup();
-
+  it('does not render a Sold Inventory filter', async () => {
     render(<App />);
 
     await waitFor(() => {
       expect(apiMocks.getCards).toHaveBeenCalled();
     });
 
-    const soldButton = screen.getByRole('button', { name: 'Sold' });
-    expect(soldButton).toBeTruthy();
-
-    await user.click(soldButton);
-
-    await waitFor(() => {
-      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
-        expect.objectContaining({ status: 'sold' }),
-      );
-    });
+    expect(screen.queryByRole('button', { name: 'Sold' })).toBeNull();
   });
 
-  it('hides terminal cards from the default Inventory All view', async () => {
+  it('hides terminal and legacy gift cards from the default Inventory All view', async () => {
     apiMocks.getCards.mockResolvedValue({
       cards: [
         {
@@ -719,6 +708,29 @@ describe('App view tabs', () => {
           tcgProductId: null,
           productLine: 'Riftbound',
           setName: 'Origins',
+          productName: 'Legacy Gift Card',
+          title: null,
+          number: '002',
+          rarity: 'Common',
+          condition: 'Near Mint',
+          quantity: 1,
+          status: 'gift',
+          marketPrice: '0.04',
+          listingPrice: null,
+          floorPriceCents: null,
+          isFoilPrice: false,
+          photoUrl: null,
+          notes: null,
+          lastCheckedAt: null,
+          importedAt: '2026-04-01T00:00:00Z',
+          updatedAt: '2026-04-01T00:00:00Z',
+        },
+        {
+          id: 3,
+          tcgplayerId: 102,
+          tcgProductId: null,
+          productLine: 'Riftbound',
+          setName: 'Origins',
           productName: 'Active Card',
           title: null,
           number: '002',
@@ -737,7 +749,7 @@ describe('App view tabs', () => {
           updatedAt: '2026-04-01T00:00:00Z',
         },
       ],
-      total: 2,
+      total: 3,
       page: 1,
       limit: 50,
     });
@@ -746,64 +758,18 @@ describe('App view tabs', () => {
 
     expect(await screen.findByText('Active Card')).toBeTruthy();
     expect(screen.queryByText('Consumed Card')).toBeNull();
+    expect(screen.queryByText('Legacy Gift Card')).toBeNull();
   });
 
-  it('shows terminal zero-quantity cards when their explicit status filter is selected', async () => {
-    const user = userEvent.setup();
-    const consumedCard = {
-      id: 1,
-      tcgplayerId: 100,
-      tcgProductId: null,
-      productLine: 'Riftbound',
-      setName: 'Origins',
-      productName: 'Consumed Card',
-      title: null,
-      number: '001',
-      rarity: 'Common',
-      condition: 'Near Mint',
-      quantity: 0,
-      status: 'sold',
-      marketPrice: '1.00',
-      listingPrice: '0.98',
-      floorPriceCents: null,
-      isFoilPrice: false,
-      photoUrl: null,
-      notes: null,
-      lastCheckedAt: null,
-      importedAt: '2026-04-01T00:00:00Z',
-      updatedAt: '2026-04-01T00:00:00Z',
-    };
-    apiMocks.getCards.mockImplementation((params) => {
-      if (params?.status === 'sold') {
-        return Promise.resolve({
-          cards: [consumedCard],
-          total: 1,
-          page: 1,
-          limit: 50,
-        });
-      }
-      return Promise.resolve({ cards: [], total: 0, page: 1, limit: 50 });
-    });
-
+  it('does not render terminal Sold or Gifted Inventory filters', async () => {
     render(<App />);
-
-    await user.click(await screen.findByRole('button', { name: 'Sold' }));
-
-    expect(await screen.findByText('Consumed Card')).toBeTruthy();
-  });
-
-  it('renders Gifted filter pill and clicking it fetches cards with status=gifted', async () => {
-    const user = userEvent.setup();
-
-    render(<App />);
-
-    await user.click(await screen.findByRole('button', { name: 'Gifted' }));
 
     await waitFor(() => {
-      expect(apiMocks.getCards).toHaveBeenLastCalledWith(
-        expect.objectContaining({ status: 'gifted' }),
-      );
+      expect(apiMocks.getCards).toHaveBeenCalled();
     });
+
+    expect(screen.queryByRole('button', { name: 'Sold' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gifted' })).toBeNull();
   });
 
   it('refreshes sales and pipeline after shipment save', async () => {
@@ -1404,21 +1370,21 @@ describe('App record sale + bulk sell integration', () => {
     });
   });
 
-  it('Attach to Order refreshes gift pool and submits selected gift lines', async () => {
+  it('Attach to Order uses selected listings as paid or gift lines without fetching a gift pool', async () => {
     const user = userEvent.setup();
-    const paidCard = {
+    const listedCard = {
       id: 1,
       tcgplayerId: 100,
       tcgProductId: null,
       productLine: 'Riftbound',
       setName: 'Origins',
-      productName: 'Paid Card',
+      productName: 'Listed Card',
       title: null,
       number: '001',
       rarity: 'Common',
       condition: 'Near Mint',
       quantity: 1,
-      status: 'listed',
+      status: 'listed' as const,
       marketPrice: '1.00',
       listingPrice: '0.98',
       floorPriceCents: null,
@@ -1429,58 +1395,23 @@ describe('App record sale + bulk sell integration', () => {
       importedAt: '2026-04-01T00:00:00Z',
       updatedAt: '2026-04-01T00:00:00Z',
     };
-    const giftCard = {
-      ...paidCard,
-      id: 50,
-      tcgplayerId: 150,
-      tcgProductId: null,
-      productName: 'Gift Card',
-      quantity: 3,
-      status: 'gift',
-      listingPrice: null,
-    };
-    apiMocks.getCards.mockImplementation((params) => {
-      if (params?.status === 'gift') {
-        return Promise.resolve({
-          cards: [giftCard],
-          total: 1,
-          page: 1,
-          limit: 200,
-        });
-      }
-      return Promise.resolve({
-        cards: [paidCard],
-        total: 1,
-        page: 1,
-        limit: 50,
-      });
+    apiMocks.getCards.mockResolvedValue({
+      cards: [listedCard],
+      total: 1,
+      page: 1,
+      limit: 50,
     });
 
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Paid Card')).toBeTruthy();
-    });
-
+    await waitFor(() => expect(screen.getByText('Listed Card')).toBeTruthy());
     await user.click(screen.getByTitle('Select for attach to order'));
     await user.click(screen.getByText(/attach 1 to order/i));
 
     const dialog = await screen.findByRole('dialog', { name: /bulk sell/i });
-    expect(within(dialog).getAllByText('Gift Card').length).toBeGreaterThan(0);
-
-    await user.click(
-      within(dialog).getByRole('checkbox', { name: /add gift card as gift/i }),
-    );
-    await user.clear(
-      within(dialog).getByRole('spinbutton', {
-        name: /gift quantity for gift card/i,
-      }),
-    );
-    await user.type(
-      within(dialog).getByRole('spinbutton', {
-        name: /gift quantity for gift card/i,
-      }),
-      '2',
+    await user.selectOptions(
+      within(dialog).getByLabelText(/line type for listed card/i),
+      'gift',
     );
     await user.type(
       within(dialog).getByLabelText(/tcgplayer order id/i),
@@ -1494,16 +1425,11 @@ describe('App record sale + bulk sell integration', () => {
       expect(apiMocks.createBulkOrder).toHaveBeenCalledWith(
         expect.objectContaining({
           tcgplayerOrderId: 'ORD-GIFT',
+          shippingCollectedCents: 0,
           lines: [
             {
               cardId: 1,
               quantitySold: 1,
-              salePriceCents: 98,
-              lineItemType: 'sale',
-            },
-            {
-              cardId: 50,
-              quantitySold: 2,
               salePriceCents: 0,
               lineItemType: 'gift',
             },
@@ -1511,6 +1437,9 @@ describe('App record sale + bulk sell integration', () => {
         }),
       );
     });
+    expect(apiMocks.getCards).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'gift' }),
+    );
   });
 
   it('bulk sell failure shows backend error message', async () => {

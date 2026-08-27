@@ -30,9 +30,30 @@ const makeCard = (overrides: Partial<Card> = {}): Card => ({
 });
 
 const mockCards: Card[] = [
-  makeCard({ id: 1, productName: 'Fire Drake', title: 'Fire Drake - Holo', marketPrice: '2.50', listingPrice: '2.45', quantity: 4 }),
-  makeCard({ id: 2, productName: 'Ice Golem', title: 'Ice Golem', marketPrice: '5.00', listingPrice: '4.90', quantity: 2 }),
-  makeCard({ id: 3, productName: 'Storm Mage', title: 'Storm Mage - Foil', marketPrice: '10.00', listingPrice: '9.80', quantity: 1 }),
+  makeCard({
+    id: 1,
+    productName: 'Fire Drake',
+    title: 'Fire Drake - Holo',
+    marketPrice: '2.50',
+    listingPrice: '2.45',
+    quantity: 4,
+  }),
+  makeCard({
+    id: 2,
+    productName: 'Ice Golem',
+    title: 'Ice Golem',
+    marketPrice: '5.00',
+    listingPrice: '4.90',
+    quantity: 2,
+  }),
+  makeCard({
+    id: 3,
+    productName: 'Storm Mage',
+    title: 'Storm Mage - Foil',
+    marketPrice: '10.00',
+    listingPrice: '9.80',
+    quantity: 1,
+  }),
 ];
 
 describe('BulkSellModal', () => {
@@ -44,7 +65,9 @@ describe('BulkSellModal', () => {
   });
 
   it('renders all cards in the table', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.getByText('Fire Drake - Holo')).toBeTruthy();
@@ -53,7 +76,9 @@ describe('BulkSellModal', () => {
   });
 
   it('shows shared order fields (buyer name, order ID, sold date, notes)', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     expect(screen.getByLabelText(/Buyer Name/i)).toBeTruthy();
     expect(screen.getByLabelText(/TCGPlayer Order ID/i)).toBeTruthy();
@@ -81,7 +106,9 @@ describe('BulkSellModal', () => {
   });
 
   it('defaults per-card quantity to card.quantity', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const qtyInputs = screen.getAllByRole('spinbutton', { name: /quantity/i });
     expect(qtyInputs).toHaveLength(3);
@@ -91,9 +118,13 @@ describe('BulkSellModal', () => {
   });
 
   it('defaults per-card sale price to listing price in dollars', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
-    const priceInputs = screen.getAllByRole('spinbutton', { name: /sale price/i });
+    const priceInputs = screen.getAllByRole('spinbutton', {
+      name: /sale price/i,
+    });
     expect(priceInputs).toHaveLength(3);
     expect((priceInputs[0] as HTMLInputElement).value).toBe('2.45');
     expect((priceInputs[1] as HTMLInputElement).value).toBe('4.9');
@@ -101,42 +132,55 @@ describe('BulkSellModal', () => {
   });
 
   it('shows recommended price column (98% of market)', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const headers = screen.getAllByRole('columnheader');
-    const headerTexts = headers.map(h => h.textContent);
+    const headerTexts = headers.map((h) => h.textContent);
     expect(headerTexts).toContain("Rec'd");
 
     // Fire Drake: Math.round(2.50 * 98) / 100 = 2.45 — appears in both Rec'd and Listed
     // Ice Golem: Math.round(5.00 * 98) / 100 = 4.90 — appears in both Rec'd and Listed
     // Storm Mage: Math.round(10.00 * 98) / 100 = 9.80 — appears in both Rec'd and Listed
-    // Verify via row-scoped queries (Rec'd is 3rd td, index 2)
+    // Verify via row-scoped queries (Rec'd follows the Type and Market cells).
     const rows = screen.getAllByRole('row');
     // Fire Drake rec'd
     const fireDrakeCells = within(rows[1]).getAllByRole('cell');
-    expect(fireDrakeCells[2].textContent).toBe('$2.45');
+    expect(fireDrakeCells[3].textContent).toBe('$2.45');
     // Ice Golem rec'd
     const iceGolemCells = within(rows[2]).getAllByRole('cell');
-    expect(iceGolemCells[2].textContent).toBe('$4.90');
+    expect(iceGolemCells[3].textContent).toBe('$4.90');
     // Storm Mage rec'd
     const stormMageCells = within(rows[3]).getAllByRole('cell');
-    expect(stormMageCells[2].textContent).toBe('$9.80');
+    expect(stormMageCells[3].textContent).toBe('$9.80');
   });
 
   it('shows dash for recommended price when no market price', () => {
-    const cards = [makeCard({ id: 10, marketPrice: null, listingPrice: '1.00', quantity: 1 })];
-    render(<BulkSellModal cards={cards} onSubmit={onSubmit} onClose={onClose} />);
+    const cards = [
+      makeCard({
+        id: 10,
+        marketPrice: null,
+        listingPrice: '1.00',
+        quantity: 1,
+      }),
+    ];
+    render(
+      <BulkSellModal cards={cards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const rows = screen.getAllByRole('row');
     const dataRow = rows[1];
     const cells = within(dataRow).getAllByRole('cell');
-    // Market (index 1) and Rec'd (index 2) should both show dash
-    expect(cells[1].textContent).toBe('—');
+    // Type is index 1; Market and Rec'd should both show dash.
     expect(cells[2].textContent).toBe('—');
+    expect(cells[3].textContent).toBe('—');
   });
 
   it('computes grand total correctly (sum of qty × price for each card)', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     // Fire Drake: 4 × 2.45 = 9.80
     // Ice Golem: 2 × 4.90 = 9.80
@@ -146,14 +190,18 @@ describe('BulkSellModal', () => {
   });
 
   it('shows card count in footer', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
     const footer = document.querySelector('.bulk-sell-card-count')!;
     expect(footer.textContent).toMatch(/3 paid \/ 0 gift/i);
   });
 
   it('updates grand total when per-card quantity changes', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     // Change Fire Drake qty from 4 to 2
     const qtyInputs = screen.getAllByRole('spinbutton', { name: /quantity/i });
@@ -166,10 +214,14 @@ describe('BulkSellModal', () => {
 
   it('updates grand total when per-card price changes', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     // Change Fire Drake price from 2.45 to 5.00
-    const priceInputs = screen.getAllByRole('spinbutton', { name: /sale price/i });
+    const priceInputs = screen.getAllByRole('spinbutton', {
+      name: /sale price/i,
+    });
     await user.clear(priceInputs[0]);
     await user.type(priceInputs[0], '5');
 
@@ -179,7 +231,9 @@ describe('BulkSellModal', () => {
 
   it('per-card qty is independently editable', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const qtyInputs = screen.getAllByRole('spinbutton', { name: /quantity/i });
 
@@ -211,7 +265,9 @@ describe('BulkSellModal', () => {
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
     await user.type(screen.getByLabelText(/Notes/i), 'Bulk order');
 
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -224,9 +280,24 @@ describe('BulkSellModal', () => {
         orderStatus: 'confirmed',
       });
       expect(order.lines).toEqual([
-        { cardId: 1, quantitySold: 4, salePriceCents: 245, lineItemType: 'sale' },
-        { cardId: 2, quantitySold: 2, salePriceCents: 490, lineItemType: 'sale' },
-        { cardId: 3, quantitySold: 1, salePriceCents: 980, lineItemType: 'sale' },
+        {
+          cardId: 1,
+          quantitySold: 4,
+          salePriceCents: 245,
+          lineItemType: 'sale',
+        },
+        {
+          cardId: 2,
+          quantitySold: 2,
+          salePriceCents: 490,
+          lineItemType: 'sale',
+        },
+        {
+          cardId: 3,
+          quantitySold: 1,
+          salePriceCents: 980,
+          lineItemType: 'sale',
+        },
       ]);
     });
   });
@@ -242,7 +313,9 @@ describe('BulkSellModal', () => {
     await user.clear(screen.getByLabelText(/shipping collected/i));
     await user.type(screen.getByLabelText(/shipping collected/i), '2.49');
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
     await waitFor(() => {
       expect(onSubmit.mock.calls[0][0].shippingCollectedCents).toBe(249);
@@ -251,29 +324,53 @@ describe('BulkSellModal', () => {
 
   it('validates shipping collected as non-negative dollars', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={[mockCards[0]]} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal
+        cards={[mockCards[0]]}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
 
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
     await user.clear(screen.getByLabelText(/shipping collected/i));
     await user.type(screen.getByLabelText(/shipping collected/i), '-1');
     await user.click(screen.getByRole('button', { name: /attach to order/i }));
 
-    expect(screen.getByRole('alert').textContent).toMatch(/shipping collected/i);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /shipping collected/i,
+    );
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('requires order ID for all bulk orders', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={[mockCards[0]]} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal
+        cards={[mockCards[0]]}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
 
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
-    expect(screen.getByRole('alert').textContent).toMatch(/tcgplayer order id is required/i);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /tcgplayer order id is required/i,
+    );
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('marks order ID as required in the shared order fields', () => {
-    render(<BulkSellModal cards={[mockCards[0]]} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal
+        cards={[mockCards[0]]}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
 
     const orderIdInput = screen.getByLabelText(/tcgplayer order id/i);
     expect(orderIdInput.getAttribute('aria-required')).toBe('true');
@@ -284,13 +381,19 @@ describe('BulkSellModal', () => {
     const user = userEvent.setup();
     onSubmit.mockReturnValue(new Promise(() => {})); // never resolves
 
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: /saving/i }) as HTMLButtonElement;
+      const btn = screen.getByRole('button', {
+        name: /saving/i,
+      }) as HTMLButtonElement;
       expect(btn).toBeTruthy();
       expect(btn.disabled).toBe(true);
     });
@@ -300,23 +403,31 @@ describe('BulkSellModal', () => {
     const user = userEvent.setup();
     onSubmit.mockRejectedValueOnce(new Error('Network error'));
 
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
     await waitFor(() => {
       expect(screen.getByText(/Network error/)).toBeTruthy();
     });
 
     // Modal still open - submit button re-enabled
-    expect(screen.getByRole('button', { name: /attach to order|record \d+ sales/i })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    ).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it('closes on Escape key', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
@@ -324,7 +435,9 @@ describe('BulkSellModal', () => {
 
   it('closes on backdrop click', async () => {
     const user = userEvent.setup();
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const backdrop = screen.getByRole('dialog');
     await user.click(backdrop);
@@ -335,10 +448,14 @@ describe('BulkSellModal', () => {
     const user = userEvent.setup();
     onSubmit.mockReturnValue(new Promise(() => {}));
 
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /saving/i })).toBeTruthy();
@@ -352,10 +469,14 @@ describe('BulkSellModal', () => {
     const user = userEvent.setup();
     onSubmit.mockReturnValue(new Promise(() => {}));
 
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-99');
-    await user.click(screen.getByRole('button', { name: /attach to order|record \d+ sales/i }));
+    await user.click(
+      screen.getByRole('button', { name: /attach to order|record \d+ sales/i }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /saving/i })).toBeTruthy();
@@ -367,78 +488,77 @@ describe('BulkSellModal', () => {
   });
 
   it('shows per-card subtotals', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const rows = screen.getAllByRole('row');
-    // Subtotal is the last cell (index 6)
+    // Subtotal is the last cell (index 7) after the Type column.
     // Row 1 (Fire Drake): 4 × 2.45 = $9.80
     const fireDrakeCells = within(rows[1]).getAllByRole('cell');
-    expect(fireDrakeCells[6].textContent).toMatch(/9\.80/);
+    expect(fireDrakeCells[7].textContent).toMatch(/9\.80/);
     // Row 2 (Ice Golem): 2 × 4.90 = $9.80
     const iceGolemCells = within(rows[2]).getAllByRole('cell');
-    expect(iceGolemCells[6].textContent).toMatch(/9\.80/);
+    expect(iceGolemCells[7].textContent).toMatch(/9\.80/);
     // Row 3 (Storm Mage): 1 × 9.80 = $9.80
     const stormMageCells = within(rows[3]).getAllByRole('cell');
-    expect(stormMageCells[6].textContent).toMatch(/9\.80/);
+    expect(stormMageCells[7].textContent).toMatch(/9\.80/);
   });
 
   it('handles card with no listing price (defaults sale price to 0)', () => {
     const cards = [makeCard({ id: 10, listingPrice: null, quantity: 1 })];
-    render(<BulkSellModal cards={cards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={cards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
-    const priceInputs = screen.getAllByRole('spinbutton', { name: /sale price/i });
+    const priceInputs = screen.getAllByRole('spinbutton', {
+      name: /sale price/i,
+    });
     expect((priceInputs[0] as HTMLInputElement).value).toBe('0');
   });
 
   it('shows market price column', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     // Check table header
     const headers = screen.getAllByRole('columnheader');
-    const headerTexts = headers.map(h => h.textContent);
+    const headerTexts = headers.map((h) => h.textContent);
     expect(headerTexts).toContain('Market');
   });
 
   it('shows listed price column', () => {
-    render(<BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />);
+    render(
+      <BulkSellModal cards={mockCards} onSubmit={onSubmit} onClose={onClose} />,
+    );
 
     const headers = screen.getAllByRole('columnheader');
-    const headerTexts = headers.map(h => h.textContent);
+    const headerTexts = headers.map((h) => h.textContent);
     expect(headerTexts).toContain('Listed');
   });
 
-  it('adds gift/freebie lines with quantity and requires the shared order ID', async () => {
+  it('lets each selected listing become a gift/freebie line without fetching a separate gift pool', async () => {
     const user = userEvent.setup();
     onSubmit.mockResolvedValueOnce(undefined);
-    const giftCard = makeCard({
-      id: 50,
-      productName: 'Gift Token',
-      title: null,
-      status: 'gift',
-      quantity: 3,
-      listingPrice: null,
-    });
 
     render(
       <BulkSellModal
-        cards={[mockCards[0]]}
-        giftCards={[giftCard]}
+        cards={[mockCards[0], mockCards[1]]}
         onSubmit={onSubmit}
         onClose={onClose}
       />,
     );
 
-    expect(screen.getByRole('heading', { name: /gifts \/ freebies/i })).toBeTruthy();
-    expect(screen.getByLabelText(/search gift pool/i)).toBeTruthy();
-    expect(screen.getByText(/\$0\.00 \/ Freebie/i)).toBeTruthy();
+    const lineType = screen.getByLabelText(/line type for fire drake/i);
+    await user.selectOptions(lineType, 'gift');
 
-    await user.click(screen.getByRole('checkbox', { name: /add gift token as gift/i }));
-    await user.clear(screen.getByRole('spinbutton', { name: /gift quantity for gift token/i }));
-    await user.type(screen.getByRole('spinbutton', { name: /gift quantity for gift token/i }), '2');
-    await user.click(screen.getByRole('button', { name: /attach to order/i }));
-
-    expect(screen.getByRole('alert').textContent).toMatch(/tcgplayer order id is required/i);
-    expect(onSubmit).not.toHaveBeenCalled();
+    const salePrice = screen.getByRole('spinbutton', {
+      name: /sale price for fire drake/i,
+    }) as HTMLInputElement;
+    expect(salePrice.disabled).toBe(true);
+    expect(salePrice.value).toBe('0');
+    expect(screen.getByText(/1 paid \/ 1 gift/i)).toBeTruthy();
 
     await user.type(screen.getByLabelText(/TCGPlayer Order ID/i), 'ORD-GIFT');
     await user.click(screen.getByRole('button', { name: /attach to order/i }));
@@ -449,8 +569,62 @@ describe('BulkSellModal', () => {
           tcgplayerOrderId: 'ORD-GIFT',
           orderStatus: 'confirmed',
           lines: [
-            { cardId: 1, quantitySold: 4, salePriceCents: 245, lineItemType: 'sale' },
-            { cardId: 50, quantitySold: 2, salePriceCents: 0, lineItemType: 'gift' },
+            {
+              cardId: 1,
+              quantitySold: 4,
+              salePriceCents: 0,
+              lineItemType: 'gift',
+            },
+            {
+              cardId: 2,
+              quantitySold: 2,
+              salePriceCents: 490,
+              lineItemType: 'sale',
+            },
+          ],
+        }),
+      );
+    });
+  });
+
+  it('sets shipping to zero and disables it when every selected line is a gift', async () => {
+    const user = userEvent.setup();
+    onSubmit.mockResolvedValueOnce(undefined);
+    render(
+      <BulkSellModal
+        cards={[mockCards[0]]}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />,
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText(/line type for fire drake/i),
+      'gift',
+    );
+    const shipping = screen.getByLabelText(
+      /shipping collected/i,
+    ) as HTMLInputElement;
+    expect(shipping.value).toBe('0.00');
+    expect(shipping.disabled).toBe(true);
+
+    await user.type(
+      screen.getByLabelText(/TCGPlayer Order ID/i),
+      'ORD-GIFT-ONLY',
+    );
+    await user.click(screen.getByRole('button', { name: /attach to order/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shippingCollectedCents: 0,
+          lines: [
+            {
+              cardId: 1,
+              quantitySold: 4,
+              salePriceCents: 0,
+              lineItemType: 'gift',
+            },
           ],
         }),
       );
