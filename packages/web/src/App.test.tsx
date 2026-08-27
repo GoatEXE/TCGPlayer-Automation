@@ -242,6 +242,43 @@ describe('App view tabs', () => {
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
   });
 
+  it('opens scheduler settings from the compact header button and restores focus on close', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const trigger = screen.getByRole('button', {
+      name: 'Price Check Settings',
+    });
+    expect(trigger).toHaveAttribute('aria-label', 'Price Check Settings');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveAttribute('title', 'Price Check Settings');
+    expect(trigger).toHaveTextContent('⚙');
+    expect(trigger).not.toHaveTextContent('Price Check Settings');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /price check scheduler/i,
+    });
+    expect(within(dialog).getByLabelText('Interval (hours)')).toHaveValue(12);
+    expect(within(dialog).getByText('No runs yet')).toBeTruthy();
+
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: /close price check settings/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+  });
+
   it('switches to Notifications mode and requests notification history', async () => {
     const user = userEvent.setup();
 

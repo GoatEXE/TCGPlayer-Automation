@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from './api/client';
 import type {
   Card,
@@ -27,7 +27,7 @@ import { SalesStatsBar } from './components/SalesStatsBar';
 import { SalesPipelineCard } from './components/SalesPipelineCard';
 import { ShipmentFormModal } from './components/ShipmentFormModal';
 import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
-import { PriceCheckStatusCard } from './components/PriceCheckStatusCard';
+import { PriceCheckSettingsModal } from './components/PriceCheckSettingsModal';
 import { NotificationHistoryPanel } from './components/NotificationHistoryPanel';
 import { CardTable } from './components/CardTable';
 import type { SortDirection, SortField } from './components/CardTable';
@@ -70,6 +70,10 @@ export function App() {
     useState<PriceCheckStatus | null>(null);
   const [priceCheckLoading, setPriceCheckLoading] = useState(true);
   const [priceCheckError, setPriceCheckError] = useState(false);
+  const [isPriceCheckSettingsOpen, setIsPriceCheckSettingsOpen] =
+    useState(false);
+  const priceCheckSettingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasPriceCheckSettingsOpenRef = useRef(false);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
   const [salesTotalItems, setSalesTotalItems] = useState(0);
@@ -112,6 +116,13 @@ export function App() {
     useState<Expense | null>(null);
 
   const itemsPerPage = 50;
+
+  useEffect(() => {
+    if (wasPriceCheckSettingsOpenRef.current && !isPriceCheckSettingsOpen) {
+      priceCheckSettingsTriggerRef.current?.focus();
+    }
+    wasPriceCheckSettingsOpenRef.current = isPriceCheckSettingsOpen;
+  }, [isPriceCheckSettingsOpen]);
 
   const shouldHideFromActiveInventory = (card: Card) =>
     card.status === 'sold' ||
@@ -679,25 +690,28 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>📦 TCGPlayer Automation</h1>
+        <div className="app-header-top">
+          <h1>📦 TCGPlayer Automation</h1>
+          <button
+            ref={priceCheckSettingsTriggerRef}
+            type="button"
+            className="price-check-settings-trigger"
+            onClick={() => setIsPriceCheckSettingsOpen(true)}
+            aria-label="Price Check Settings"
+            title="Price Check Settings"
+            aria-haspopup="dialog"
+            aria-expanded={isPriceCheckSettingsOpen}
+          >
+            <span aria-hidden="true">⚙</span>
+          </button>
+        </div>
         <StatsBar stats={stats} loading={statsLoading} />
       </header>
 
       <main className="app-main">
-        <div className="actions-row">
-          {activeView === 'inventory' && (
-            <ImportUpload onImportComplete={handleImportComplete} />
-          )}
-          <PriceCheckStatusCard
-            status={priceCheckStatus}
-            loading={priceCheckLoading}
-            error={priceCheckError}
-            onUpdateInterval={handleUpdateInterval}
-            onUpdateListedPriceAttentionThreshold={
-              handleUpdateListedPriceAttentionThreshold
-            }
-          />
-        </div>
+        {activeView === 'inventory' && (
+          <ImportUpload onImportComplete={handleImportComplete} />
+        )}
 
         <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
 
@@ -1033,6 +1047,19 @@ export function App() {
           </section>
         )}
       </main>
+
+      {isPriceCheckSettingsOpen && (
+        <PriceCheckSettingsModal
+          status={priceCheckStatus}
+          loading={priceCheckLoading}
+          error={priceCheckError}
+          onClose={() => setIsPriceCheckSettingsOpen(false)}
+          onUpdateInterval={handleUpdateInterval}
+          onUpdateListedPriceAttentionThreshold={
+            handleUpdateListedPriceAttentionThreshold
+          }
+        />
+      )}
     </div>
   );
 }
