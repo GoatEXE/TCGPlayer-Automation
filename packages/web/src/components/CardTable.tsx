@@ -779,10 +779,7 @@ export function CardTable({
               card.status === 'listed' || card.status === 'needs_attention';
             const isSelected = selectedIds.has(card.id);
             const photoUrl = isValidPhotoUrl(card.photoUrl) ? card.photoUrl : null;
-            const tcgplayerInventoryUrl =
-              card.status === 'needs_attention'
-                ? buildTcgplayerInventoryUrl(card)
-                : null;
+            const tcgplayerInventoryUrl = buildTcgplayerInventoryUrl(card);
 
             return (
               <tr key={card.id} className={isListed ? 'listed-row' : ''}>
@@ -964,7 +961,7 @@ export function CardTable({
                               openTcgplayerInventoryUrl(tcgplayerInventoryUrl);
                             }}
                           >
-                            Open TCGPlayer inventory
+                            Open in TCG
                           </button>
                         )}
                         <button
