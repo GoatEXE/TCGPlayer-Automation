@@ -279,22 +279,44 @@ describe('App view tabs', () => {
     });
   });
 
-  it('switches to Notifications mode and requests notification history', async () => {
+  it('replaces the Notifications tab with a bell that opens and restores focus from notification history', async () => {
     const user = userEvent.setup();
 
     render(<App />);
 
+    expect(screen.queryByRole('tab', { name: /notifications/i })).toBeNull();
     expect(apiMocks.getNotificationEvents).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('tab', { name: /notifications/i }));
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    expect(trigger).toHaveAttribute('aria-label', 'Notifications');
+    expect(trigger).toHaveAttribute('title', 'Notifications');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveTextContent('🔔');
+    expect(trigger).not.toHaveTextContent('Notifications');
 
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Notifications',
+    });
     await waitFor(() => {
       expect(apiMocks.getNotificationEvents).toHaveBeenCalledWith(20);
     });
+    expect(within(dialog).getByText('No notifications yet')).toBeTruthy();
 
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Notifications' }),
-    ).toBeTruthy();
+    await user.click(
+      within(dialog).getByRole('button', { name: /close notifications/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: 'Notifications' }),
+      ).toBeNull();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    });
   });
 
   it('switches to Collection mode without mutating selling inventory', async () => {

@@ -1,20 +1,22 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ViewTabs } from '../ViewTabs';
-import type { ViewMode } from '../ViewTabs';
 
 describe('ViewTabs', () => {
   const onChangeView = vi.fn();
 
-  it('renders Inventory, Notifications, Sales History, and Performance tabs', () => {
+  it('renders Inventory, Collection, Sales History, and Performance tabs without Notifications', () => {
     render(<ViewTabs activeView="inventory" onChangeView={onChangeView} />);
 
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /notifications/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /collection/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /sales history/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /performance/i })).toBeTruthy();
-    expect(screen.queryByRole('tab', { name: /scan \/ add cards/i })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /notifications/i })).toBeNull();
+    expect(
+      screen.queryByRole('tab', { name: /scan \/ add cards/i }),
+    ).toBeNull();
   });
 
   it('marks Inventory tab as selected when activeView is inventory', () => {
@@ -23,32 +25,13 @@ describe('ViewTabs', () => {
     const tab = screen.getByRole('tab', { name: /inventory/i });
     expect(tab.getAttribute('aria-selected')).toBe('true');
 
-    const notificationsTab = screen.getByRole('tab', { name: /notifications/i });
-    expect(notificationsTab.getAttribute('aria-selected')).toBe('false');
-  });
-
-  it('marks Notifications tab as selected when activeView is notifications', () => {
-    render(
-      <ViewTabs activeView="notifications" onChangeView={onChangeView} />,
-    );
-
-    const tab = screen.getByRole('tab', { name: /notifications/i });
-    expect(tab.getAttribute('aria-selected')).toBe('true');
-  });
-
-  it('calls onChangeView with notifications when that tab is clicked', async () => {
-    const user = userEvent.setup();
-    render(<ViewTabs activeView="inventory" onChangeView={onChangeView} />);
-
-    await user.click(screen.getByRole('tab', { name: /notifications/i }));
-    expect(onChangeView).toHaveBeenCalledWith('notifications');
+    const performanceTab = screen.getByRole('tab', { name: /performance/i });
+    expect(performanceTab.getAttribute('aria-selected')).toBe('false');
   });
 
   it('calls onChangeView with inventory when that tab is clicked', async () => {
     const user = userEvent.setup();
-    render(
-      <ViewTabs activeView="notifications" onChangeView={onChangeView} />,
-    );
+    render(<ViewTabs activeView="collection" onChangeView={onChangeView} />);
 
     await user.click(screen.getByRole('tab', { name: /inventory/i }));
     expect(onChangeView).toHaveBeenCalledWith('inventory');
@@ -73,7 +56,7 @@ describe('ViewTabs', () => {
   });
 
   it('marks Performance tab as selected when activeView is performance', () => {
-    render(<ViewTabs activeView={'performance' as ViewMode} onChangeView={onChangeView} />);
+    render(<ViewTabs activeView="performance" onChangeView={onChangeView} />);
 
     const tab = screen.getByRole('tab', { name: /performance/i });
     expect(tab.getAttribute('aria-selected')).toBe('true');

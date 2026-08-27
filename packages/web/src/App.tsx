@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api/client';
 import type {
   Card,
@@ -28,7 +28,7 @@ import { SalesPipelineCard } from './components/SalesPipelineCard';
 import { ShipmentFormModal } from './components/ShipmentFormModal';
 import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
 import { PriceCheckSettingsModal } from './components/PriceCheckSettingsModal';
-import { NotificationHistoryPanel } from './components/NotificationHistoryPanel';
+import { NotificationHistoryModal } from './components/NotificationHistoryModal';
 import { CardTable } from './components/CardTable';
 import type { SortDirection, SortField } from './components/CardTable';
 import { Pagination } from './components/Pagination';
@@ -91,6 +91,10 @@ export function App() {
   >([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState(false);
+  const [isNotificationHistoryOpen, setIsNotificationHistoryOpen] =
+    useState(false);
+  const notificationHistoryTriggerRef = useRef<HTMLButtonElement>(null);
+  const wasNotificationHistoryOpenRef = useRef(false);
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -123,6 +127,13 @@ export function App() {
     }
     wasPriceCheckSettingsOpenRef.current = isPriceCheckSettingsOpen;
   }, [isPriceCheckSettingsOpen]);
+
+  useEffect(() => {
+    if (wasNotificationHistoryOpenRef.current && !isNotificationHistoryOpen) {
+      notificationHistoryTriggerRef.current?.focus();
+    }
+    wasNotificationHistoryOpenRef.current = isNotificationHistoryOpen;
+  }, [isNotificationHistoryOpen]);
 
   const shouldHideFromActiveInventory = (card: Card) =>
     card.status === 'sold' ||
@@ -236,7 +247,7 @@ export function App() {
     }
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     setNotificationsLoading(true);
     setNotificationsError(false);
     try {
@@ -248,7 +259,7 @@ export function App() {
     } finally {
       setNotificationsLoading(false);
     }
-  };
+  }, []);
 
   const fetchExpenses = async () => {
     setExpensesLoading(true);
@@ -320,9 +331,9 @@ export function App() {
   }, [activeView, salesPage, salesSearch, salesStatusFilter]);
 
   useEffect(() => {
-    if (activeView !== 'notifications') return;
+    if (!isNotificationHistoryOpen) return;
     fetchNotifications();
-  }, [activeView]);
+  }, [fetchNotifications, isNotificationHistoryOpen]);
 
   useEffect(() => {
     if (activeView !== 'performance') return;
@@ -613,12 +624,6 @@ export function App() {
       return;
     }
 
-    if (view === 'notifications') {
-      setIsExpenseModalOpen(false);
-      setSelectedExpenseForEdit(null);
-      return;
-    }
-
     if (view === 'performance') {
       setExpensePage(1);
       setIsExpenseModalOpen(false);
@@ -692,18 +697,32 @@ export function App() {
       <header className="app-header">
         <div className="app-header-top">
           <h1>📦 TCGPlayer Automation</h1>
-          <button
-            ref={priceCheckSettingsTriggerRef}
-            type="button"
-            className="price-check-settings-trigger"
-            onClick={() => setIsPriceCheckSettingsOpen(true)}
-            aria-label="Price Check Settings"
-            title="Price Check Settings"
-            aria-haspopup="dialog"
-            aria-expanded={isPriceCheckSettingsOpen}
-          >
-            <span aria-hidden="true">⚙</span>
-          </button>
+          <div className="header-icon-actions">
+            <button
+              ref={notificationHistoryTriggerRef}
+              type="button"
+              className="notification-history-trigger"
+              onClick={() => setIsNotificationHistoryOpen(true)}
+              aria-label="Notifications"
+              title="Notifications"
+              aria-haspopup="dialog"
+              aria-expanded={isNotificationHistoryOpen}
+            >
+              <span aria-hidden="true">🔔</span>
+            </button>
+            <button
+              ref={priceCheckSettingsTriggerRef}
+              type="button"
+              className="price-check-settings-trigger"
+              onClick={() => setIsPriceCheckSettingsOpen(true)}
+              aria-label="Price Check Settings"
+              title="Price Check Settings"
+              aria-haspopup="dialog"
+              aria-expanded={isPriceCheckSettingsOpen}
+            >
+              <span aria-hidden="true">⚙</span>
+            </button>
+          </div>
         </div>
         <StatsBar stats={stats} loading={statsLoading} />
       </header>
@@ -775,17 +794,6 @@ export function App() {
               totalItems={salesTotalItems}
               itemsPerPage={itemsPerPage}
               onPageChange={setSalesPage}
-            />
-          </section>
-        ) : activeView === 'notifications' ? (
-          <section className="cards-section">
-            <div className="section-header">
-              <h2>Notifications</h2>
-            </div>
-            <NotificationHistoryPanel
-              events={notificationEvents}
-              loading={notificationsLoading}
-              error={notificationsError}
             />
           </section>
         ) : activeView === 'collection' ? (
@@ -1058,6 +1066,15 @@ export function App() {
           onUpdateListedPriceAttentionThreshold={
             handleUpdateListedPriceAttentionThreshold
           }
+        />
+      )}
+
+      {isNotificationHistoryOpen && (
+        <NotificationHistoryModal
+          events={notificationEvents}
+          loading={notificationsLoading}
+          error={notificationsError}
+          onClose={() => setIsNotificationHistoryOpen(false)}
         />
       )}
     </div>
