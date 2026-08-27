@@ -386,7 +386,6 @@ describe('CollectionView', () => {
   });
 
   it('paginates the complete sorted collection result set and clears hidden transfer selections', async () => {
-    const user = userEvent.setup();
     const rows = paginationRows(51);
     apiMocks.getCollectionSellability.mockResolvedValueOnce({
       collection: { id: 1, name: 'Default', purpose: 'owned' },
@@ -408,17 +407,17 @@ describe('CollectionView', () => {
     );
     expect(screen.getByText('Showing 1–50 of 51 (1 of 2)')).toBeTruthy();
 
-    await user.click(screen.getByLabelText(/move page card 001 to selling inventory/i));
+    fireEvent.click(screen.getByLabelText(/move page card 001 to selling inventory/i));
     expect(screen.getByText('1 card(s) selected')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    expect(await screen.findByText('Page Card 051')).toBeTruthy();
+    expect(screen.getByText('Page Card 051')).toBeTruthy();
     expect(screen.queryByText('Page Card 001')).toBeNull();
     expect(screen.getByText('Showing 51–51 of 51 (2 of 2)')).toBeTruthy();
     expect(screen.getByText('0 card(s) selected')).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: /previous/i }));
-    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /previous/i }));
+    expect(screen.getByText('Page Card 001')).toBeTruthy();
   });
 
   it('uses the owned collection id for sellability, import, transfer, and refreshes regardless of legacy collection order', async () => {
