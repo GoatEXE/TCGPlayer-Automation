@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { CollectionImportUpload } from './CollectionImportUpload';
+import { Pagination } from './Pagination';
 import type {
   CardKind,
   CollectionSellabilityRow,
@@ -19,6 +20,7 @@ const CARD_KIND_OPTIONS: CardKind[] = [
   'token',
   'unknown',
 ];
+const COLLECTION_ITEMS_PER_PAGE = 50;
 
 function chooseDefaultCollection(collections: CollectionSummary[]) {
   return (
@@ -193,6 +195,7 @@ export function CollectionView({
   const [clearLoading, setClearLoading] = useState(false);
   const [clearSuccess, setClearSuccess] = useState<string | null>(null);
   const [collectionRefreshKey, setCollectionRefreshKey] = useState(0);
+  const [collectionPage, setCollectionPage] = useState(1);
 
   useEffect(() => {
     let ignore = false;
@@ -222,6 +225,7 @@ export function CollectionView({
   }, []);
 
   const loadSellability = async (collectionId: number) => {
+    setCollectionPage(1);
     setLoadingSellability(true);
     setError(null);
     try {
@@ -249,6 +253,22 @@ export function CollectionView({
       return a.productName.localeCompare(b.productName);
     });
   }, [sellability]);
+  const collectionTotalPages = Math.max(
+    1,
+    Math.ceil(sortedRows.length / COLLECTION_ITEMS_PER_PAGE),
+  );
+  const activeCollectionPage =
+    collectionPage > collectionTotalPages ? 1 : collectionPage;
+  const paginatedRows = useMemo(() => {
+    const start = (activeCollectionPage - 1) * COLLECTION_ITEMS_PER_PAGE;
+    return sortedRows.slice(start, start + COLLECTION_ITEMS_PER_PAGE);
+  }, [activeCollectionPage, sortedRows]);
+
+  useEffect(() => {
+    setCollectionPage((currentPage) =>
+      currentPage > collectionTotalPages ? 1 : currentPage,
+    );
+  }, [collectionTotalPages]);
 
   const toBeSoldCollection = collections.find(
     (collection) =>
@@ -266,6 +286,13 @@ export function CollectionView({
     (sum, item) => sum + item.quantity,
     0,
   );
+
+  const handleCollectionPageChange = (page: number) => {
+    setCollectionPage(Math.max(1, Math.min(page, collectionTotalPages)));
+    setTransferSelection({});
+    setTransferPreview(null);
+    setTransferSuccess(null);
+  };
 
   const handleToggleTransferRow = (row: CollectionSellabilityRow, checked: boolean) => {
     setTransferPreview(null);
@@ -597,7 +624,8 @@ export function CollectionView({
       ) : sortedRows.length === 0 ? (
         <div className="table-empty">No collection cards found.</div>
       ) : (
-        <div className="table-container">
+        <>
+          <div className="table-container">
           <table className="card-table collection-table">
             <thead>
               <tr>
@@ -613,7 +641,7 @@ export function CollectionView({
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((row) => {
+              {paginatedRows.map((row) => {
                 const sellQty = recommendedSellQty(row);
                 const isUpdating = updatingCatalogId === row.catalogCardId;
                 return (
@@ -729,6 +757,13 @@ export function CollectionView({
             </tbody>
           </table>
         </div>
+          <Pagination
+            currentPage={activeCollectionPage}
+            totalItems={sortedRows.length}
+            itemsPerPage={COLLECTION_ITEMS_PER_PAGE}
+            onPageChange={handleCollectionPageChange}
+          />
+        </>
       )}
     </section>
   );

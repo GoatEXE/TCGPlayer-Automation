@@ -63,6 +63,42 @@ const baseRow = {
   transferItems: [],
 };
 
+function paginationRows(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const id = 1000 + index;
+    return {
+      ...baseRow,
+      catalogCardId: id,
+      productName: `Page Card ${String(index + 1).padStart(3, '0')}`,
+      normalQty: 1,
+      totalQty: 1,
+      sellNormalQty: 1,
+      sourceItems: [
+        {
+          collectionItemId: id,
+          finish: 'Normal',
+          finishKind: 'normal',
+          quantity: 1,
+          recommendedSellQuantity: 1,
+          condition: 'Near Mint',
+          language: 'EN',
+        },
+      ],
+      transferItems: [
+        {
+          collectionItemId: id,
+          finish: 'Normal',
+          finishKind: 'normal',
+          quantity: 1,
+          recommendedSellQuantity: 1,
+          condition: 'Near Mint',
+          language: 'EN',
+        },
+      ],
+    };
+  });
+}
+
 describe('CollectionView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -337,6 +373,113 @@ describe('CollectionView', () => {
     expect(screen.getByText('Mystery Card')).toBeTruthy();
     expect(screen.getAllByText('Needs Classification').length).toBeGreaterThan(0);
     expect(screen.getByText('Token/Rune excluded')).toBeTruthy();
+  });
+
+  it('paginates the complete sorted collection result set and clears hidden transfer selections', async () => {
+    const user = userEvent.setup();
+    const rows = paginationRows(51);
+    apiMocks.getCollectionSellability.mockResolvedValueOnce({
+      collection: { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: 51,
+        sellFoilQty: 0,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows,
+    });
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    expect(screen.getByText('Page Card 050')).toBeTruthy();
+    expect(screen.queryByText('Page Card 051')).toBeNull();
+    expect(screen.getByLabelText(/sellability summary/i)).toHaveTextContent(
+      'Sell Normal51',
+    );
+    expect(screen.getByText('Showing 1–50 of 51 (1 of 2)')).toBeTruthy();
+
+    await user.click(screen.getByLabelText(/move page card 001 to selling inventory/i));
+    expect(screen.getByText('1 card(s) selected')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    expect(await screen.findByText('Page Card 051')).toBeTruthy();
+    expect(screen.queryByText('Page Card 001')).toBeNull();
+    expect(screen.getByText('Showing 51–51 of 51 (2 of 2)')).toBeTruthy();
+    expect(screen.getByText('0 card(s) selected')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /previous/i }));
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+  });
+
+  it('resets the collection page when the selected collection changes', async () => {
+    const user = userEvent.setup();
+    const firstCollectionRows = paginationRows(51);
+    apiMocks.getCollectionSellability.mockImplementation(async (collectionId) => ({
+      collection:
+        collectionId === 2
+          ? { id: 2, name: 'To Be Sold', purpose: 'to_be_sold' }
+          : { id: 1, name: 'Default', purpose: 'owned' },
+      summary: {
+        sellNormalQty: collectionId === 2 ? 0 : 51,
+        sellFoilQty: 0,
+        excludedCards: 0,
+        needsClassificationCards: 0,
+      },
+      rows:
+        collectionId === 2
+          ? [{ ...baseRow, catalogCardId: 2000, productName: 'To Be Sold Card' }]
+          : firstCollectionRows,
+    }));
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(await screen.findByText('Page Card 051')).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText('Collection'), '2');
+
+    expect(await screen.findByText('To Be Sold Card')).toBeTruthy();
+    expect(screen.queryByText('Page Card 051')).toBeNull();
+    expect(screen.queryByText(/showing \d+–\d+ of/i)).toBeNull();
+  });
+
+  it('resets an invalid collection page after refreshed results shrink', async () => {
+    const user = userEvent.setup();
+    apiMocks.getCollectionSellability
+      .mockResolvedValueOnce({
+        collection: { id: 1, name: 'Default', purpose: 'owned' },
+        summary: {
+          sellNormalQty: 51,
+          sellFoilQty: 0,
+          excludedCards: 0,
+          needsClassificationCards: 0,
+        },
+        rows: paginationRows(51),
+      })
+      .mockResolvedValueOnce({
+        collection: { id: 1, name: 'Default', purpose: 'owned' },
+        summary: {
+          sellNormalQty: 0,
+          sellFoilQty: 0,
+          excludedCards: 0,
+          needsClassificationCards: 0,
+        },
+        rows: [{ ...baseRow, catalogCardId: 3000, productName: 'Refreshed Card' }],
+      });
+    render(<CollectionView />);
+
+    expect(await screen.findByText('Page Card 001')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(await screen.findByText('Page Card 051')).toBeTruthy();
+
+    await user.selectOptions(
+      screen.getByLabelText('Card kind for Page Card 051'),
+      'legend',
+    );
+
+    expect(await screen.findByText('Refreshed Card')).toBeTruthy();
+    expect(screen.queryByText('Page Card 051')).toBeNull();
+    expect(screen.queryByText(/showing \d+–\d+ of/i)).toBeNull();
   });
 
   it('uses a CSV-only drag-and-drop target for owned collection imports', async () => {
