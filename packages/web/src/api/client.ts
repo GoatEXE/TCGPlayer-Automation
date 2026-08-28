@@ -42,6 +42,9 @@ import type {
   CollectionTransferCommitResponse,
   CollectionTransferRequest,
   CollectionTransferPreviewResponse,
+  AdjustCollectionRowRequest,
+  CollectionRowMutationResponse,
+  DeleteCollectionRowRequest,
   UpdateCatalogCardMetadataRequest,
 } from './types';
 
@@ -357,6 +360,34 @@ class ApiClient {
   ): Promise<GetCollectionSellabilityResponse> {
     return this.request<GetCollectionSellabilityResponse>(
       `/collections/${encodeURIComponent(String(collectionId))}/sellability`,
+    );
+  }
+
+  async adjustCollectionRow(
+    collectionId: number | string,
+    catalogCardId: number | string,
+    data: AdjustCollectionRowRequest,
+  ): Promise<CollectionRowMutationResponse> {
+    return this.request<CollectionRowMutationResponse>(
+      `/collections/${encodeURIComponent(String(collectionId))}/rows/${encodeURIComponent(String(catalogCardId))}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async deleteCollectionRow(
+    collectionId: number | string,
+    catalogCardId: number | string,
+    data: DeleteCollectionRowRequest,
+  ): Promise<CollectionRowMutationResponse> {
+    return this.request<CollectionRowMutationResponse>(
+      `/collections/${encodeURIComponent(String(collectionId))}/rows/${encodeURIComponent(String(catalogCardId))}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify(data),
+      },
     );
   }
 

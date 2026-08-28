@@ -119,7 +119,7 @@ function resolveQuantity(
   if (total !== null) {
     if (add !== null && add !== total) {
       warnings.push(
-        'Add to Quantity is present but ignored because collection imports use Total Quantity as the snapshot quantity',
+        'Add to Quantity is present but ignored because collection imports use Total Quantity as the imported quantity',
       );
     }
     return total;

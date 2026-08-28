@@ -26,7 +26,6 @@ const apiMocks = vi.hoisted(() => ({
   commitCollectionImport: vi.fn(),
   previewCollectionTransferToInventory: vi.fn(),
   commitCollectionTransferToInventory: vi.fn(),
-  clearCollection: vi.fn(),
   importCards: vi.fn(),
   createSale: vi.fn(),
   createBulkOrder: vi.fn(),
@@ -210,7 +209,6 @@ describe('App view tabs', () => {
       },
       items: [],
     });
-    apiMocks.clearCollection.mockResolvedValue({ deleted: 0 });
     apiMocks.importCards.mockResolvedValue({
       imported: 0,
       updated: 0,
@@ -252,6 +250,9 @@ describe('App view tabs', () => {
     });
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.queryByText(/drop csv or txt file here/i)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /open collection csv file picker/i }),
+    ).toBeNull();
 
     await user.click(screen.getByRole('tab', { name: /collection/i }));
 
@@ -260,6 +261,9 @@ describe('App view tabs', () => {
         level: 3,
         name: /import to owned collection/i,
       }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /open collection csv file picker/i }),
     ).toBeTruthy();
     expect(screen.getByLabelText(/owned collection csv file/i)).toBeTruthy();
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
@@ -393,15 +397,16 @@ describe('App view tabs', () => {
 
     await user.click(screen.getByRole('tab', { name: /collection/i }));
 
-    expect(
-      await screen.findByRole('heading', { level: 2, name: 'Collection' }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Collection' })).toBeNull();
+    expect(document.querySelector('.collection-section')?.firstElementChild).toHaveClass(
+      'collection-import-card',
+    );
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
     expect(
       screen.getByText(/never imports into selling inventory/i),
     ).toBeTruthy();
-    expect(screen.getByText('Collection Sell Candidate')).toBeTruthy();
+    expect(await screen.findByText('Collection Sell Candidate')).toBeTruthy();
     expect(apiMocks.getCollections).toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);
     expect(apiMocks.createSale).not.toHaveBeenCalled();

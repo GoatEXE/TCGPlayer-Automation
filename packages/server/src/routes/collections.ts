@@ -79,6 +79,28 @@ interface TransferToInventoryBody {
   items?: TransferToInventoryInput[];
 }
 
+interface CollectionRowCountInput {
+  collectionItemId?: number | string;
+  quantity?: number;
+}
+
+interface AdjustCollectionRowBody {
+  items?: CollectionRowCountInput[];
+}
+
+interface DeleteCollectionRowBody {
+  collectionItemIds?: Array<number | string>;
+}
+
+class CollectionRowMutationError extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 interface CollectionImportPlan {
   source: 'tcgplayer_collection_csv';
   mode: CollectionImportMode;
@@ -127,6 +149,10 @@ function toPositiveInteger(value: unknown): number | null {
   }
 
   return null;
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
 }
 
 function normalizeCollectionItem(input: CollectionItemInput) {
@@ -298,7 +324,12 @@ async function selectCollectionItemsWithCatalog(
         gt(collectionItems.quantity, 0),
       ),
     )
-    .orderBy(catalogSets.setCode, catalogCards.normalizedNumber, catalogCards.productName);
+    .orderBy(
+      catalogSets.setCode,
+      catalogCards.normalizedNumber,
+      catalogCards.productName,
+      collectionItems.id,
+    );
 }
 
 function normalizeSetName(value: string) {
@@ -868,6 +899,180 @@ async function clearCollectionItems(collectionId: number, database = db) {
   };
 }
 
+async function selectCollectionRowItems(
+  collectionId: number,
+  catalogCardId: number,
+  database = db,
+) {
+  return database
+    .select({
+      id: collectionItems.id,
+      catalogCardId: collectionItems.catalogCardId,
+      quantity: collectionItems.quantity,
+      condition: collectionItems.condition,
+      finish: collectionItems.finish,
+      language: collectionItems.language,
+    })
+    .from(collectionItems)
+    .where(
+      and(
+        eq(collectionItems.collectionId, collectionId),
+        eq(collectionItems.catalogCardId, catalogCardId),
+      ),
+    )
+    .orderBy(collectionItems.id);
+}
+
+function sameCollectionItemIds(actualIds: number[], requestedIds: number[]) {
+  if (actualIds.length !== requestedIds.length) return false;
+  const actual = [...actualIds].sort((left, right) => left - right);
+  const requested = [...requestedIds].sort((left, right) => left - right);
+  return actual.every((id, index) => id === requested[index]);
+}
+
+function parseRowCountAdjustments(body: AdjustCollectionRowBody) {
+  if (!Array.isArray(body.items) || body.items.length === 0) return null;
+
+  const items = body.items.map((item) => ({
+    collectionItemId:
+      item && typeof item === 'object'
+        ? toPositiveInteger(item.collectionItemId)
+        : null,
+    quantity: item && typeof item === 'object' ? item.quantity : undefined,
+  }));
+  if (
+    items.some(
+      (item) =>
+        item.collectionItemId === null || !nonNegativeInteger(item.quantity),
+    )
+  ) {
+    return null;
+  }
+
+  const collectionItemIds = items.map((item) => item.collectionItemId as number);
+  if (new Set(collectionItemIds).size !== collectionItemIds.length) return null;
+
+  return items as Array<{ collectionItemId: number; quantity: number }>;
+}
+
+function parseCollectionItemIds(body: DeleteCollectionRowBody) {
+  if (!Array.isArray(body.collectionItemIds) || body.collectionItemIds.length === 0) {
+    return null;
+  }
+
+  const ids = body.collectionItemIds.map(toPositiveInteger);
+  if (ids.some((id) => id === null)) return null;
+  const collectionItemIds = ids as number[];
+  return new Set(collectionItemIds).size === collectionItemIds.length
+    ? collectionItemIds
+    : null;
+}
+
+async function adjustCollectionRowCounts(
+  collectionId: number,
+  catalogCardId: number,
+  adjustments: Array<{ collectionItemId: number; quantity: number }>,
+  database = db,
+) {
+  const existingItems = await selectCollectionRowItems(
+    collectionId,
+    catalogCardId,
+    database,
+  );
+  if (existingItems.length === 0) {
+    throw new CollectionRowMutationError(404, 'collection row not found');
+  }
+
+  const existingIds = existingItems.map((item) => item.id);
+  const requestedIds = adjustments.map((item) => item.collectionItemId);
+  if (!sameCollectionItemIds(existingIds, requestedIds)) {
+    throw new CollectionRowMutationError(
+      409,
+      'collection row has changed; refresh and try again',
+    );
+  }
+
+  const quantitiesByItemId = new Map(
+    adjustments.map((item) => [item.collectionItemId, item.quantity]),
+  );
+  const updatedItems = [];
+  const deletedItemIds: number[] = [];
+  const now = new Date();
+
+  for (const item of existingItems) {
+    const quantity = quantitiesByItemId.get(item.id);
+    if (quantity === undefined) {
+      throw new CollectionRowMutationError(
+        409,
+        'collection row has changed; refresh and try again',
+      );
+    }
+
+    const rowFilter = and(
+      eq(collectionItems.id, item.id),
+      eq(collectionItems.collectionId, collectionId),
+      eq(collectionItems.catalogCardId, catalogCardId),
+    );
+    if (quantity === 0) {
+      await database.delete(collectionItems).where(rowFilter);
+      deletedItemIds.push(item.id);
+      continue;
+    }
+
+    const [updated] = await database
+      .update(collectionItems)
+      .set({ quantity, updatedAt: now, lastSeenAt: now })
+      .where(rowFilter)
+      .returning();
+    if (!updated) {
+      throw new CollectionRowMutationError(
+        409,
+        'collection row has changed; refresh and try again',
+      );
+    }
+    updatedItems.push(updated);
+  }
+
+  return { updatedItems, deletedItemIds };
+}
+
+async function deleteCollectionRow(
+  collectionId: number,
+  catalogCardId: number,
+  collectionItemIds: number[],
+  database = db,
+) {
+  const existingItems = await selectCollectionRowItems(
+    collectionId,
+    catalogCardId,
+    database,
+  );
+  if (existingItems.length === 0) {
+    throw new CollectionRowMutationError(404, 'collection row not found');
+  }
+
+  const existingIds = existingItems.map((item) => item.id);
+  if (!sameCollectionItemIds(existingIds, collectionItemIds)) {
+    throw new CollectionRowMutationError(
+      409,
+      'collection row has changed; refresh and try again',
+    );
+  }
+
+  await database.delete(collectionItems).where(
+    and(
+      eq(collectionItems.collectionId, collectionId),
+      eq(collectionItems.catalogCardId, catalogCardId),
+      inArray(collectionItems.id, existingIds),
+    ),
+  );
+
+  return {
+    deletedItemIds: existingIds,
+    deletedQuantity: existingItems.reduce((sum, item) => sum + item.quantity, 0),
+  };
+}
+
 async function commitTransferPlan(
   collectionId: number,
   plan: Awaited<ReturnType<typeof buildTransferPlan>>,
@@ -969,6 +1174,70 @@ export async function collectionsRoutes(fastify: FastifyInstance) {
     return { owned, toBeSold };
   });
 
+  fastify.patch('/:id/rows/:catalogCardId', async (request, reply) => {
+    const params = request.params as { id: string; catalogCardId: string };
+    const collectionId = toPositiveInteger(params.id);
+    const catalogCardId = toPositiveInteger(params.catalogCardId);
+    const collection = await getOwnedCollectionForRowMutation(collectionId, reply);
+    if (!collection) return reply;
+    if (catalogCardId === null) {
+      return reply.code(400).send({ error: 'catalog card id must be a positive integer' });
+    }
+
+    const adjustments = parseRowCountAdjustments(
+      (request.body || {}) as AdjustCollectionRowBody,
+    );
+    if (!adjustments) {
+      return reply.code(400).send({
+        error: 'items must be a non-empty array of unique positive collection item ids and non-negative integer quantities',
+      });
+    }
+
+    try {
+      const result = await runInDbTransaction((database) =>
+        adjustCollectionRowCounts(collection.id, catalogCardId, adjustments, database),
+      );
+      return { collection, catalogCardId, ...result };
+    } catch (err) {
+      if (err instanceof CollectionRowMutationError) {
+        return reply.code(err.statusCode).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  fastify.delete('/:id/rows/:catalogCardId', async (request, reply) => {
+    const params = request.params as { id: string; catalogCardId: string };
+    const collectionId = toPositiveInteger(params.id);
+    const catalogCardId = toPositiveInteger(params.catalogCardId);
+    const collection = await getOwnedCollectionForRowMutation(collectionId, reply);
+    if (!collection) return reply;
+    if (catalogCardId === null) {
+      return reply.code(400).send({ error: 'catalog card id must be a positive integer' });
+    }
+
+    const collectionItemIds = parseCollectionItemIds(
+      (request.body || {}) as DeleteCollectionRowBody,
+    );
+    if (!collectionItemIds) {
+      return reply.code(400).send({
+        error: 'collectionItemIds must be a non-empty array of unique positive integers',
+      });
+    }
+
+    try {
+      const result = await runInDbTransaction((database) =>
+        deleteCollectionRow(collection.id, catalogCardId, collectionItemIds, database),
+      );
+      return { collection, catalogCardId, ...result };
+    } catch (err) {
+      if (err instanceof CollectionRowMutationError) {
+        return reply.code(err.statusCode).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
   fastify.post('/:id/clear', async (request, reply) => {
     const collectionId = Number.parseInt((request.params as { id: string }).id, 10);
     const collection = await getCollectionForImport(collectionId, reply);
@@ -1065,6 +1334,28 @@ export async function collectionsRoutes(fastify: FastifyInstance) {
     const collection = await getCollectionById(collectionId);
     if (!collection) {
       reply.code(404).send({ error: 'collection not found' });
+      return null;
+    }
+
+    return collection;
+  }
+
+  async function getOwnedCollectionForRowMutation(
+    collectionId: number | null,
+    reply: FastifyReply,
+  ) {
+    if (collectionId === null) {
+      reply.code(400).send({ error: 'collection id must be a positive integer' });
+      return null;
+    }
+
+    const collection = await getCollectionById(collectionId);
+    if (!collection) {
+      reply.code(404).send({ error: 'collection not found' });
+      return null;
+    }
+    if (collection.purpose !== DEFAULT_OWNED_PURPOSE) {
+      reply.code(403).send({ error: 'collection must have owned purpose' });
       return null;
     }
 

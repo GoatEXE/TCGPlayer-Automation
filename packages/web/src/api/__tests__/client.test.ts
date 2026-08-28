@@ -218,6 +218,44 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('collection row mutations', () => {
+    it('sends an exact per-source-item count adjustment', async () => {
+      mockFetch({ updatedItems: [], deletedItemIds: [11] });
+      const request = {
+        items: [
+          { collectionItemId: 10, quantity: 5 },
+          { collectionItemId: 11, quantity: 0 },
+        ],
+      };
+
+      await api.adjustCollectionRow(1, 100, request);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/collections/1/rows/100',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    it('deletes exactly the source items represented by the aggregate row', async () => {
+      mockFetch({ deletedItemIds: [10, 11], deletedQuantity: 5 });
+
+      await api.deleteCollectionRow(1, 100, { collectionItemIds: [10, 11] });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/collections/1/rows/100',
+        expect.objectContaining({
+          method: 'DELETE',
+          body: JSON.stringify({ collectionItemIds: [10, 11] }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+  });
+
   describe('getCardPriceHistory', () => {
     it('fetches price history for a card with default limit', async () => {
       const mockResponse = {

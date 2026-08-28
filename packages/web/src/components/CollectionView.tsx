@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { CollectionImportUpload } from './CollectionImportUpload';
+import {
+  CollectionRowAdjustModal,
+  CollectionRowDeleteModal,
+  type CollectionRowSourceItem,
+} from './CollectionRowActionModals';
+import { Pagination } from './Pagination';
 import type {
   CardKind,
   CollectionSellabilityRow,
@@ -19,16 +25,7 @@ const CARD_KIND_OPTIONS: CardKind[] = [
   'token',
   'unknown',
 ];
-
-function chooseDefaultCollection(collections: CollectionSummary[]) {
-  return (
-    collections.find((collection) => collection.purpose === 'owned') ??
-    collections.find((collection) => collection.isDefault) ??
-    collections.find((collection) => collection.name.toLowerCase() === 'default') ??
-    collections[0] ??
-    null
-  );
-}
+const COLLECTION_ITEMS_PER_PAGE = 50;
 
 function recommendationRank(row: CollectionSellabilityRow) {
   if (row.sellNormalQty > 0 || row.sellFoilQty > 0) return 0;
@@ -44,13 +41,6 @@ function formatKind(kind: string) {
 
 function recommendedSellQty(row: CollectionSellabilityRow) {
   return row.sellNormalQty + row.sellFoilQty;
-}
-
-function rowMoveQuantity(row: CollectionSellabilityRow, isToBeSold: boolean) {
-  return recommendedTransferItems(row, isToBeSold).reduce(
-    (sum, item) => sum + item.quantity,
-    0,
-  );
 }
 
 const TRANSFER_WARNING_COPY: Record<string, string> = {
@@ -107,10 +97,7 @@ function itemForFinish(row: CollectionSellabilityRow, finish: 'normal' | 'foil')
   return sourceItems.find((item) => itemFinishKind(item) === finish) ?? null;
 }
 
-function recommendedTransferItems(
-  row: CollectionSellabilityRow,
-  isToBeSold: boolean,
-) {
+function recommendedTransferItems(row: CollectionSellabilityRow) {
   if (row.transferItems && row.transferItems.length > 0) {
     return row.transferItems
       .map((item) => {
@@ -127,13 +114,9 @@ function recommendedTransferItems(
       );
   }
 
-  const hasRecommendation = row.sellNormalQty > 0 || row.sellFoilQty > 0;
-  const normalTarget = hasRecommendation || !isToBeSold ? row.sellNormalQty : row.normalQty;
-  const foilTarget = hasRecommendation || !isToBeSold ? row.sellFoilQty : row.foilQty;
-
   return [
-    { item: itemForFinish(row, 'normal'), quantity: normalTarget },
-    { item: itemForFinish(row, 'foil'), quantity: foilTarget },
+    { item: itemForFinish(row, 'normal'), quantity: row.sellNormalQty },
+    { item: itemForFinish(row, 'foil'), quantity: row.sellFoilQty },
   ]
     .map(({ item, quantity }) => {
       const id = item ? itemId(item) : null;
@@ -149,9 +132,28 @@ function recommendedTransferItems(
     );
 }
 
-function canTransferRow(row: CollectionSellabilityRow, isToBeSold: boolean) {
+function canTransferRow(row: CollectionSellabilityRow) {
   if (row.excluded || (row.blockers?.length ?? 0) > 0) return false;
-  return recommendedTransferItems(row, isToBeSold).length > 0;
+  return recommendedTransferItems(row).length > 0;
+}
+
+function collectionRowSourceItems(row: CollectionSellabilityRow): CollectionRowSourceItem[] {
+  const sourceItems = row.sourceItems ?? row.items ?? [];
+  const items = sourceItems.flatMap((item) => {
+    const collectionItemId = item.collectionItemId ?? item.id;
+    return Number.isInteger(collectionItemId) && (collectionItemId as number) > 0
+      ? [{ ...item, collectionItemId: collectionItemId as number }]
+      : [];
+  });
+
+  return items.sort((left, right) => {
+    const leftFinish = left.finishKind === 'foil' || /foil/i.test(left.finish ?? '') ? 1 : 0;
+    const rightFinish = right.finishKind === 'foil' || /foil/i.test(right.finish ?? '') ? 1 : 0;
+    if (leftFinish !== rightFinish) return leftFinish - rightFinish;
+    return [left.condition ?? '', left.language ?? '', left.collectionItemId].join('|').localeCompare(
+      [right.condition ?? '', right.language ?? '', right.collectionItemId].join('|'),
+    );
+  });
 }
 
 function buildTransferRequest(selection: TransferSelection): CollectionTransferRequest {
@@ -174,8 +176,7 @@ export function CollectionView({
   onCatalogMetadataUpdated,
   onInventoryChanged,
 }: CollectionViewProps) {
-  const [collections, setCollections] = useState<CollectionSummary[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(
+  const [ownedCollection, setOwnedCollection] = useState<CollectionSummary | null>(
     null,
   );
   const [sellability, setSellability] =
@@ -189,10 +190,17 @@ export function CollectionView({
     useState<CollectionTransferPreviewResponse | null>(null);
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
-  const [clearConfirmText, setClearConfirmText] = useState('');
-  const [clearLoading, setClearLoading] = useState(false);
-  const [clearSuccess, setClearSuccess] = useState<string | null>(null);
-  const [collectionRefreshKey, setCollectionRefreshKey] = useState(0);
+  const [collectionPage, setCollectionPage] = useState(1);
+  const [collectionSearchQuery, setCollectionSearchQuery] = useState('');
+  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const [adjustingRow, setAdjustingRow] = useState<CollectionSellabilityRow | null>(
+    null,
+  );
+  const [deletingRow, setDeletingRow] = useState<CollectionSellabilityRow | null>(
+    null,
+  );
+  const [rowActionSuccess, setRowActionSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -203,9 +211,10 @@ export function CollectionView({
       try {
         const response = await api.getCollections();
         if (ignore) return;
-        setCollections(response.collections);
-        const defaultCollection = chooseDefaultCollection(response.collections);
-        setSelectedCollectionId((current) => current ?? defaultCollection?.id ?? null);
+        setOwnedCollection(
+          response.collections.find((collection) => collection.purpose === 'owned') ??
+            null,
+        );
       } catch (err) {
         if (!ignore) {
           setError(err instanceof Error ? err.message : 'Failed to load collections');
@@ -222,6 +231,8 @@ export function CollectionView({
   }, []);
 
   const loadSellability = async (collectionId: number) => {
+    setCollectionPage(1);
+    setOpenActionMenuId(null);
     setLoadingSellability(true);
     setError(null);
     try {
@@ -237,42 +248,105 @@ export function CollectionView({
     }
   };
 
+  const ownedCollectionId = ownedCollection?.id ?? null;
+
   useEffect(() => {
-    if (selectedCollectionId === null) return;
-    loadSellability(selectedCollectionId);
-  }, [selectedCollectionId]);
+    if (ownedCollectionId === null) return;
+    loadSellability(ownedCollectionId);
+  }, [ownedCollectionId]);
+
+  useEffect(() => {
+    if (openActionMenuId === null) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        actionMenuRef.current &&
+        !actionMenuRef.current.contains(event.target as Node)
+      ) {
+        setOpenActionMenuId(null);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenActionMenuId(null);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openActionMenuId]);
+
+  const filteredRows = useMemo(() => {
+    const query = collectionSearchQuery.trim().toLowerCase();
+    if (!query) return sellability?.rows ?? [];
+
+    return (sellability?.rows ?? []).filter((row) =>
+      [
+        row.productName,
+        row.title,
+        row.setName,
+        row.setCode,
+        row.collectorNumber,
+        row.normalizedNumber,
+      ].some((value) => value?.toLowerCase().includes(query)),
+    );
+  }, [collectionSearchQuery, sellability]);
 
   const sortedRows = useMemo(() => {
-    return [...(sellability?.rows ?? [])].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const rankDiff = recommendationRank(a) - recommendationRank(b);
       if (rankDiff !== 0) return rankDiff;
       return a.productName.localeCompare(b.productName);
     });
-  }, [sellability]);
+  }, [filteredRows]);
+  const collectionTotalPages = Math.max(
+    1,
+    Math.ceil(sortedRows.length / COLLECTION_ITEMS_PER_PAGE),
+  );
+  const activeCollectionPage =
+    collectionPage > collectionTotalPages ? 1 : collectionPage;
+  const paginatedRows = useMemo(() => {
+    const start = (activeCollectionPage - 1) * COLLECTION_ITEMS_PER_PAGE;
+    return sortedRows.slice(start, start + COLLECTION_ITEMS_PER_PAGE);
+  }, [activeCollectionPage, sortedRows]);
 
-  const toBeSoldCollection = collections.find(
-    (collection) =>
-      collection.purpose === 'to_be_sold' ||
-      collection.name.toLowerCase() === 'to be sold',
-  );
-  const selectedCollection = collections.find(
-    (collection) => collection.id === selectedCollectionId,
-  );
-  const selectedIsToBeSold =
-    selectedCollection?.purpose === 'to_be_sold' ||
-    selectedCollection?.name.toLowerCase() === 'to be sold';
+  useEffect(() => {
+    setCollectionPage((currentPage) =>
+      currentPage > collectionTotalPages ? 1 : currentPage,
+    );
+  }, [collectionTotalPages]);
+
   const transferRequest = buildTransferRequest(transferSelection);
   const transferSelectedQuantity = transferRequest.items.reduce(
     (sum, item) => sum + item.quantity,
     0,
   );
 
+  const handleCollectionPageChange = (page: number) => {
+    setCollectionPage(Math.max(1, Math.min(page, collectionTotalPages)));
+    setOpenActionMenuId(null);
+    setTransferSelection({});
+    setTransferPreview(null);
+    setTransferSuccess(null);
+  };
+
+  const handleCollectionSearchChange = (value: string) => {
+    setCollectionSearchQuery(value);
+    setCollectionPage(1);
+    setOpenActionMenuId(null);
+    setTransferSelection({});
+    setTransferPreview(null);
+    setTransferSuccess(null);
+  };
+
   const handleToggleTransferRow = (row: CollectionSellabilityRow, checked: boolean) => {
     setTransferPreview(null);
     setTransferSuccess(null);
     setTransferSelection((current) => {
       const next = { ...current };
-      for (const item of recommendedTransferItems(row, selectedIsToBeSold)) {
+      for (const item of recommendedTransferItems(row)) {
         if (checked) {
           next[item.collectionItemId] = item.quantity;
         } else {
@@ -292,14 +366,67 @@ export function CollectionView({
     }));
   };
 
+  const clearRowTransferState = (row: CollectionSellabilityRow) => {
+    const sourceItemIds = new Set(
+      collectionRowSourceItems(row).map((item) => item.collectionItemId),
+    );
+    setTransferSelection((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([collectionItemId]) => !sourceItemIds.has(Number(collectionItemId)),
+        ),
+      ),
+    );
+    setTransferPreview(null);
+    setTransferSuccess(null);
+  };
+
+  const handleAdjustCollectionRow = async (
+    row: CollectionSellabilityRow,
+    data: { items: Array<{ collectionItemId: number; quantity: number }> },
+  ) => {
+    if (ownedCollectionId === null) {
+      throw new Error('Owned Collection is unavailable.');
+    }
+
+    setError(null);
+    await api.adjustCollectionRow(ownedCollectionId, row.catalogCardId, data);
+    clearRowTransferState(row);
+    setRowActionSuccess(`Updated counts for ${row.productName}.`);
+    await loadSellability(ownedCollectionId);
+    setAdjustingRow(null);
+  };
+
+  const handleDeleteCollectionRow = async (row: CollectionSellabilityRow) => {
+    if (ownedCollectionId === null) {
+      throw new Error('Owned Collection is unavailable.');
+    }
+
+    const collectionItemIds = collectionRowSourceItems(row).map(
+      (item) => item.collectionItemId,
+    );
+    if (collectionItemIds.length === 0) {
+      throw new Error('Collection item details are unavailable. Refresh and try again.');
+    }
+
+    setError(null);
+    await api.deleteCollectionRow(ownedCollectionId, row.catalogCardId, {
+      collectionItemIds,
+    });
+    clearRowTransferState(row);
+    setRowActionSuccess(`Deleted ${row.productName} from Owned Collection.`);
+    await loadSellability(ownedCollectionId);
+    setDeletingRow(null);
+  };
+
   const handleTransferPreview = async () => {
-    if (selectedCollectionId === null || transferRequest.items.length === 0) return;
+    if (ownedCollectionId === null || transferRequest.items.length === 0) return;
     setTransferLoading(true);
     setError(null);
     setTransferSuccess(null);
     try {
       const response = await api.previewCollectionTransferToInventory(
-        selectedCollectionId,
+        ownedCollectionId,
         transferRequest,
       );
       setTransferPreview(response);
@@ -311,56 +438,24 @@ export function CollectionView({
   };
 
   const handleTransferCommit = async () => {
-    if (selectedCollectionId === null || transferRequest.items.length === 0) return;
+    if (ownedCollectionId === null || transferRequest.items.length === 0) return;
     setTransferLoading(true);
     setError(null);
     try {
       const response = await api.commitCollectionTransferToInventory(
-        selectedCollectionId,
+        ownedCollectionId,
         transferRequest,
       );
       setTransferPreview(response);
       setTransferSuccess(
         `Moved ${response.summary.transferQuantity ?? 0} card(s) to Selling Inventory.`,
       );
-      await loadSellability(selectedCollectionId);
+      await loadSellability(ownedCollectionId);
       await onInventoryChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to move to Selling Inventory');
     } finally {
       setTransferLoading(false);
-    }
-  };
-
-  const handleClearCollection = async () => {
-    if (selectedCollectionId === null || clearConfirmText !== 'CLEAR COLLECTION') return;
-
-    const collectionName = selectedCollection?.name ?? 'this collection';
-    if (
-      !confirm(
-        `Clear ${collectionName}? This removes rows from this collection only and cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-
-    setClearLoading(true);
-    setError(null);
-    setClearSuccess(null);
-    try {
-      const response = await api.clearCollection(
-        selectedCollectionId,
-        clearConfirmText,
-      );
-      const removed = response.deleted ?? response.removed ?? 0;
-      setClearSuccess(`Cleared ${removed} collection row(s) from ${collectionName}.`);
-      setClearConfirmText('');
-      setCollectionRefreshKey((key) => key + 1);
-      await loadSellability(selectedCollectionId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear collection');
-    } finally {
-      setClearLoading(false);
     }
   };
 
@@ -372,8 +467,8 @@ export function CollectionView({
     setError(null);
     try {
       await api.updateCatalogCardMetadata(row.catalogCardId, { cardKind: nextKind });
-      if (selectedCollectionId !== null) {
-        await loadSellability(selectedCollectionId);
+      if (ownedCollectionId !== null) {
+        await loadSellability(ownedCollectionId);
       }
       onCatalogMetadataUpdated?.();
     } catch (err) {
@@ -385,84 +480,39 @@ export function CollectionView({
 
   return (
     <section className="cards-section collection-section">
-      <div className="section-header collection-header">
-        <div>
-          <h2>Collection</h2>
-          <p className="section-subtitle">
-            {selectedIsToBeSold
-              ? 'To Be Sold staging cards ready to move into internal Selling Inventory. This does not list anything on TCGPlayer.'
-              : 'Owned cards and sellability recommendations. Set-aside suggestions do not mutate selling inventory.'}
-          </p>
-        </div>
-      </div>
+      {ownedCollection && (
+        <>
+          <CollectionImportUpload
+            collectionId={ownedCollection.id}
+            onImportCommitted={async () => {
+              await loadSellability(ownedCollection.id);
+            }}
+          />
 
-      <CollectionImportUpload
-        key={collectionRefreshKey}
-        collectionId={selectedCollectionId}
-        onImportCommitted={async () => {
-          if (selectedCollectionId !== null) {
-            await loadSellability(selectedCollectionId);
-          }
-        }}
-      />
-
-      <div className="collection-toolbar">
-        <label className="collection-selector" htmlFor="collection-select">
-          Collection
-          <select
-            id="collection-select"
-            className="shipment-select"
-            value={selectedCollectionId ?? ''}
-            disabled={loadingCollections || collections.length === 0}
-            onChange={(event) => setSelectedCollectionId(Number(event.target.value))}
-          >
-            {collections.map((collection) => (
-              <option key={collection.id} value={collection.id}>
-                {collection.name}
-                {collection.purpose ? ` (${collection.purpose.replace(/_/g, ' ')})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {toBeSoldCollection && (
-          <div className="collection-pill" aria-label="To Be Sold collection">
-            To Be Sold: {toBeSoldCollection.name}
-          </div>
-        )}
-      </div>
-
-      {selectedCollection && (
-        <div className="collection-clear-panel" aria-label="Clear selected collection">
-          <div>
-            <h3>Clear {selectedIsToBeSold ? 'To Be Sold Collection' : 'Owned Collection'}</h3>
-            <p>
-              Destructive: removes rows from {selectedCollection.name} only. It does not delete catalog data, Selling Inventory, listed cards, sales, or TCGPlayer listings.
-            </p>
-          </div>
-          <div className="collection-clear-controls">
-            <label htmlFor="collection-clear-confirm">
-              Type <strong>CLEAR COLLECTION</strong> to enable clearing
-            </label>
-            <input
-              id="collection-clear-confirm"
-              className="shipment-input"
-              value={clearConfirmText}
-              onChange={(event) => setClearConfirmText(event.target.value)}
-              placeholder="CLEAR COLLECTION"
-            />
-            <button
-              type="button"
-              className="button-danger"
-              disabled={clearConfirmText !== 'CLEAR COLLECTION' || clearLoading}
-              onClick={handleClearCollection}
+          <div className="collection-toolbar">
+            <form
+              className="search-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setCollectionPage(1);
+              }}
             >
-              {clearLoading ? 'Clearing…' : `Clear ${selectedCollection.name}`}
-            </button>
+              <input
+                type="search"
+                aria-label="Search collection"
+                placeholder="Search by card, set, or number..."
+                value={collectionSearchQuery}
+                onChange={(event) => handleCollectionSearchChange(event.target.value)}
+                className="search-input"
+              />
+              <button type="submit" className="search-button" aria-label="Search collection">
+                🔍
+              </button>
+            </form>
           </div>
-          {clearSuccess && <div className="import-result success">{clearSuccess}</div>}
-        </div>
+        </>
       )}
+
 
       {sellability && (
         <div className="collection-summary-grid" aria-label="Sellability summary">
@@ -490,9 +540,7 @@ export function CollectionView({
           <div>
             <h3>Move to Selling Inventory</h3>
             <p>
-              {selectedIsToBeSold
-                ? 'Select staged cards to move into internal Selling Inventory as Ready to List. This decreases To Be Sold quantities and does not list anything on TCGPlayer.'
-                : 'Select recommended cards to move into internal Selling Inventory as Ready to List. This decreases the source collection quantity and does not list anything on TCGPlayer.'}
+              Select recommended cards to move into internal Selling Inventory as Ready to List. This decreases Owned Collection quantities and does not list anything on TCGPlayer.
             </p>
           </div>
           <div className="collection-transfer-actions">
@@ -589,15 +637,29 @@ export function CollectionView({
       )}
 
       {error && <div className="import-result error">{error}</div>}
+      {rowActionSuccess && (
+        <div className="import-result success" role="status">
+          {rowActionSuccess}
+        </div>
+      )}
 
       {loadingCollections || loadingSellability ? (
         <div className="table-loading">
           <p>⏳ Loading collection recommendations...</p>
         </div>
+      ) : ownedCollectionId === null ? (
+        <div className="table-empty" role="status">
+          Owned Collection is unavailable. Create or restore an Owned collection before importing or moving cards.
+        </div>
       ) : sortedRows.length === 0 ? (
-        <div className="table-empty">No collection cards found.</div>
+        <div className="table-empty collection-search-empty" role="status">
+          {collectionSearchQuery.trim()
+            ? `No collection cards match "${collectionSearchQuery.trim()}".`
+            : 'No collection cards found.'}
+        </div>
       ) : (
-        <div className="table-container">
+        <>
+          <div className="table-container">
           <table className="card-table collection-table">
             <thead>
               <tr>
@@ -607,13 +669,14 @@ export function CollectionView({
                 <th>Kind</th>
                 <th>Normal Qty</th>
                 <th>Foil Qty</th>
-                <th>{selectedIsToBeSold ? 'Available' : 'Keep Target'}</th>
-                <th>{selectedIsToBeSold ? 'Move Qty' : 'Recommended Sell'}</th>
-                <th>{selectedIsToBeSold ? 'Transfer State' : 'Reason'}</th>
+                <th>Keep Target</th>
+                <th>Recommended Sell</th>
+                <th>Reason</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((row) => {
+              {paginatedRows.map((row) => {
                 const sellQty = recommendedSellQty(row);
                 const isUpdating = updatingCatalogId === row.catalogCardId;
                 return (
@@ -634,8 +697,8 @@ export function CollectionView({
                         <input
                           type="checkbox"
                           aria-label={`Move ${row.productName} to Selling Inventory`}
-                          disabled={!canTransferRow(row, selectedIsToBeSold)}
-                          checked={recommendedTransferItems(row, selectedIsToBeSold).some(
+                          disabled={!canTransferRow(row)}
+                          checked={recommendedTransferItems(row).some(
                             (item) => transferSelection[item.collectionItemId] > 0,
                           )}
                           onChange={(event) =>
@@ -646,7 +709,7 @@ export function CollectionView({
                           {row.excluded ? 'Excluded' : row.opportunityType === 'foil_swap' ? 'Foil' : 'Move'}
                         </span>
                       </label>
-                      {recommendedTransferItems(row, selectedIsToBeSold).map((item) => (
+                      {recommendedTransferItems(row).map((item) => (
                         <input
                           key={item.collectionItemId}
                           type="number"
@@ -701,10 +764,10 @@ export function CollectionView({
                     </td>
                     <td>{row.normalQty}</td>
                     <td>{row.foilQty}</td>
-                    <td>{selectedIsToBeSold ? row.totalQty : (row.keepTarget ?? '—')}</td>
+                    <td>{row.keepTarget ?? '—'}</td>
                     <td>
-                      <strong>{selectedIsToBeSold ? rowMoveQuantity(row, selectedIsToBeSold) : sellQty}</strong>
-                      {!selectedIsToBeSold && (row.sellNormalQty > 0 || row.sellFoilQty > 0) && (
+                      <strong>{sellQty}</strong>
+                      {(row.sellNormalQty > 0 || row.sellFoilQty > 0) && (
                         <span className="collection-muted">
                           {' '}
                           ({row.sellNormalQty} normal / {row.sellFoilQty} foil)
@@ -712,7 +775,7 @@ export function CollectionView({
                       )}
                     </td>
                     <td>
-                      <span>{selectedIsToBeSold ? (canTransferRow(row, selectedIsToBeSold) ? 'Ready to move' : 'Not transferable') : recommendationLabel(row)}</span>
+                      <span>{recommendationLabel(row)}</span>
                       {row.opportunityType === 'foil_swap' && (
                         <span className="collection-badge badge-success">Foil swap</span>
                       )}
@@ -723,12 +786,95 @@ export function CollectionView({
                         <div className="collection-muted">{row.reasons.join('; ')}</div>
                       )}
                     </td>
+                    <td className="actions">
+                      <div
+                        className="action-menu-container"
+                        ref={openActionMenuId === row.catalogCardId ? actionMenuRef : null}
+                      >
+                        <button
+                          type="button"
+                          className="action-menu-trigger"
+                          aria-label={`Actions for ${row.productName}`}
+                          aria-haspopup="menu"
+                          aria-expanded={openActionMenuId === row.catalogCardId}
+                          onClick={() =>
+                            setOpenActionMenuId((current) =>
+                              current === row.catalogCardId ? null : row.catalogCardId,
+                            )
+                          }
+                        >
+                          …
+                        </button>
+                        {openActionMenuId === row.catalogCardId && (
+                          <div className="action-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                if (collectionRowSourceItems(row).length === 0) {
+                                  setError(
+                                    'Collection item details are unavailable. Refresh and try again.',
+                                  );
+                                  return;
+                                }
+                                setRowActionSuccess(null);
+                                setAdjustingRow(row);
+                              }}
+                            >
+                              Adjust count
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="danger-menu-item"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                if (collectionRowSourceItems(row).length === 0) {
+                                  setError(
+                                    'Collection item details are unavailable. Refresh and try again.',
+                                  );
+                                  return;
+                                }
+                                setRowActionSuccess(null);
+                                setDeletingRow(row);
+                              }}
+                            >
+                              Delete row
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+          <Pagination
+            currentPage={activeCollectionPage}
+            totalItems={sortedRows.length}
+            itemsPerPage={COLLECTION_ITEMS_PER_PAGE}
+            onPageChange={handleCollectionPageChange}
+          />
+        </>
+      )}
+
+      {adjustingRow && (
+        <CollectionRowAdjustModal
+          row={adjustingRow}
+          sourceItems={collectionRowSourceItems(adjustingRow)}
+          onSave={(data) => handleAdjustCollectionRow(adjustingRow, data)}
+          onClose={() => setAdjustingRow(null)}
+        />
+      )}
+      {deletingRow && (
+        <CollectionRowDeleteModal
+          row={deletingRow}
+          onDelete={() => handleDeleteCollectionRow(deletingRow)}
+          onClose={() => setDeletingRow(null)}
+        />
       )}
     </section>
   );
