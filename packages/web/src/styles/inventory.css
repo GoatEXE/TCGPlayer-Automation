@@ -128,6 +128,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Keep the desktop numeric/action block centered under its headers. */
+.inventory-card-table .inventory-card-table__numeric-column,
+.inventory-card-table .inventory-card-table__listing-column,
+.inventory-card-table .inventory-card-table__actions-column {
+  text-align: center;
+}
+
+.inventory-card-table .inventory-card-table__listing-column .listing-price-display,
+.inventory-card-table .inventory-card-table__listing-column .listing-price-input,
+.inventory-card-table .inventory-card-table__actions-column .inventory-action-menu-container {
+  vertical-align: middle;
+}
+
+.inventory-card-table .inventory-card-table__actions-column .inventory-action-menu-container {
+  justify-content: center;
+}
+
 .inventory-card-table .date {
   color: var(--inventory-muted);
   font-size: 0.75rem;

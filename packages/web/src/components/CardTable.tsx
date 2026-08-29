@@ -696,11 +696,16 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
   const SortableHeader = ({
     field,
     children,
+    className,
   }: {
     field: SortField;
     children: React.ReactNode;
+    className?: string;
   }) => (
-    <th onClick={() => handleSort(field)} className="sortable">
+    <th
+      onClick={() => handleSort(field)}
+      className={['sortable', className].filter(Boolean).join(' ')}
+    >
       {children}
       {sortField === field && (
         <span className="sort-indicator" aria-label={`Sorted ${sortDirection}`}>
@@ -1044,11 +1049,26 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
             <SortableHeader field="number">Number</SortableHeader>
             <SortableHeader field="rarity">Rarity</SortableHeader>
             <SortableHeader field="condition">Condition</SortableHeader>
-            <SortableHeader field="quantity">Qty</SortableHeader>
-            <SortableHeader field="marketPrice">Market</SortableHeader>
-            <th>Rec'd</th>
-            <SortableHeader field="listingPrice">Listing</SortableHeader>
-            <th>Actions</th>
+            <SortableHeader
+              field="quantity"
+              className="inventory-card-table__numeric-column"
+            >
+              Qty
+            </SortableHeader>
+            <SortableHeader
+              field="marketPrice"
+              className="inventory-card-table__numeric-column"
+            >
+              Market
+            </SortableHeader>
+            <th className="inventory-card-table__numeric-column">Rec'd</th>
+            <SortableHeader
+              field="listingPrice"
+              className="inventory-card-table__listing-column"
+            >
+              Listing
+            </SortableHeader>
+            <th className="inventory-card-table__actions-column">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -1096,17 +1116,17 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
                 <td>{card.number || '—'}</td>
                 <td>{card.rarity || '—'}</td>
                 <td>{card.condition}</td>
-                <td className="quantity">{card.quantity}</td>
-                <td className="price">
+                <td className="quantity inventory-card-table__numeric-column">{card.quantity}</td>
+                <td className="price inventory-card-table__numeric-column">
                   {formatPrice(card.marketPrice, card.isFoilPrice)}
                 </td>
-                <td className="price">
+                <td className="price inventory-card-table__numeric-column">
                   {formatRecommendedPrice(card)}
                 </td>
-                <td className="price listing-price-cell">
+                <td className="price listing-price-cell inventory-card-table__listing-column">
                   {renderListingPrice(card)}
                 </td>
-                <td className="actions">
+                <td className="actions inventory-card-table__actions-column">
                   {renderActionMenu(card)}
                 </td>
               </tr>

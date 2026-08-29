@@ -57,6 +57,17 @@ describe('Inventory filters responsive layout', () => {
   });
 });
 
+describe('Inventory desktop table alignment', () => {
+  it('centers the numeric, listing, and actions column classes without touching phone cards', () => {
+    expect(inventoryCss).toMatch(
+      /\.inventory-card-table \.inventory-card-table__numeric-column,[\s\S]*?\.inventory-card-table \.inventory-card-table__listing-column,[\s\S]*?\.inventory-card-table \.inventory-card-table__actions-column\s*\{[\s\S]*?text-align:\s*center;/,
+    );
+    expect(inventoryCss).toMatch(
+      /\.inventory-card-table \.inventory-card-table__actions-column \.inventory-action-menu-container\s*\{[\s\S]*?justify-content:\s*center;/,
+    );
+  });
+});
+
 describe('Industry shell header responsiveness', () => {
   it('keeps the desktop tabs right-aligned before the square utility controls', () => {
     expect(shellCss).toMatch(
@@ -76,6 +87,12 @@ describe('Industry shell header responsiveness', () => {
     );
     expect(shellCss).toMatch(
       /@media \(max-width: 759px\)[\s\S]*?\.shell-view-tabs\[data-layout='phone'\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?width:\s*100%;/,
+    );
+  });
+
+  it('does not impose a page-level minimum width that creates 320px overflow', () => {
+    expect(industryCss).toMatch(
+      /body\s*\{[\s\S]*?margin:\s*0;[\s\S]*?min-width:\s*0;/,
     );
   });
 

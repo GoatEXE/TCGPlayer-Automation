@@ -140,6 +140,56 @@ describe('CardTable desktop time columns', () => {
   });
 });
 
+describe('CardTable desktop numeric alignment', () => {
+  it('marks the Qty through Actions block with centered desktop column classes', () => {
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            status: 'listed',
+            quantity: 7,
+            marketPrice: '1.27',
+            listingPrice: '1.25',
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    for (const headerName of ['Qty', 'Market', "Rec'd"]) {
+      expect(screen.getByRole('columnheader', { name: headerName })).toHaveClass(
+        'inventory-card-table__numeric-column',
+      );
+    }
+    expect(screen.getByRole('columnheader', { name: 'Listing' })).toHaveClass(
+      'inventory-card-table__listing-column',
+    );
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toHaveClass(
+      'inventory-card-table__actions-column',
+    );
+
+    expect(screen.getByText('7').closest('td')).toHaveClass(
+      'inventory-card-table__numeric-column',
+    );
+    expect(screen.getByText('$1.27').closest('td')).toHaveClass(
+      'inventory-card-table__numeric-column',
+    );
+    expect(screen.getByText('$1.24').closest('td')).toHaveClass(
+      'inventory-card-table__numeric-column',
+    );
+    expect(screen.getByRole('button', { name: '$1.25' }).closest('td')).toHaveClass(
+      'inventory-card-table__listing-column',
+    );
+    expect(
+      screen.getByRole('button', { name: /actions for targon's peak/i }).closest('td'),
+    ).toHaveClass('inventory-card-table__actions-column');
+  });
+});
+
 describe('CardTable floor price column', () => {
   it('does not render the Floor column or floor edit control in the main table', () => {
     render(
