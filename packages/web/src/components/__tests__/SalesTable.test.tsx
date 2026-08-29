@@ -181,6 +181,79 @@ describe('SalesTable', () => {
   });
 });
 
+describe('SalesTable phone layout', () => {
+  it('uses expandable order cards without horizontal tables while preserving actions and line details', async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 640,
+      writable: true,
+    });
+
+    try {
+      const user = userEvent.setup();
+      const { container } = render(
+        <SalesTable
+          orders={[
+            makeOrder({
+              lineItems: [
+                ...makeOrder().lineItems,
+                {
+                  ...makeOrder().lineItems[0],
+                  id: 2,
+                  lineItemType: 'gift',
+                  salePriceCents: 0,
+                  cardProductName: 'Bonus Card',
+                },
+              ],
+            }),
+          ]}
+          loading={false}
+          onStatusChange={vi.fn().mockResolvedValue(undefined)}
+          onShip={vi.fn()}
+        />,
+      );
+
+      expect(container.querySelector('table')).toBeNull();
+      expect(screen.getByText('ORD-123')).toBeTruthy();
+      expect(screen.getByText('$6.48')).toBeTruthy();
+      expect(
+        screen.getByRole('combobox', {
+          name: 'Change order status for ORD-123',
+        }),
+      ).toBeTruthy();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Expand ORD-123 items' }),
+      );
+      expect(screen.getByText("Targon's Peak")).toBeTruthy();
+      expect(screen.getByText('Bonus Card')).toBeTruthy();
+      expect(screen.getByText('Paid')).toBeTruthy();
+      expect(screen.getByText('Gift')).toBeTruthy();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Actions for ORD-123' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Record shipment' }),
+      ).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name: 'Open invoice' })).toBeTruthy();
+      expect(
+        screen.getByRole('menuitem', { name: 'Open packing slip' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('menuitem', { name: 'View status history' }),
+      ).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: originalWidth,
+        writable: true,
+      });
+    }
+  });
+});
+
 describe('SalesTable inline status change', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -444,17 +517,20 @@ describe('SalesTable history expansion', () => {
       screen.getByRole('button', { name: 'Expand ORD-123 items' }),
     );
     await waitFor(() => expect(details.style.height).toBe('196px'));
-    expect(TestResizeObserver.instances).toHaveLength(1);
-    expect(TestResizeObserver.instances[0].observe).toHaveBeenCalledWith(
-      content,
+    // MeasuredHeight observes its content while the sales container also
+    // observes its own width to switch between desktop and phone layouts.
+    expect(TestResizeObserver.instances).toHaveLength(2);
+    const detailsObserver = TestResizeObserver.instances.find((observer) =>
+      observer.observe.mock.calls.some(([target]) => target === content),
     );
+    expect(detailsObserver).toBeDefined();
 
     measuredHeight = 401;
-    TestResizeObserver.instances[0].trigger();
+    detailsObserver!.trigger();
     await waitFor(() => expect(details.style.height).toBe('401px'));
 
     view.unmount();
-    expect(TestResizeObserver.instances[0].disconnect).toHaveBeenCalledOnce();
+    expect(detailsObserver!.disconnect).toHaveBeenCalledOnce();
   });
 
   it('collapses order details from the explicit chevron control', async () => {

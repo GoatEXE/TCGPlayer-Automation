@@ -4,6 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      (() => {
+        const storageKey = 'tcgplayer-theme';
+        let theme;
+
+        try {
+          const storedTheme = window.localStorage.getItem(storageKey);
+          if (storedTheme === 'light' || storedTheme === 'dark') {
+            theme = storedTheme;
+          }
+        } catch {
+          // Storage can be unavailable in private or restricted browsing modes.
+        }
+
+        if (!theme) {
+          theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <title>TCGPlayer Automation</title>
   </head>
   <body>

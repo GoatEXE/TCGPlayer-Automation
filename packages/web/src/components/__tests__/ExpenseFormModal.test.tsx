@@ -196,8 +196,9 @@ describe('ExpenseFormModal', () => {
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    const backdrop = screen.getByRole('dialog');
-    await user.click(backdrop);
+    const backdrop = document.querySelector('.industry-dialog-backdrop');
+    expect(backdrop).not.toBeNull();
+    await user.click(backdrop!);
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 

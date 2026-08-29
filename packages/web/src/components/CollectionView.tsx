@@ -1,5 +1,8 @@
+import { ChevronDown, MoreHorizontal, MoveRight, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { useContainerResponsiveMode } from '../hooks/useContainerResponsiveMode';
+import { BlueprintButton, BlueprintInput, BlueprintPanel } from '../ui';
 import { CollectionImportUpload } from './CollectionImportUpload';
 import {
   CollectionRowAdjustModal,
@@ -7,6 +10,7 @@ import {
   type CollectionRowSourceItem,
 } from './CollectionRowActionModals';
 import { Pagination } from './Pagination';
+import '../styles/collection.css';
 import type {
   CardKind,
   CollectionSellabilityRow,
@@ -41,6 +45,15 @@ function formatKind(kind: string) {
 
 function recommendedSellQty(row: CollectionSellabilityRow) {
   return row.sellNormalQty + row.sellFoilQty;
+}
+
+function rowToneClass(row: CollectionSellabilityRow) {
+  const sellQty = recommendedSellQty(row);
+  if (row.needsClassification) return 'collection-row-needs-classification';
+  if (sellQty > 0 || row.opportunityType === 'foil_swap') {
+    return 'collection-row-sellable';
+  }
+  return row.excluded ? 'collection-row-excluded' : undefined;
 }
 
 const TRANSFER_WARNING_COPY: Record<string, string> = {
@@ -167,6 +180,12 @@ function buildTransferRequest(selection: TransferSelection): CollectionTransferR
   };
 }
 
+function rowSetAndNumber(row: CollectionSellabilityRow) {
+  return `${row.setCode ?? row.setName ?? '-'} · ${
+    row.collectorNumber ?? row.normalizedNumber ?? '-'
+  }`;
+}
+
 interface CollectionViewProps {
   onCatalogMetadataUpdated?: () => void;
   onInventoryChanged?: () => void | Promise<void>;
@@ -176,6 +195,9 @@ export function CollectionView({
   onCatalogMetadataUpdated,
   onInventoryChanged,
 }: CollectionViewProps) {
+  const collectionViewRef = useRef<HTMLElement>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const layout = useContainerResponsiveMode(collectionViewRef);
   const [ownedCollection, setOwnedCollection] = useState<CollectionSummary | null>(
     null,
   );
@@ -193,7 +215,7 @@ export function CollectionView({
   const [collectionPage, setCollectionPage] = useState(1);
   const [collectionSearchQuery, setCollectionSearchQuery] = useState('');
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
-  const actionMenuRef = useRef<HTMLDivElement>(null);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [adjustingRow, setAdjustingRow] = useState<CollectionSellabilityRow | null>(
     null,
   );
@@ -233,6 +255,7 @@ export function CollectionView({
   const loadSellability = async (collectionId: number) => {
     setCollectionPage(1);
     setOpenActionMenuId(null);
+    setExpandedRowId(null);
     setLoadingSellability(true);
     setError(null);
     try {
@@ -252,7 +275,7 @@ export function CollectionView({
 
   useEffect(() => {
     if (ownedCollectionId === null) return;
-    loadSellability(ownedCollectionId);
+    void loadSellability(ownedCollectionId);
   }, [ownedCollectionId]);
 
   useEffect(() => {
@@ -294,6 +317,7 @@ export function CollectionView({
     );
   }, [collectionSearchQuery, sellability]);
 
+  // Sort the entire filtered result set before slicing it into pages.
   const sortedRows = useMemo(() => {
     return [...filteredRows].sort((a, b) => {
       const rankDiff = recommendationRank(a) - recommendationRank(b);
@@ -327,6 +351,7 @@ export function CollectionView({
   const handleCollectionPageChange = (page: number) => {
     setCollectionPage(Math.max(1, Math.min(page, collectionTotalPages)));
     setOpenActionMenuId(null);
+    setExpandedRowId(null);
     setTransferSelection({});
     setTransferPreview(null);
     setTransferSuccess(null);
@@ -336,6 +361,7 @@ export function CollectionView({
     setCollectionSearchQuery(value);
     setCollectionPage(1);
     setOpenActionMenuId(null);
+    setExpandedRowId(null);
     setTransferSelection({});
     setTransferPreview(null);
     setTransferSuccess(null);
@@ -357,12 +383,19 @@ export function CollectionView({
     });
   };
 
-  const handleTransferItemQuantity = (collectionItemId: number, quantity: number) => {
+  const handleTransferItemQuantity = (
+    collectionItemId: number,
+    quantity: number,
+    maximum: number,
+  ) => {
     setTransferPreview(null);
     setTransferSuccess(null);
     setTransferSelection((current) => ({
       ...current,
-      [collectionItemId]: Math.max(0, Math.floor(quantity) || 0),
+      [collectionItemId]: Math.min(
+        maximum,
+        Math.max(0, Math.floor(quantity) || 0),
+      ),
     }));
   };
 
@@ -478,388 +511,597 @@ export function CollectionView({
     }
   };
 
+  const renderTransferCheckbox = (row: CollectionSellabilityRow) => (
+    <label className="collection-transfer-checkbox">
+      <input
+        type="checkbox"
+        aria-label={`Move ${row.productName} to Selling Inventory`}
+        disabled={!canTransferRow(row)}
+        checked={recommendedTransferItems(row).some(
+          (item) => transferSelection[item.collectionItemId] > 0,
+        )}
+        onChange={(event) => handleToggleTransferRow(row, event.target.checked)}
+      />
+      <span>
+        {row.excluded
+          ? 'Excluded'
+          : row.opportunityType === 'foil_swap'
+            ? 'Move foil'
+            : 'Move recommended'}
+      </span>
+    </label>
+  );
+
+  const renderTransferQuantityInputs = (row: CollectionSellabilityRow) =>
+    recommendedTransferItems(row).map((item, index) => {
+      const inputId = `collection-transfer-${row.catalogCardId}-${item.collectionItemId}`;
+      return (
+        <div className="collection-transfer-qty-wrap" key={item.collectionItemId}>
+          <label htmlFor={inputId}>
+            {recommendedTransferItems(row).length > 1 ? `Move qty ${index + 1}` : 'Move qty'}
+          </label>
+          <input
+            id={inputId}
+            type="number"
+            min="0"
+            max={item.quantity}
+            className="collection-transfer-qty"
+            aria-label={`Move quantity for ${row.productName}`}
+            value={transferSelection[item.collectionItemId] ?? item.quantity}
+            onChange={(event) =>
+              handleTransferItemQuantity(
+                item.collectionItemId,
+                Number(event.target.value),
+                item.quantity,
+              )
+            }
+          />
+        </div>
+      );
+    });
+
+  const renderRowActions = (row: CollectionSellabilityRow) => (
+    <div
+      className="action-menu-container"
+      ref={openActionMenuId === row.catalogCardId ? actionMenuRef : null}
+    >
+      <BlueprintButton
+        variant="ghost"
+        className="collection-action-menu-trigger"
+        aria-label={`Actions for ${row.productName}`}
+        aria-haspopup="menu"
+        aria-expanded={openActionMenuId === row.catalogCardId}
+        onClick={() =>
+          setOpenActionMenuId((current) =>
+            current === row.catalogCardId ? null : row.catalogCardId,
+          )
+        }
+        icon={<MoreHorizontal aria-hidden="true" strokeWidth={1.75} />}
+      />
+      {openActionMenuId === row.catalogCardId && (
+        <div className="action-menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpenActionMenuId(null);
+              if (collectionRowSourceItems(row).length === 0) {
+                setError('Collection item details are unavailable. Refresh and try again.');
+                return;
+              }
+              setRowActionSuccess(null);
+              setAdjustingRow(row);
+            }}
+          >
+            Adjust count
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="danger-menu-item"
+            onClick={() => {
+              setOpenActionMenuId(null);
+              if (collectionRowSourceItems(row).length === 0) {
+                setError('Collection item details are unavailable. Refresh and try again.');
+                return;
+              }
+              setRowActionSuccess(null);
+              setDeletingRow(row);
+            }}
+          >
+            Delete row
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderKindControl = (row: CollectionSellabilityRow) => {
+    const isUpdating = updatingCatalogId === row.catalogCardId;
+    return (
+      <>
+        <label className="sr-only" htmlFor={`kind-${row.catalogCardId}`}>
+          Card kind for {row.productName}
+        </label>
+        <select
+          id={`kind-${row.catalogCardId}`}
+          className="collection-kind-select"
+          value={row.kind}
+          disabled={isUpdating}
+          onChange={(event) => handleKindChange(row, event.target.value as CardKind)}
+        >
+          {CARD_KIND_OPTIONS.map((kind) => (
+            <option key={kind} value={kind}>
+              {formatKind(kind)}
+            </option>
+          ))}
+        </select>
+        {row.needsClassification && (
+          <span className="collection-badge badge-warning">Needs Classification</span>
+        )}
+      </>
+    );
+  };
+
+  const renderDesktopRows = () => (
+    <div className="table-container collection-table-wrap">
+      <table className="card-table collection-table">
+        <thead>
+          <tr>
+            <th>Move</th>
+            <th>Card</th>
+            <th>Set / #</th>
+            <th>Kind</th>
+            <th>Normal Qty</th>
+            <th>Foil Qty</th>
+            <th>Keep Target</th>
+            <th>Recommended Sell</th>
+            <th>Reason</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {paginatedRows.map((row) => {
+            const sellQty = recommendedSellQty(row);
+            return (
+              <tr key={row.catalogCardId} className={rowToneClass(row)}>
+                <td className="collection-transfer-cell">
+                  <div className="collection-transfer-control">
+                    {renderTransferCheckbox(row)}
+                    {renderTransferQuantityInputs(row)}
+                  </div>
+                </td>
+                <td className="card-name">
+                  <div className="collection-card-title">{row.productName}</div>
+                  {row.title && (
+                    <span className="collection-card-title__subtitle">{row.title}</span>
+                  )}
+                </td>
+                <td>{rowSetAndNumber(row)}</td>
+                <td>{renderKindControl(row)}</td>
+                <td>{row.normalQty}</td>
+                <td>{row.foilQty}</td>
+                <td>{row.keepTarget ?? '—'}</td>
+                <td>
+                  <strong>{sellQty}</strong>
+                  {(row.sellNormalQty > 0 || row.sellFoilQty > 0) && (
+                    <span className="collection-muted">
+                      {row.sellNormalQty} normal / {row.sellFoilQty} foil
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <span>{recommendationLabel(row)}</span>
+                  {row.opportunityType === 'foil_swap' && (
+                    <span className="collection-badge badge-success">Foil swap</span>
+                  )}
+                  {row.excluded && (
+                    <span className="collection-badge badge-muted">Token/Rune excluded</span>
+                  )}
+                  {row.reasons.length > 0 && (
+                    <div className="collection-muted">{row.reasons.join('; ')}</div>
+                  )}
+                </td>
+                <td className="actions">{renderRowActions(row)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderPhoneRows = () => (
+    <div className="collection-mobile-list" aria-label="Collection cards">
+      {paginatedRows.map((row) => {
+        const sellQty = recommendedSellQty(row);
+        const expanded = expandedRowId === row.catalogCardId;
+        return (
+          <article key={row.catalogCardId} className={`collection-mobile-card ${rowToneClass(row) ?? ''}`}>
+            <div className="collection-mobile-card__header">
+              <div className="collection-mobile-card__identity">
+                <p className="collection-mobile-card__eyebrow">{rowSetAndNumber(row)}</p>
+                <h3 className="collection-mobile-card__name">{row.productName}</h3>
+                {row.title && <p className="collection-mobile-card__set">{row.title}</p>}
+              </div>
+              <BlueprintButton
+                variant="secondary"
+                className="collection-mobile-card__toggle"
+                aria-label={`${expanded ? 'Hide' : 'Show'} details for ${row.productName}`}
+                aria-expanded={expanded}
+                aria-controls={`collection-card-details-${row.catalogCardId}`}
+                onClick={() =>
+                  setExpandedRowId((current) =>
+                    current === row.catalogCardId ? null : row.catalogCardId,
+                  )
+                }
+                icon={<ChevronDown aria-hidden="true" strokeWidth={1.5} />}
+              />
+            </div>
+
+            <div className="collection-mobile-card__summary">
+              <div>
+                <span>Normal</span>
+                <strong>{row.normalQty}</strong>
+              </div>
+              <div>
+                <span>Foil</span>
+                <strong>{row.foilQty}</strong>
+              </div>
+              <div>
+                <span>Sell</span>
+                <strong>{sellQty}</strong>
+              </div>
+            </div>
+
+            <div className="collection-mobile-card__move-row">
+              {renderTransferCheckbox(row)}
+              {row.opportunityType === 'foil_swap' && (
+                <span className="collection-badge badge-success">Foil swap</span>
+              )}
+              {row.excluded && (
+                <span className="collection-badge badge-muted">Excluded</span>
+              )}
+            </div>
+
+            {expanded && (
+              <div
+                id={`collection-card-details-${row.catalogCardId}`}
+                className="collection-mobile-card__details"
+              >
+                <div className="collection-mobile-card__detail-grid">
+                  <div>
+                    <span className="collection-quantity__label">Kind</span>
+                    {renderKindControl(row)}
+                  </div>
+                  <div>
+                    <span className="collection-quantity__label">Keep target</span>
+                    <strong>{row.keepTarget ?? '—'}</strong>
+                  </div>
+                  <div>
+                    <span className="collection-quantity__label">Recommended sell</span>
+                    <strong>
+                      {sellQty} ({row.sellNormalQty} normal / {row.sellFoilQty} foil)
+                    </strong>
+                  </div>
+                </div>
+                <div className="collection-mobile-card__reason">
+                  <span className="collection-quantity__label">Reason</span>
+                  <strong>{recommendationLabel(row)}</strong>
+                  {row.reasons.length > 0 && <p>{row.reasons.join('; ')}</p>}
+                </div>
+                {recommendedTransferItems(row).length > 0 && (
+                  <div className="collection-transfer-control">
+                    <span className="collection-quantity__label">Transfer quantity</span>
+                    {renderTransferQuantityInputs(row)}
+                  </div>
+                )}
+                <div className="collection-mobile-card__details-footer">
+                  <span className="collection-muted">
+                    Adjusting a row only changes Owned Collection source counts.
+                  </span>
+                  {renderRowActions(row)}
+                </div>
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <section className="cards-section collection-section">
+    <section
+      ref={collectionViewRef}
+      className="cards-section collection-section collection-workflow"
+      data-layout={layout}
+    >
+      <header className="collection-workflow__header">
+        <p className="collection-workflow__eyebrow">Inventory decision map</p>
+        <h2 className="collection-workflow__title">Owned Collection</h2>
+        <p className="collection-workflow__description">
+          Keep personal copies first, review practical duplicates, then explicitly move selected cards to Selling Inventory.
+        </p>
+      </header>
+
+      <div className="collection-stepper" aria-label="Owned Collection workflow">
+        <div className="collection-stepper__item">
+          <span className="collection-stepper__number">01</span>
+          <div className="collection-stepper__copy">
+            <strong>Import</strong>
+            <span>Add CSV quantities without changing selling inventory.</span>
+          </div>
+        </div>
+        <div className="collection-stepper__item">
+          <span className="collection-stepper__number">02</span>
+          <div className="collection-stepper__copy">
+            <strong>Review</strong>
+            <span>Search and inspect sellability recommendations.</span>
+          </div>
+        </div>
+        <div className="collection-stepper__item">
+          <span className="collection-stepper__number">03</span>
+          <div className="collection-stepper__copy">
+            <strong>Transfer</strong>
+            <span>Preview the selected move before committing it.</span>
+          </div>
+        </div>
+      </div>
+
       {ownedCollection && (
-        <>
+        <div className="collection-step">
+          <div className="collection-step__header">
+            <p className="collection-step__eyebrow">Step 01 · Import</p>
+            <h3 className="collection-step__heading">Add a collection export</h3>
+            <p className="collection-step__description">
+              The preview is automatic and additive. Review it before making any collection change.
+            </p>
+          </div>
           <CollectionImportUpload
             collectionId={ownedCollection.id}
+            layout={layout}
             onImportCommitted={async () => {
               await loadSellability(ownedCollection.id);
             }}
           />
-
-          <div className="collection-toolbar">
-            <form
-              className="search-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setCollectionPage(1);
-              }}
-            >
-              <input
-                type="search"
-                aria-label="Search collection"
-                placeholder="Search by card, set, or number..."
-                value={collectionSearchQuery}
-                onChange={(event) => handleCollectionSearchChange(event.target.value)}
-                className="search-input"
-              />
-              <button type="submit" className="search-button" aria-label="Search collection">
-                🔍
-              </button>
-            </form>
-          </div>
-        </>
-      )}
-
-
-      {sellability && (
-        <div className="collection-summary-grid" aria-label="Sellability summary">
-          <div className="collection-summary-card">
-            <span>Sell Normal</span>
-            <strong>{sellability.summary.sellNormalQty}</strong>
-          </div>
-          <div className="collection-summary-card">
-            <span>Sell Foil</span>
-            <strong>{sellability.summary.sellFoilQty}</strong>
-          </div>
-          <div className="collection-summary-card warning">
-            <span>Needs Classification</span>
-            <strong>{sellability.summary.needsClassificationCards}</strong>
-          </div>
-          <div className="collection-summary-card muted">
-            <span>Excluded Token/Rune</span>
-            <strong>{sellability.summary.excludedCards}</strong>
-          </div>
         </div>
       )}
 
-      {sellability && (
-        <div className="collection-transfer-panel" aria-label="Move to Selling Inventory">
-          <div>
-            <h3>Move to Selling Inventory</h3>
-            <p>
-              Select recommended cards to move into internal Selling Inventory as Ready to List. This decreases Owned Collection quantities and does not list anything on TCGPlayer.
-            </p>
-          </div>
-          <div className="collection-transfer-actions">
-            <span>{transferSelectedQuantity} card(s) selected</span>
-            <button
-              type="button"
-              className="button-primary"
-              onClick={handleTransferPreview}
-              disabled={transferSelectedQuantity === 0 || transferLoading}
-            >
-              {transferLoading ? 'Working…' : 'Preview Move'}
-            </button>
-            <button
-              type="button"
-              className="button-primary"
-              onClick={handleTransferCommit}
-              disabled={
-                transferSelectedQuantity === 0 ||
-                transferLoading ||
-                !transferPreview ||
-                (transferPreview.summary.blockedItems ?? 0) > 0
-              }
-            >
-              Move to Selling Inventory
-            </button>
-          </div>
-
-          {transferPreview && (
-            <div className="collection-transfer-preview" aria-label="Transfer preview">
-              <div className="collection-summary-grid collection-transfer-summary">
-                <div className="collection-summary-card">
-                  <span>Transfer Qty</span>
-                  <strong>{transferPreview.summary.transferQuantity ?? 0}</strong>
-                </div>
-                <div className="collection-summary-card">
-                  <span>Create / Update</span>
-                  <strong>
-                    {transferPreview.summary.createRows ?? 0}/
-                    {transferPreview.summary.updateRows ?? 0}
-                  </strong>
-                </div>
-                <div className="collection-summary-card warning">
-                  <span>Blocked</span>
-                  <strong>{transferPreview.summary.blockedItems ?? 0}</strong>
-                </div>
-              </div>
-              {transferPreview.summary.blockers.length > 0 && (
-                <div className="import-result error">
-                  {formatTransferMessages(transferPreview.summary.blockers)}
-                </div>
-              )}
-              {transferPreview.summary.warnings.length > 0 && (
-                <div className="import-result error">
-                  {formatTransferMessages(transferPreview.summary.warnings)}
-                </div>
-              )}
-              <div className="table-container">
-                <table className="card-table">
-                  <thead>
-                    <tr>
-                      <th>Card</th>
-                      <th>Qty</th>
-                      <th>Finish</th>
-                      <th>Inventory Status</th>
-                      <th>Action</th>
-                      <th>Warnings / Blockers</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(transferPreview.items ?? []).map((item) => (
-                      <tr key={item.collectionItemId}>
-                        <td>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</td>
-                        <td>{item.quantity}</td>
-                        <td>{item.inventoryCondition ?? item.finish}</td>
-                        <td>{item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}</td>
-                        <td>{item.action}</td>
-                        <td>
-                          {formatTransferMessages([
-                            ...(item.warnings ?? []),
-                            ...(item.blockers ?? []),
-                          ]) || '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          {transferSuccess && (
-            <div className="import-result success">{transferSuccess}</div>
-          )}
+      {error && (
+        <div className="collection-result-notice collection-result-notice--error" role="alert">
+          {error}
         </div>
       )}
-
-      {error && <div className="import-result error">{error}</div>}
       {rowActionSuccess && (
-        <div className="import-result success" role="status">
+        <div className="collection-result-notice collection-result-notice--success" role="status">
           {rowActionSuccess}
         </div>
       )}
 
-      {loadingCollections || loadingSellability ? (
-        <div className="table-loading">
-          <p>⏳ Loading collection recommendations...</p>
+      {sellability && (
+        <div className="collection-step">
+          <div className="collection-step__header">
+            <p className="collection-step__eyebrow">Step 02 · Review</p>
+            <h3 className="collection-step__heading">Review sellability</h3>
+            <p className="collection-step__description">
+              Recommendations favor your keep target. Token and rune rows stay excluded, while unknown card kinds remain visible for classification.
+            </p>
+          </div>
+          <div className="collection-summary-grid" aria-label="Sellability summary">
+            <div className="collection-summary-card">
+              <span>Sell Normal</span>
+              <strong>{sellability.summary.sellNormalQty}</strong>
+            </div>
+            <div className="collection-summary-card">
+              <span>Sell Foil</span>
+              <strong>{sellability.summary.sellFoilQty}</strong>
+            </div>
+            <div className="collection-summary-card warning">
+              <span>Needs Classification</span>
+              <strong>{sellability.summary.needsClassificationCards}</strong>
+            </div>
+            <div className="collection-summary-card muted">
+              <span>Excluded Token/Rune</span>
+              <strong>{sellability.summary.excludedCards}</strong>
+            </div>
+          </div>
+
+          <BlueprintPanel className="collection-review-panel" aria-label="Collection review">
+            <div className="collection-review-panel__header">
+              <div>
+                <p className="collection-step__eyebrow">Owned cards</p>
+                <h3 className="collection-step__heading">Select recommended extras</h3>
+              </div>
+              <p className="collection-review-panel__status">
+                {sortedRows.length} card group{sortedRows.length === 1 ? '' : 's'} in view
+              </p>
+            </div>
+            <div className="collection-toolbar">
+              <BlueprintInput
+                type="search"
+                label="Search collection"
+                placeholder="Search by card, set, or number..."
+                value={collectionSearchQuery}
+                onChange={(event) => handleCollectionSearchChange(event.target.value)}
+                className="collection-search"
+                fieldClassName="collection-search"
+              />
+            </div>
+
+            {loadingCollections || loadingSellability ? (
+              <div className="table-loading">
+                <p>Loading collection recommendations...</p>
+              </div>
+            ) : sortedRows.length === 0 ? (
+              <div className="table-empty collection-search-empty" role="status">
+                {collectionSearchQuery.trim()
+                  ? `No collection cards match "${collectionSearchQuery.trim()}".`
+                  : 'No collection cards found.'}
+              </div>
+            ) : (
+              <>
+                {layout === 'phone' ? renderPhoneRows() : renderDesktopRows()}
+                <Pagination
+                  currentPage={activeCollectionPage}
+                  totalItems={sortedRows.length}
+                  itemsPerPage={COLLECTION_ITEMS_PER_PAGE}
+                  onPageChange={handleCollectionPageChange}
+                />
+              </>
+            )}
+          </BlueprintPanel>
         </div>
-      ) : ownedCollectionId === null ? (
+      )}
+
+      {sellability && (
+        <div className="collection-step">
+          <div className="collection-step__header">
+            <p className="collection-step__eyebrow">Step 03 · Transfer</p>
+            <h3 className="collection-step__heading">Preview and move selected cards</h3>
+            <p className="collection-step__description">
+              The move decreases Owned Collection quantities and creates separate Ready-to-List rows when needed. It does not post listings to TCGPlayer.
+            </p>
+          </div>
+          <BlueprintPanel className="collection-transfer-panel" aria-label="Move to Selling Inventory">
+            <div className="collection-transfer-panel__intro">
+              <h3>Move to Selling Inventory</h3>
+              <p>
+                Select recommended cards above, preview the exact internal inventory change, and then commit it deliberately.
+              </p>
+            </div>
+            <div className="collection-transfer-actions">
+              <span className="collection-transfer-actions__count">
+                {transferSelectedQuantity} card(s) selected
+              </span>
+              <BlueprintButton
+                variant="secondary"
+                onClick={handleTransferPreview}
+                disabled={transferSelectedQuantity === 0 || transferLoading}
+                icon={<Search aria-hidden="true" strokeWidth={1.5} />}
+              >
+                {transferLoading ? 'Working…' : 'Preview Move'}
+              </BlueprintButton>
+              <BlueprintButton
+                variant="primary"
+                onClick={handleTransferCommit}
+                disabled={
+                  transferSelectedQuantity === 0 ||
+                  transferLoading ||
+                  !transferPreview ||
+                  (transferPreview.summary.blockedItems ?? 0) > 0
+                }
+                icon={<MoveRight aria-hidden="true" strokeWidth={1.5} />}
+              >
+                Move to Selling Inventory
+              </BlueprintButton>
+            </div>
+
+            {transferPreview && (
+              <div className="collection-transfer-preview" aria-label="Transfer preview">
+                <div className="collection-summary-grid collection-transfer-summary">
+                  <div className="collection-summary-card">
+                    <span>Transfer Qty</span>
+                    <strong>{transferPreview.summary.transferQuantity ?? 0}</strong>
+                  </div>
+                  <div className="collection-summary-card">
+                    <span>Create / Update</span>
+                    <strong>
+                      {transferPreview.summary.createRows ?? 0}/
+                      {transferPreview.summary.updateRows ?? 0}
+                    </strong>
+                  </div>
+                  <div className="collection-summary-card warning">
+                    <span>Blocked</span>
+                    <strong>{transferPreview.summary.blockedItems ?? 0}</strong>
+                  </div>
+                </div>
+                {transferPreview.summary.blockers.length > 0 && (
+                  <div className="collection-result-notice collection-result-notice--error">
+                    {formatTransferMessages(transferPreview.summary.blockers)}
+                  </div>
+                )}
+                {transferPreview.summary.warnings.length > 0 && (
+                  <div className="collection-result-notice collection-result-notice--error">
+                    {formatTransferMessages(transferPreview.summary.warnings)}
+                  </div>
+                )}
+                {layout === 'phone' ? (
+                  <div className="collection-mobile-preview-list" aria-label="Transfer preview rows">
+                    {(transferPreview.items ?? []).map((item) => (
+                      <article className="collection-mobile-preview-card" key={item.collectionItemId}>
+                        <div className="collection-mobile-preview-card__header">
+                          <strong>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</strong>
+                          <span className={`collection-import-status status-${item.status ?? 'matched'}`}>
+                            {item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}
+                          </span>
+                        </div>
+                        <p className="collection-mobile-preview-card__meta">
+                          Qty {item.quantity} · {item.inventoryCondition ?? item.finish}
+                        </p>
+                        <p>Action: {item.action}</p>
+                        {formatTransferMessages([
+                          ...(item.warnings ?? []),
+                          ...(item.blockers ?? []),
+                        ]) && (
+                          <p>
+                            {formatTransferMessages([
+                              ...(item.warnings ?? []),
+                              ...(item.blockers ?? []),
+                            ])}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="table-container collection-transfer-table">
+                    <table className="card-table">
+                      <thead>
+                        <tr>
+                          <th>Card</th>
+                          <th>Qty</th>
+                          <th>Finish</th>
+                          <th>Inventory Status</th>
+                          <th>Action</th>
+                          <th>Warnings / Blockers</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(transferPreview.items ?? []).map((item) => (
+                          <tr key={item.collectionItemId}>
+                            <td>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</td>
+                            <td>{item.quantity}</td>
+                            <td>{item.inventoryCondition ?? item.finish}</td>
+                            <td>{item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}</td>
+                            <td>{item.action}</td>
+                            <td>
+                              {formatTransferMessages([
+                                ...(item.warnings ?? []),
+                                ...(item.blockers ?? []),
+                              ]) || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            {transferSuccess && (
+              <div className="collection-result-notice collection-result-notice--success" role="status">
+                {transferSuccess}
+              </div>
+            )}
+          </BlueprintPanel>
+        </div>
+      )}
+
+      {loadingCollections || loadingSellability ? null : ownedCollectionId === null ? (
         <div className="table-empty" role="status">
           Owned Collection is unavailable. Create or restore an Owned collection before importing or moving cards.
         </div>
-      ) : sortedRows.length === 0 ? (
-        <div className="table-empty collection-search-empty" role="status">
-          {collectionSearchQuery.trim()
-            ? `No collection cards match "${collectionSearchQuery.trim()}".`
-            : 'No collection cards found.'}
-        </div>
-      ) : (
-        <>
-          <div className="table-container">
-          <table className="card-table collection-table">
-            <thead>
-              <tr>
-                <th>Move</th>
-                <th>Card</th>
-                <th>Set / #</th>
-                <th>Kind</th>
-                <th>Normal Qty</th>
-                <th>Foil Qty</th>
-                <th>Keep Target</th>
-                <th>Recommended Sell</th>
-                <th>Reason</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRows.map((row) => {
-                const sellQty = recommendedSellQty(row);
-                const isUpdating = updatingCatalogId === row.catalogCardId;
-                return (
-                  <tr
-                    key={row.catalogCardId}
-                    className={
-                      row.needsClassification
-                        ? 'collection-row-needs-classification'
-                        : sellQty > 0 || row.opportunityType === 'foil_swap'
-                          ? 'collection-row-sellable'
-                          : row.excluded
-                            ? 'collection-row-excluded'
-                            : undefined
-                    }
-                  >
-                    <td>
-                      <label className="collection-transfer-checkbox">
-                        <input
-                          type="checkbox"
-                          aria-label={`Move ${row.productName} to Selling Inventory`}
-                          disabled={!canTransferRow(row)}
-                          checked={recommendedTransferItems(row).some(
-                            (item) => transferSelection[item.collectionItemId] > 0,
-                          )}
-                          onChange={(event) =>
-                            handleToggleTransferRow(row, event.target.checked)
-                          }
-                        />
-                        <span className="collection-muted">
-                          {row.excluded ? 'Excluded' : row.opportunityType === 'foil_swap' ? 'Foil' : 'Move'}
-                        </span>
-                      </label>
-                      {recommendedTransferItems(row).map((item) => (
-                        <input
-                          key={item.collectionItemId}
-                          type="number"
-                          min="0"
-                          max={item.quantity}
-                          className="collection-transfer-qty"
-                          aria-label={`Move quantity for ${row.productName}`}
-                          value={transferSelection[item.collectionItemId] ?? item.quantity}
-                          onChange={(event) =>
-                            handleTransferItemQuantity(
-                              item.collectionItemId,
-                              Number(event.target.value),
-                            )
-                          }
-                        />
-                      ))}
-                    </td>
-                    <td className="card-name">
-                      <div>{row.productName}</div>
-                      {row.title && <span className="collection-muted">{row.title}</span>}
-                    </td>
-                    <td>
-                      <div>{row.setCode ?? row.setName ?? '-'}</div>
-                      <span className="collection-muted">
-                        {row.collectorNumber ?? row.normalizedNumber ?? '-'}
-                      </span>
-                    </td>
-                    <td>
-                      <label className="sr-only" htmlFor={`kind-${row.catalogCardId}`}>
-                        Card kind for {row.productName}
-                      </label>
-                      <select
-                        id={`kind-${row.catalogCardId}`}
-                        className="shipment-select collection-kind-select"
-                        value={row.kind}
-                        disabled={isUpdating}
-                        onChange={(event) =>
-                          handleKindChange(row, event.target.value as CardKind)
-                        }
-                      >
-                        {CARD_KIND_OPTIONS.map((kind) => (
-                          <option key={kind} value={kind}>
-                            {formatKind(kind)}
-                          </option>
-                        ))}
-                      </select>
-                      {row.needsClassification && (
-                        <span className="collection-badge badge-warning">
-                          Needs Classification
-                        </span>
-                      )}
-                    </td>
-                    <td>{row.normalQty}</td>
-                    <td>{row.foilQty}</td>
-                    <td>{row.keepTarget ?? '—'}</td>
-                    <td>
-                      <strong>{sellQty}</strong>
-                      {(row.sellNormalQty > 0 || row.sellFoilQty > 0) && (
-                        <span className="collection-muted">
-                          {' '}
-                          ({row.sellNormalQty} normal / {row.sellFoilQty} foil)
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span>{recommendationLabel(row)}</span>
-                      {row.opportunityType === 'foil_swap' && (
-                        <span className="collection-badge badge-success">Foil swap</span>
-                      )}
-                      {row.excluded && (
-                        <span className="collection-badge badge-muted">Token/Rune excluded</span>
-                      )}
-                      {row.reasons.length > 0 && (
-                        <div className="collection-muted">{row.reasons.join('; ')}</div>
-                      )}
-                    </td>
-                    <td className="actions">
-                      <div
-                        className="action-menu-container"
-                        ref={openActionMenuId === row.catalogCardId ? actionMenuRef : null}
-                      >
-                        <button
-                          type="button"
-                          className="action-menu-trigger"
-                          aria-label={`Actions for ${row.productName}`}
-                          aria-haspopup="menu"
-                          aria-expanded={openActionMenuId === row.catalogCardId}
-                          onClick={() =>
-                            setOpenActionMenuId((current) =>
-                              current === row.catalogCardId ? null : row.catalogCardId,
-                            )
-                          }
-                        >
-                          …
-                        </button>
-                        {openActionMenuId === row.catalogCardId && (
-                          <div className="action-menu" role="menu">
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setOpenActionMenuId(null);
-                                if (collectionRowSourceItems(row).length === 0) {
-                                  setError(
-                                    'Collection item details are unavailable. Refresh and try again.',
-                                  );
-                                  return;
-                                }
-                                setRowActionSuccess(null);
-                                setAdjustingRow(row);
-                              }}
-                            >
-                              Adjust count
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="danger-menu-item"
-                              onClick={() => {
-                                setOpenActionMenuId(null);
-                                if (collectionRowSourceItems(row).length === 0) {
-                                  setError(
-                                    'Collection item details are unavailable. Refresh and try again.',
-                                  );
-                                  return;
-                                }
-                                setRowActionSuccess(null);
-                                setDeletingRow(row);
-                              }}
-                            >
-                              Delete row
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-          <Pagination
-            currentPage={activeCollectionPage}
-            totalItems={sortedRows.length}
-            itemsPerPage={COLLECTION_ITEMS_PER_PAGE}
-            onPageChange={handleCollectionPageChange}
-          />
-        </>
-      )}
+      ) : null}
 
       {adjustingRow && (
         <CollectionRowAdjustModal

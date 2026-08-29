@@ -113,6 +113,55 @@ describe('ExpenseTable', () => {
     expect(onDelete).toHaveBeenCalledWith(mockExpenses[1]);
   });
 
+  it('uses detail-complete expense cards instead of a horizontal table on phones', async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 640,
+      writable: true,
+    });
+
+    try {
+      const user = userEvent.setup();
+      const { container } = render(
+        <ExpenseTable
+          expenses={mockExpenses}
+          total={2}
+          page={1}
+          limit={50}
+          onPageChange={onPageChange}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />,
+      );
+
+      expect(container.querySelector('table')).toBeNull();
+      expect(screen.getByText('Shipping')).toBeTruthy();
+      expect(screen.getByText('USPS postage')).toBeTruthy();
+      expect(screen.getByText('$4.99')).toBeTruthy();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Expand Shipping expense details' }),
+      );
+      expect(screen.getByText('$4.99 / order')).toBeTruthy();
+      expect(screen.getByText('Manual')).toBeTruthy();
+      expect(screen.getByText('ORD-1')).toBeTruthy();
+
+      await user.click(screen.getAllByRole('button', { name: 'Edit expense' })[0]);
+      await user.click(
+        screen.getAllByRole('button', { name: 'Delete expense' })[1],
+      );
+      expect(onEdit).toHaveBeenCalledWith(mockExpenses[0]);
+      expect(onDelete).toHaveBeenCalledWith(mockExpenses[1]);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: originalWidth,
+        writable: true,
+      });
+    }
+  });
+
   it('supports pagination callbacks', async () => {
     const user = userEvent.setup();
 

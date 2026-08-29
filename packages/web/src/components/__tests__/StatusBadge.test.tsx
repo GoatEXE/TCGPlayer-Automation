@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import { StatusBadge } from '../StatusBadge';
 import type { Card } from '../../api/types';
 
@@ -6,47 +8,32 @@ describe('StatusBadge', () => {
   const testCases: Array<{
     status: Card['status'];
     label: string;
-    color: string;
   }> = [
-    { status: 'pending', label: 'Pending', color: '#6b7280' },
-    { status: 'matched', label: 'Ready to List', color: '#8b5cf6' },
-    { status: 'listed', label: 'Listed', color: '#10b981' },
-    { status: 'gifted', label: 'Gifted', color: '#64748b' },
-    { status: 'needs_attention', label: 'Needs Attention', color: '#f59e0b' },
-    { status: 'error', label: 'Error', color: '#ef4444' },
-    { status: 'sold', label: 'Sold', color: '#6366f1' },
+    { status: 'pending', label: 'Pending' },
+    { status: 'matched', label: 'Ready to List' },
+    { status: 'listed', label: 'Listed' },
+    { status: 'gifted', label: 'Gifted' },
+    { status: 'needs_attention', label: 'Needs Attention' },
+    { status: 'error', label: 'Error' },
+    { status: 'sold', label: 'Sold' },
   ];
 
-  testCases.forEach(({ status, label, color }) => {
-    it(`renders ${status} status with correct label`, () => {
-      const component = StatusBadge({ status });
-      expect(component.props.children).toBe(label);
-    });
+  testCases.forEach(({ status, label }) => {
+    it(`renders ${status} with an Industry status token`, () => {
+      render(<StatusBadge status={status} />);
 
-    it(`renders ${status} status with correct color`, () => {
-      const component = StatusBadge({ status });
-      expect(component.props.style.backgroundColor).toBe(color);
-    });
-
-    it(`renders ${status} status with white text`, () => {
-      const component = StatusBadge({ status });
-      expect(component.props.style.color).toBe('white');
+      const badge = screen.getByText(label);
+      expect(badge).toHaveClass('inventory-status-badge');
+      expect(badge).toHaveClass(`inventory-status-badge--${status}`);
+      expect(badge).toHaveAttribute('data-status', status);
     });
   });
 
-  it('applies correct styling properties', () => {
-    const component = StatusBadge({ status: 'listed' });
-    const style = component.props.style;
+  it('falls back to the Pending label for an unknown runtime status', () => {
+    render(<StatusBadge status={'unknown' as Card['status']} />);
 
-    expect(style.display).toBe('inline-block');
-    expect(style.borderRadius).toBe('9999px');
-    expect(style.fontSize).toBe('0.75rem');
-    expect(style.fontWeight).toBe('600');
-    expect(style.textTransform).toBe('uppercase');
-  });
-
-  it('renders as a span element', () => {
-    const component = StatusBadge({ status: 'listed' });
-    expect(component.type).toBe('span');
+    expect(screen.getByText('Pending')).toHaveClass(
+      'inventory-status-badge--unknown',
+    );
   });
 });

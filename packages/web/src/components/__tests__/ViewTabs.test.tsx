@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom/vitest';
 import { ViewTabs } from '../ViewTabs';
 
 describe('ViewTabs', () => {
@@ -71,5 +72,61 @@ describe('ViewTabs', () => {
 
     await user.click(screen.getByRole('tab', { name: /performance/i }));
     expect(onChangeView).toHaveBeenCalledWith('performance');
+  });
+
+  it('uses icons and moves through the view tabs with keyboard arrows', async () => {
+    const user = userEvent.setup();
+    onChangeView.mockClear();
+    render(<ViewTabs activeView="inventory" onChangeView={onChangeView} />);
+
+    const inventory = screen.getByRole('tab', { name: /inventory/i });
+    expect(inventory.querySelector('svg')).toBeTruthy();
+    inventory.focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.getByRole('tab', { name: /collection/i })).toHaveFocus();
+    expect(onChangeView).toHaveBeenCalledWith('collection');
+  });
+
+  it('uses the container-responsive phone mode below 760px while tablet and desktop remain inline', async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1024,
+      writable: true,
+    });
+
+    try {
+      render(<ViewTabs activeView="inventory" onChangeView={onChangeView} />);
+      const tabList = screen.getByRole('tablist');
+      expect(tabList).toHaveAttribute('data-layout', 'desktop');
+
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: 760,
+        writable: true,
+      });
+      window.dispatchEvent(new Event('resize'));
+      await waitFor(() => {
+        expect(tabList).toHaveAttribute('data-layout', 'desktop');
+      });
+
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: 375,
+        writable: true,
+      });
+      window.dispatchEvent(new Event('resize'));
+      await waitFor(() => {
+        expect(tabList).toHaveAttribute('data-layout', 'phone');
+      });
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: originalWidth,
+        writable: true,
+      });
+      window.dispatchEvent(new Event('resize'));
+    }
   });
 });

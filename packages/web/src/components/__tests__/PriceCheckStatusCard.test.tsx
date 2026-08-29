@@ -20,6 +20,7 @@ const mockStatus: PriceCheckStatus = {
     drifted: 5,
     errors: [],
   },
+  latestPriceCheckAt: '2026-03-31T10:01:00.000Z',
 };
 
 describe('PriceCheckStatusCard', () => {

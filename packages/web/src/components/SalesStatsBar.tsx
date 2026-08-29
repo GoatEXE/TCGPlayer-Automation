@@ -1,4 +1,11 @@
+import {
+  ChartNoAxesCombined,
+  CircleDollarSign,
+  ListChecks,
+  RadioTower,
+} from 'lucide-react';
 import type { SalesStats } from '../api/types';
+import { BlueprintPanel } from '../ui';
 
 interface SalesStatsBarProps {
   stats: SalesStats | null;
@@ -12,9 +19,9 @@ function formatCents(cents: number): string {
 export function SalesStatsBar({ stats, loading }: SalesStatsBarProps) {
   if (loading) {
     return (
-      <div className="stats-bar">
-        <span>Loading stats...</span>
-      </div>
+      <BlueprintPanel className="stats-bar commerce-sales-metrics">
+        <span className="commerce-metric-loading">Loading stats...</span>
+      </BlueprintPanel>
     );
   }
 
@@ -22,23 +29,46 @@ export function SalesStatsBar({ stats, loading }: SalesStatsBarProps) {
     return null;
   }
 
+  const metrics = [
+    {
+      icon: <ListChecks size={19} strokeWidth={1.6} aria-hidden="true" />,
+      label: 'total listed',
+      value: stats.totalListedCount,
+    },
+    {
+      icon: (
+        <CircleDollarSign size={19} strokeWidth={1.6} aria-hidden="true" />
+      ),
+      label: 'revenue',
+      value: formatCents(stats.totalRevenueCents),
+    },
+    {
+      icon: (
+        <ChartNoAxesCombined size={19} strokeWidth={1.6} aria-hidden="true" />
+      ),
+      label: 'avg sale',
+      value: formatCents(stats.averageSaleCents),
+    },
+    {
+      icon: <RadioTower size={19} strokeWidth={1.6} aria-hidden="true" />,
+      label: 'active listings',
+      value: stats.activeListingCount,
+    },
+  ];
+
   return (
-    <div className="stats-bar">
-      <span className="stat-item stat-listed">
-        <strong>{stats.totalListedCount}</strong> total listed
-      </span>
-      <span className="stat-divider">·</span>
-      <span className="stat-item stat-listed">
-        <strong>{formatCents(stats.totalRevenueCents)}</strong> revenue
-      </span>
-      <span className="stat-divider">·</span>
-      <span className="stat-item">
-        <strong>{formatCents(stats.averageSaleCents)}</strong> avg sale
-      </span>
-      <span className="stat-divider">·</span>
-      <span className="stat-item stat-gift">
-        <strong>{stats.activeListingCount}</strong> active listings
-      </span>
-    </div>
+    <BlueprintPanel className="stats-bar commerce-sales-metrics">
+      {metrics.map((metric) => (
+        <span key={metric.label} className="stat-item commerce-sales-metric">
+          <span className="commerce-sales-metric__icon">{metric.icon}</span>
+          <span>
+            <strong data-numeric>{metric.value}</strong>
+            <span className="commerce-sales-metric__label">
+              {metric.label}
+            </span>
+          </span>
+        </span>
+      ))}
+    </BlueprintPanel>
   );
 }

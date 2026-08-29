@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
@@ -118,8 +118,8 @@ describe('CardTable review + confirm flow', () => {
   });
 });
 
-describe('CardTable Last Checked column', () => {
-  it('renders Last Checked column header', () => {
+describe('CardTable desktop time columns', () => {
+  it('does not render Last Checked or Updated headers on desktop', () => {
     render(
       <CardTable
         cards={[makeCard()]}
@@ -131,47 +131,12 @@ describe('CardTable Last Checked column', () => {
       />,
     );
 
-    expect(screen.getByText('Last Checked')).toBeInTheDocument();
-  });
-
-  it('shows dash when lastCheckedAt is null', () => {
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, lastCheckedAt: null })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
-      />,
-    );
-
-    // The Last Checked cell should contain a dash
-    const rows = screen.getAllByRole('row');
-    // row[0] is thead, row[1] is the data row
-    const cells = rows[1].querySelectorAll('td');
-    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, rec'd, listing, floor, lastChecked, updated, actions
-    const lastCheckedCell = cells[11];
-    expect(lastCheckedCell.textContent).toBe('—');
-  });
-
-  it('shows relative time when lastCheckedAt has a value', () => {
-    const recentDate = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(); // 3h ago
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, lastCheckedAt: recentDate })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const lastCheckedCell = cells[11];
-    expect(lastCheckedCell.textContent).toBe('3h ago');
+    expect(
+      screen.queryByRole('columnheader', { name: /^Last Checked$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: /^Updated$/i }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -701,7 +666,7 @@ describe('CardTable pricing review', () => {
 
     const dialog = screen.getByRole('dialog', { name: /pricing review/i });
     expect(dialog).toHaveTextContent('First Group');
-    expect(within(dialog).getAllByText(/^✓ Updated$/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/^Updated$/i).length).toBeGreaterThan(0);
   });
 
   it('does not mark skipped rows as Updated when navigating back', async () => {
@@ -729,7 +694,7 @@ describe('CardTable pricing review', () => {
 
     dialog = screen.getByRole('dialog', { name: /pricing review/i });
     expect(dialog).toHaveTextContent('Skipped Group');
-    expect(within(dialog).queryByText(/^✓ Updated$/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
 
   it('saves every selected valid row in a grouped review step', async () => {
@@ -850,7 +815,7 @@ describe('CardTable pricing review', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Update failed');
     const dialog = screen.getByRole('dialog', { name: /pricing review/i });
     expect(dialog).toHaveTextContent('Punch First');
-    expect(within(dialog).queryByText(/^✓ Updated$/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
 
   it('disables unavailable actions when Rec’d price or Product ID is missing', async () => {
@@ -1712,6 +1677,152 @@ describe('CardTable Record Sale button', () => {
         }),
       );
     });
+  });
+});
+
+describe('CardTable phone inventory rows', () => {
+  let innerWidthDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    innerWidthDescriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 640,
+      writable: true,
+    });
+    vi.stubGlobal('ResizeObserver', undefined);
+  });
+
+  afterEach(() => {
+    if (innerWidthDescriptor) {
+      Object.defineProperty(window, 'innerWidth', innerWidthDescriptor);
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it('uses collapsed touch rows instead of the inventory table and exposes data and actions on expansion', async () => {
+    const user = userEvent.setup();
+    const onSortChange = vi.fn();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            productName: 'Mobile Card',
+            status: 'listed',
+            condition: 'Near Mint Foil',
+            quantity: 3,
+            marketPrice: '2.50',
+            listingPrice: '2.45',
+            tcgProductId: 685490,
+            tcgplayerId: 12345,
+            photoUrl: 'https://example.com/mobile-card.jpg',
+            lastCheckedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+        onSortChange={onSortChange}
+        sortField="updatedAt"
+        sortDirection="desc"
+      />,
+    );
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    const list = screen.getByTestId('inventory-mobile-list');
+    expect(within(list).getByText('Mobile Card')).toBeInTheDocument();
+    expect(within(list).getByText('Listed')).toBeInTheDocument();
+    expect(within(list).getByText('Near Mint Foil')).toBeInTheDocument();
+    expect(within(list).getByText('Qty 3')).toBeInTheDocument();
+    expect(within(list).getByText('$2.45')).toBeInTheDocument();
+    expect(within(list).getByText('$2.50')).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: /view photo for mobile card/i })).toBeInTheDocument();
+    expect(within(list).queryByText('Origins')).not.toBeInTheDocument();
+
+    await user.selectOptions(
+      within(list).getByLabelText(/sort inventory/i),
+      'productName:asc',
+    );
+    expect(onSortChange).toHaveBeenCalledWith('productName', 'asc');
+
+    await user.click(
+      within(list).getByRole('button', { name: /show details for mobile card/i }),
+    );
+
+    expect(within(list).getByText('Origins')).toBeInTheDocument();
+    expect(within(list).getByText('12345')).toBeInTheDocument();
+    expect(within(list).getByText('685490')).toBeInTheDocument();
+    expect(within(list).getByText("Rec’d")).toBeInTheDocument();
+    expect(within(list).getByText('Last checked')).toBeInTheDocument();
+    expect(within(list).getByText('1h ago')).toBeInTheDocument();
+    expect(within(list).getByText('Updated')).toBeInTheDocument();
+    expect(within(list).getByText('2h ago')).toBeInTheDocument();
+
+    await user.click(
+      within(list).getByRole('button', { name: /actions for mobile card/i }),
+    );
+    expect(screen.getByRole('menuitem', { name: /record sale/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /remove from listing/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /view price history/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /open in tcg/i })).toBeInTheDocument();
+  });
+
+  it('retains selection, listing edits, and global Needs Attention review in phone mode', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+    const onLoadNeedsAttentionReviewCards = vi.fn().mockResolvedValue([
+      makeCard({
+        id: 2,
+        productName: 'Off-page Attention Card',
+        status: 'needs_attention',
+        marketPrice: '4.00',
+      }),
+    ]);
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            productName: 'Phone Listed Card',
+            status: 'listed',
+            listingPrice: '1.50',
+          }),
+        ]}
+        needsAttentionCount={1}
+        onLoadNeedsAttentionReviewCards={onLoadNeedsAttentionReviewCards}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+        enableSellFlow
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /select phone listed card/i }));
+    expect(screen.getByRole('button', { name: /attach 1 to order/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '$1.50' }));
+    const listingInput = screen.getByRole('spinbutton', {
+      name: /listing price for phone listed card/i,
+    });
+    await user.clear(listingInput);
+    await user.type(listingInput, '2.00');
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2 });
+    });
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    const dialog = await screen.findByRole('dialog', { name: /pricing review/i });
+    expect(onLoadNeedsAttentionReviewCards).toHaveBeenCalledOnce();
+    expect(dialog).toHaveTextContent('Off-page Attention Card');
   });
 });
 

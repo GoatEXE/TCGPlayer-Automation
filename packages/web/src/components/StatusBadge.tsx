@@ -5,13 +5,13 @@ interface StatusBadgeProps {
 }
 
 const STATUS_CONFIG = {
-  pending: { label: 'Pending', color: '#6b7280' },
-  matched: { label: 'Ready to List', color: '#8b5cf6' },
-  listed: { label: 'Listed', color: '#10b981' },
-  gifted: { label: 'Gifted', color: '#64748b' },
-  needs_attention: { label: 'Needs Attention', color: '#f59e0b' },
-  sold: { label: 'Sold', color: '#6366f1' },
-  error: { label: 'Error', color: '#ef4444' },
+  pending: { label: 'Pending' },
+  matched: { label: 'Ready to List' },
+  listed: { label: 'Listed' },
+  gifted: { label: 'Gifted' },
+  needs_attention: { label: 'Needs Attention' },
+  sold: { label: 'Sold' },
+  error: { label: 'Error' },
 } as const;
 
 export function StatusBadge({ status }: StatusBadgeProps) {
@@ -19,17 +19,8 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 
   return (
     <span
-      style={{
-        display: 'inline-block',
-        padding: '0.25rem 0.75rem',
-        borderRadius: '9999px',
-        fontSize: '0.75rem',
-        fontWeight: '600',
-        color: 'white',
-        backgroundColor: config.color,
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-      }}
+      className={`inventory-status-badge inventory-status-badge--${status}`}
+      data-status={status}
     >
       {config.label}
     </span>

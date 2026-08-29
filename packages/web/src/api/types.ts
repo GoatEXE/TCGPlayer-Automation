@@ -98,6 +98,8 @@ export interface PriceCheckStatus {
   listedPriceAttentionMinDiffCents: number;
   running: boolean;
   lastRun: PriceCheckLastRun | null;
+  /** Latest persisted price_history.checkedAt across all inventory cards. */
+  latestPriceCheckAt: string | null;
 }
 
 export interface PriceHistoryEntry {

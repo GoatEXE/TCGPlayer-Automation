@@ -1,0 +1,869 @@
+/* Sales and performance surfaces: dense, square Industry workspaces. */
+.commerce-sales,
+.commerce-sales-metrics,
+.commerce-pipeline,
+.commerce-performance-summary,
+.commerce-expense-settings,
+.commerce-expense-table {
+  --commerce-ground: var(--color-bg);
+  --commerce-surface: var(--color-surface);
+  --commerce-ink: var(--color-text);
+  --commerce-muted: var(--color-text-muted);
+  --commerce-accent: var(--color-accent);
+  --commerce-divider: var(--color-divider);
+  --color-primary: var(--commerce-accent);
+  --color-primary-hover: var(--color-accent-600);
+  --color-border: var(--commerce-divider);
+  --radius: 0;
+}
+
+.commerce-sales-panel,
+.commerce-expense-table-panel {
+  gap: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.commerce-sales-table,
+.commerce-expenses-table {
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.commerce-sales-table thead,
+.commerce-expenses-table thead {
+  background: color-mix(in srgb, var(--commerce-ink) 4%, transparent);
+  border-bottom: 1px solid var(--commerce-divider);
+}
+
+.commerce-sales-table th,
+.commerce-expenses-table th {
+  padding: var(--space-3) var(--space-4);
+  color: var(--commerce-muted);
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.commerce-sales-table td,
+.commerce-expenses-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--commerce-divider);
+}
+
+.commerce-sales-table tbody tr,
+.commerce-expenses-table tbody tr {
+  border-bottom: 0;
+}
+
+.commerce-sales-table tbody tr:hover,
+.commerce-expenses-table tbody tr:hover {
+  background: color-mix(in srgb, var(--commerce-accent) 5%, transparent);
+}
+
+.commerce-sales-table .order-summary-row {
+  cursor: default;
+}
+
+.commerce-sales-table .order-summary-row:hover,
+.commerce-sales-table .order-summary-row:focus-within {
+  background: color-mix(in srgb, var(--commerce-accent) 6%, transparent);
+}
+
+.commerce-sales-table .order-expand-button {
+  width: 1.875rem;
+  height: 1.875rem;
+  margin-right: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--commerce-accent);
+}
+
+.commerce-sales-table .order-expand-button:hover {
+  border-color: var(--commerce-divider);
+  background: transparent;
+}
+
+.commerce-sales-table .order-expand-chevron {
+  display: inline-flex;
+}
+
+.commerce-sales-table .history-row {
+  background: color-mix(in srgb, var(--commerce-ink) 3%, transparent);
+}
+
+.commerce-sales-table .order-details-inner {
+  padding: var(--space-4) var(--space-6);
+}
+
+.commerce-sales-table .order-line-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.commerce-sales-table .order-line-items th,
+.commerce-sales-table .order-line-items td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--commerce-divider);
+  text-align: left;
+}
+
+.commerce-sales-table .order-line-items th {
+  color: var(--commerce-muted);
+  font-family: var(--font-heading);
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.commerce-sales-table .order-line-items th:nth-last-child(-n + 2),
+.commerce-sales-table .order-line-items td:nth-last-child(-n + 2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.commerce-sales .order-status-select {
+  min-height: 2rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--commerce-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--commerce-ink);
+  font-size: 0.75rem;
+}
+
+.commerce-sales .order-status-select:focus {
+  border-color: var(--commerce-accent);
+  box-shadow: none;
+}
+
+.commerce-sales .sales-status,
+.commerce-expense-table .sales-status {
+  border: 1px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-heading);
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+}
+
+.commerce-sales .action-menu-container {
+  display: inline-flex;
+}
+
+.commerce-icon-button {
+  min-width: 2.125rem;
+  min-height: 2.125rem;
+  padding: 0;
+}
+
+.commerce-sales .action-menu-trigger {
+  min-width: 2.125rem;
+  min-height: 2.125rem;
+  padding: 0;
+  border-color: var(--commerce-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--commerce-ink);
+  font-size: inherit;
+}
+
+.commerce-sales .action-menu {
+  min-width: 13.25rem;
+  padding: var(--space-2);
+  border-radius: 0;
+  border-color: var(--commerce-divider);
+  background: var(--commerce-ground);
+  box-shadow: var(--shadow-md);
+}
+
+.commerce-sales .action-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.125rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0;
+  font-family: var(--font-heading);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+}
+
+.commerce-action-menu-icon {
+  flex: none;
+  color: var(--commerce-accent);
+}
+
+.stats-bar.commerce-sales-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.commerce-sales-metric {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
+  border-right: 1px solid var(--commerce-divider);
+}
+
+.commerce-sales-metric:last-child {
+  border-right: 0;
+}
+
+.commerce-sales-metric__icon {
+  color: var(--commerce-accent);
+}
+
+.commerce-sales-metric strong,
+.commerce-performance-metric dd {
+  display: block;
+  color: var(--commerce-ink);
+  font-family: var(--font-heading);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.commerce-sales-metric__label {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--commerce-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.commerce-metric-loading {
+  min-height: 4.5rem;
+  padding: var(--space-4);
+  color: var(--commerce-muted);
+  font-size: 0.875rem;
+}
+
+.commerce-pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: 0;
+  border: 0;
+}
+
+.commerce-pipeline .pipeline-card {
+  position: relative;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 7.25rem;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border-color: var(--commerce-divider);
+  background: transparent;
+  color: var(--commerce-ink);
+  text-align: left;
+}
+
+.commerce-pipeline .pipeline-card:hover:not(:disabled) {
+  border-color: var(--commerce-accent);
+  background: color-mix(in srgb, var(--commerce-accent) 7%, transparent);
+}
+
+.commerce-pipeline .pipeline-card-active {
+  border-color: var(--commerce-accent);
+  background: color-mix(in srgb, var(--commerce-accent) 10%, transparent);
+  box-shadow: inset 0 -2px 0 var(--commerce-accent);
+}
+
+.commerce-pipeline .industry-button__icon {
+  color: var(--commerce-accent);
+}
+
+.commerce-pipeline .pipeline-count {
+  margin-top: auto;
+  color: var(--commerce-ink);
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.commerce-pipeline .pipeline-label {
+  order: -1;
+  color: var(--commerce-muted);
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  letter-spacing: 0.055em;
+}
+
+.commerce-pipeline .pipeline-total {
+  color: var(--commerce-muted);
+  font-size: 0.75rem;
+}
+
+.commerce-performance-card-header,
+.commerce-expense-settings-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--commerce-divider);
+  color: var(--commerce-ink);
+}
+
+.commerce-performance-card-header h3,
+.commerce-expense-settings-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  letter-spacing: 0.015em;
+}
+
+.commerce-performance-card-header svg,
+.commerce-expense-settings-header svg {
+  color: var(--commerce-accent);
+}
+
+.commerce-performance-summary .commerce-performance-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--commerce-divider);
+  border: 1px solid var(--commerce-divider);
+}
+
+.commerce-performance-metric {
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--commerce-ground);
+}
+
+.commerce-performance-metric dt {
+  color: var(--commerce-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.commerce-performance-metric dd {
+  margin: var(--space-2) 0 0;
+  font-size: 1.25rem;
+}
+
+.commerce-performance-summary .commerce-performance-detail-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--commerce-divider);
+  border-bottom: 1px solid var(--commerce-divider);
+}
+
+.commerce-performance-detail-strip .stat-item {
+  display: block;
+  padding: var(--space-3);
+  border-right: 1px solid var(--commerce-divider);
+  color: var(--commerce-muted);
+  font-size: 0.75rem;
+}
+
+.commerce-performance-detail-strip .stat-item:last-child {
+  border-right: 0;
+}
+
+.commerce-performance-detail-strip strong {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--commerce-ink);
+  font-family: var(--font-heading);
+  font-size: 1rem;
+}
+
+.commerce-breakdown-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.commerce-performance-summary .performance-category-list {
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--commerce-divider);
+}
+
+.commerce-performance-summary .performance-category-item {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--commerce-divider);
+}
+
+.commerce-performance-summary .performance-category-item strong {
+  font-family: var(--font-heading);
+}
+
+.commerce-performance-summary .price-check-no-runs {
+  color: var(--commerce-muted);
+  font-size: 0.75rem;
+}
+
+.commerce-expense-settings-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.commerce-expense-settings-switches {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.commerce-expense-settings-switches legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.commerce-checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--commerce-divider);
+  color: var(--commerce-ink);
+  font-size: 0.8125rem;
+}
+
+.commerce-checkbox-field input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--commerce-accent);
+}
+
+.commerce-expense-settings-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.commerce-expense-settings-field label {
+  color: var(--commerce-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.035em;
+}
+
+.commerce-expense-settings-field input,
+.commerce-expense-dialog select,
+.commerce-expense-dialog textarea {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--commerce-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--commerce-ink);
+}
+
+.commerce-expense-settings-field input:focus-visible,
+.commerce-expense-dialog select:focus-visible,
+.commerce-expense-dialog textarea:focus-visible {
+  border-color: var(--commerce-accent);
+  outline: 2px solid var(--commerce-accent);
+  outline-offset: 1px;
+}
+
+.commerce-expense-settings-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--commerce-divider);
+}
+
+.commerce-expense-settings-actions .industry-button {
+  min-width: 10.5rem;
+}
+
+.commerce-expense-table-panel {
+  margin-bottom: var(--space-5);
+}
+
+.commerce-expense-table .expense-source-badge {
+  border-color: var(--commerce-divider);
+  color: var(--commerce-ink);
+}
+
+.commerce-expense-table .expense-source-manual {
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
+.commerce-expense-table .expense-source-sale_auto_estimate {
+  background: color-mix(in srgb, var(--commerce-accent) 12%, transparent);
+}
+
+.commerce-expense-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.commerce-expense-actions .industry-button {
+  width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+}
+
+.commerce-expense-actions .commerce-delete-button {
+  color: var(--color-error);
+}
+
+.commerce-mobile-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.commerce-mobile-order,
+.commerce-mobile-expense {
+  position: relative;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--commerce-divider);
+  background: var(--commerce-ground);
+}
+
+.commerce-mobile-order-header,
+.commerce-mobile-expense-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.commerce-mobile-order-identity,
+.commerce-mobile-expense-identity {
+  min-width: 0;
+}
+
+.commerce-mobile-order-label,
+.commerce-mobile-expense-category {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.commerce-mobile-order-buyer,
+.commerce-mobile-expense-date {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--commerce-muted);
+  font-size: 0.75rem;
+}
+
+.commerce-mobile-total {
+  color: var(--commerce-ink);
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.commerce-mobile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.commerce-mobile-grid div {
+  min-width: 0;
+}
+
+.commerce-mobile-grid dt {
+  color: var(--commerce-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.commerce-mobile-grid dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+  color: var(--commerce-ink);
+  font-size: 0.8125rem;
+}
+
+.commerce-mobile-order-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--commerce-divider);
+}
+
+.commerce-mobile-order-expand {
+  min-height: 2.125rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--commerce-accent);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.commerce-mobile-order-expand svg {
+  margin-left: var(--space-1);
+  vertical-align: -0.15em;
+  transition: transform 160ms ease;
+}
+
+.commerce-mobile-order-expand[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.commerce-mobile-details {
+  overflow: hidden;
+  border-top: 1px solid var(--commerce-divider);
+}
+
+.commerce-mobile-details-content {
+  padding-top: var(--space-3);
+}
+
+.commerce-mobile-line-items {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.commerce-mobile-line-item {
+  padding: var(--space-3);
+  border: 1px solid var(--commerce-divider);
+  background: color-mix(in srgb, var(--commerce-ink) 3%, transparent);
+}
+
+.commerce-mobile-line-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.commerce-mobile-line-heading strong {
+  font-size: 0.875rem;
+}
+
+.commerce-line-type {
+  flex: none;
+  padding: 0.1rem var(--space-2);
+  border: 1px solid var(--commerce-divider);
+  color: var(--commerce-muted);
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.commerce-mobile-line-meta {
+  margin: var(--space-2) 0 0;
+  color: var(--commerce-muted);
+  font-size: 0.75rem;
+}
+
+.commerce-mobile-line-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.commerce-mobile-line-values dt {
+  color: var(--commerce-muted);
+  font-size: 0.625rem;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.commerce-mobile-line-values dd {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.commerce-mobile-expense-description {
+  margin: 0;
+  color: var(--commerce-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.commerce-mobile-expense .commerce-expense-actions {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--commerce-divider);
+}
+
+.commerce-expense-dialog .industry-dialog__body {
+  overflow: visible;
+}
+
+.commerce-expense-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.commerce-expense-form .industry-field {
+  min-width: 0;
+}
+
+.commerce-expense-form .industry-field__label,
+.commerce-expense-form .commerce-dialog-field > label {
+  color: var(--commerce-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.commerce-dialog-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.commerce-dialog-field--wide,
+.commerce-expense-estimate,
+.commerce-expense-unit-cost,
+.commerce-expense-form-error {
+  grid-column: 1 / -1;
+}
+
+.commerce-dialog-select-frame {
+  background: var(--commerce-surface);
+}
+
+.commerce-expense-dialog textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.commerce-expense-estimate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--commerce-divider);
+  font-size: 0.8125rem;
+}
+
+.commerce-expense-estimate input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--commerce-accent);
+}
+
+.commerce-expense-unit-cost {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-left: 2px solid var(--commerce-accent);
+  background: color-mix(in srgb, var(--commerce-accent) 8%, transparent);
+  font-size: 0.8125rem;
+}
+
+.commerce-expense-form-error {
+  margin: 0;
+}
+
+.commerce-dialog-saving .industry-dialog__close {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+@media (max-width: 759px) {
+  .stats-bar.commerce-sales-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .commerce-sales-metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .commerce-sales-metric:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--commerce-divider);
+  }
+
+  .commerce-pipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .commerce-pipeline .pipeline-card:last-child {
+    grid-column: span 2;
+  }
+
+  .commerce-performance-summary .commerce-performance-metrics,
+  .commerce-performance-summary .commerce-performance-detail-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .commerce-performance-detail-strip .stat-item {
+    border-right: 0;
+    border-bottom: 1px solid var(--commerce-divider);
+  }
+
+  .commerce-performance-detail-strip .stat-item:last-child {
+    border-bottom: 0;
+  }
+
+  .commerce-expense-settings-form,
+  .commerce-expense-settings-switches {
+    grid-template-columns: 1fr;
+  }
+
+  .commerce-expense-settings-actions .industry-button {
+    width: 100%;
+  }
+
+  .commerce-expense-form {
+    grid-template-columns: 1fr;
+  }
+
+  .commerce-dialog-field--wide,
+  .commerce-expense-estimate,
+  .commerce-expense-unit-cost,
+  .commerce-expense-form-error {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commerce-mobile-order-expand svg {
+    transition: none;
+  }
+}

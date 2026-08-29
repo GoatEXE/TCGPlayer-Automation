@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 import type {
   AdjustCollectionRowRequest,
   CollectionSellabilityItemRef,
   CollectionSellabilityRow,
 } from '../api/types';
-import { useModalFocusTrap } from './useModalFocusTrap';
+import { BlueprintButton, BlueprintDialog, BlueprintInput } from '../ui';
 
 export interface CollectionRowSourceItem extends CollectionSellabilityItemRef {
   collectionItemId: number;
@@ -38,20 +40,13 @@ export function CollectionRowAdjustModal({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLFormElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const formId = `collection-row-adjust-${row.catalogCardId}`;
 
   const handleClose = () => {
     if (!saving) onClose();
   };
 
-  useModalFocusTrap({
-    containerRef: dialogRef,
-    initialFocusRef: closeButtonRef,
-    onClose: handleClose,
-  });
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
 
@@ -91,89 +86,65 @@ export function CollectionRowAdjustModal({
   };
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Adjust count for ${row.productName}`}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) handleClose();
-      }}
-    >
-      <form
-        ref={dialogRef}
-        className="modal-content edit-details-modal"
-        noValidate
-        onSubmit={handleSubmit}
-      >
-        <div className="modal-header">
-          <h2 id="collection-row-adjust-title">Adjust count</h2>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="modal-close"
-            onClick={handleClose}
-            aria-label="Close adjust count"
+    <BlueprintDialog
+      open
+      title={`Adjust count for ${row.productName}`}
+      closeLabel="Close adjust count"
+      onClose={handleClose}
+      className="collection-dialog"
+      footer={
+        <>
+          <BlueprintButton variant="secondary" onClick={handleClose} disabled={saving}>
+            Cancel
+          </BlueprintButton>
+          <BlueprintButton
+            variant="primary"
+            type="submit"
+            form={formId}
             disabled={saving}
           >
-            ×
-          </button>
-        </div>
-        <div className="edit-details-body">
-          <p className="edit-details-card-name">{row.productName}</p>
-          <p className="form-help">
-            Normal: {row.normalQty} · Foil: {row.foilQty}. Each source record is
-            saved independently; entering 0 removes that Owned Collection item.
-          </p>
+            {saving ? 'Saving…' : 'Save counts'}
+          </BlueprintButton>
+        </>
+      }
+    >
+      <form id={formId} className="collection-dialog__form" noValidate onSubmit={handleSubmit}>
+        <p className="collection-dialog__card-name">{row.productName}</p>
+        <p className="collection-dialog__help">
+          Normal: {row.normalQty} · Foil: {row.foilQty}. Each source record is
+          saved independently; entering 0 removes that Owned Collection item.
+        </p>
+        <div className="collection-dialog__fields">
           {sourceItems.map((item) => {
             const inputId = `collection-row-count-${item.collectionItemId}`;
             return (
-              <label
+              <BlueprintInput
                 key={item.collectionItemId}
-                className="edit-details-field"
-                htmlFor={inputId}
-              >
-                <span>{sourceItemLabel(item)}</span>
-                <input
-                  id={inputId}
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
-                  value={counts[item.collectionItemId] ?? ''}
-                  onChange={(event) => {
-                    setCounts((current) => ({
-                      ...current,
-                      [item.collectionItemId]: event.target.value,
-                    }));
-                    setError(null);
-                  }}
-                  disabled={saving}
-                />
-              </label>
+                id={inputId}
+                label={sourceItemLabel(item)}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={counts[item.collectionItemId] ?? ''}
+                onChange={(event) => {
+                  setCounts((current) => ({
+                    ...current,
+                    [item.collectionItemId]: event.target.value,
+                  }));
+                  setError(null);
+                }}
+                disabled={saving}
+              />
             );
           })}
-          {error && (
-            <div className="edit-details-error" role="alert">
-              {error}
-            </div>
-          )}
         </div>
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={handleClose}
-            disabled={saving}
-          >
-            Cancel
-          </button>
-          <button type="submit" className="button-primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Save counts'}
-          </button>
-        </div>
+        {error && (
+          <p className="collection-dialog__error" role="alert">
+            {error}
+          </p>
+        )}
       </form>
-    </div>
+    </BlueprintDialog>
   );
 }
 
@@ -190,18 +161,10 @@ export function CollectionRowDeleteModal({
 }: CollectionRowDeleteModalProps) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleClose = () => {
     if (!deleting) onClose();
   };
-
-  useModalFocusTrap({
-    containerRef: dialogRef,
-    initialFocusRef: cancelButtonRef,
-    onClose: handleClose,
-  });
 
   const handleDelete = async () => {
     setError(null);
@@ -218,61 +181,40 @@ export function CollectionRowDeleteModal({
   };
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Delete ${row.productName}`}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) handleClose();
-      }}
-    >
-      <div ref={dialogRef} className="modal-content edit-details-modal">
-        <div className="modal-header">
-          <h2 id="collection-row-delete-title">Delete row</h2>
-          <button
-            type="button"
-            className="modal-close"
-            onClick={handleClose}
-            aria-label="Close delete row"
-            disabled={deleting}
-          >
-            ×
-          </button>
-        </div>
-        <div className="edit-details-body">
-          <p className="edit-details-card-name">{row.productName}</p>
-          <p className="form-help">
-            This removes all Normal and Foil source counts represented by this
-            Owned Collection row. It does not delete catalog data, Selling
-            Inventory, sales, or price history.
-          </p>
-          {error && (
-            <div className="edit-details-error" role="alert">
-              {error}
-            </div>
-          )}
-        </div>
-        <div className="modal-actions">
-          <button
-            ref={cancelButtonRef}
-            type="button"
-            className="button-secondary"
-            onClick={handleClose}
-            disabled={deleting}
-          >
+    <BlueprintDialog
+      open
+      title={`Delete ${row.productName}`}
+      closeLabel="Close delete row"
+      onClose={handleClose}
+      className="collection-dialog"
+      footer={
+        <>
+          <BlueprintButton variant="secondary" onClick={handleClose} disabled={deleting}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="button-danger"
+          </BlueprintButton>
+          <BlueprintButton
+            variant="primary"
             onClick={handleDelete}
             disabled={deleting}
+            icon={<Trash2 aria-hidden="true" strokeWidth={1.5} />}
           >
             {deleting ? 'Deleting…' : 'Delete row'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </BlueprintButton>
+        </>
+      }
+    >
+      <p className="collection-dialog__card-name">{row.productName}</p>
+      <p className="collection-dialog__danger-note">
+        <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.5} />{' '}
+        This removes all Normal and Foil source counts represented by this Owned
+        Collection row. It does not delete catalog data, Selling Inventory, sales,
+        or price history.
+      </p>
+      {error && (
+        <p className="collection-dialog__error" role="alert">
+          {error}
+        </p>
+      )}
+    </BlueprintDialog>
   );
 }

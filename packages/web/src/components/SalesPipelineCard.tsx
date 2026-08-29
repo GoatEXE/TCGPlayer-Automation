@@ -1,4 +1,13 @@
+import {
+  Ban,
+  BadgeCheck,
+  Clock3,
+  PackageCheck,
+  Truck,
+  type LucideIcon,
+} from 'lucide-react';
 import type { OrderStatus, SalesPipelineEntry } from '../api/types';
+import { BlueprintButton } from '../ui';
 
 interface SalesPipelineCardProps {
   pipeline: SalesPipelineEntry[];
@@ -14,6 +23,14 @@ const allStatuses: OrderStatus[] = [
   'cancelled',
 ];
 
+const statusIcons: Record<OrderStatus, LucideIcon> = {
+  pending: Clock3,
+  confirmed: BadgeCheck,
+  shipped: Truck,
+  delivered: PackageCheck,
+  cancelled: Ban,
+};
+
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -23,27 +40,33 @@ export function SalesPipelineCard({
   activeStatus,
   onSelectStatus,
 }: SalesPipelineCardProps) {
-  const dataByStatus = new Map(pipeline.map((e) => [e.status, e]));
+  const dataByStatus = new Map(pipeline.map((entry) => [entry.status, entry]));
 
   return (
-    <div className="pipeline-grid" aria-label="Sales pipeline">
+    <div className="pipeline-grid commerce-pipeline" aria-label="Sales pipeline">
       {allStatuses.map((status) => {
         const entry = dataByStatus.get(status);
         const count = entry?.count ?? 0;
         const totalCents = entry?.totalCents ?? 0;
         const isActive = activeStatus === status;
+        const Icon = statusIcons[status];
 
         return (
-          <button
+          <BlueprintButton
             key={status}
-            type="button"
             className={`pipeline-card pipeline-card-${status}${isActive ? ' pipeline-card-active' : ''}`}
+            icon={<Icon size={18} strokeWidth={1.6} />}
             onClick={() => onSelectStatus?.(status)}
+            aria-pressed={isActive}
           >
-            <span className="pipeline-count">{count}</span>
+            <span className="pipeline-count" data-numeric>
+              {count}
+            </span>
             <span className="pipeline-label">{status}</span>
-            <span className="pipeline-total">{formatCents(totalCents)}</span>
-          </button>
+            <span className="pipeline-total" data-numeric>
+              {formatCents(totalCents)}
+            </span>
+          </BlueprintButton>
         );
       })}
     </div>

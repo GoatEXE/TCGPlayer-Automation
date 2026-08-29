@@ -1,10 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pencil, PlusCircle, Save, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   CreateExpenseRequest,
   Expense,
   ExpenseCategory,
   UpdateExpenseRequest,
 } from '../api/types';
+import {
+  BlueprintButton,
+  BlueprintDialog,
+  BlueprintInput,
+  BlueprintRegistrationMarks,
+} from '../ui';
 
 interface ExpenseFormModalProps {
   expense?: Expense;
@@ -26,10 +33,10 @@ function formatCents(cents: number): string {
   return cents < 0 ? `-${formatted}` : formatted;
 }
 
-/** Convert a Date to `YYYY-MM-DDTHH:mm` for datetime-local input */
-function toDatetimeLocal(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** Convert a Date to `YYYY-MM-DDTHH:mm` for datetime-local input. */
+function toDatetimeLocal(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function ExpenseFormModal({
@@ -51,12 +58,6 @@ export function ExpenseFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const backdropRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    backdropRef.current?.focus();
-  }, []);
-
   useEffect(() => {
     setAmount(expense ? (expense.amountCents / 100).toFixed(2) : '');
     setCategory(expense?.category ?? '');
@@ -65,20 +66,12 @@ export function ExpenseFormModal({
     setQuantity(expense?.quantity?.toString() ?? '');
     setUnit(expense?.unit ?? '');
     setOccurredAt(
-      expense ? toDatetimeLocal(new Date(expense.occurredAt)) : toDatetimeLocal(new Date()),
+      expense
+        ? toDatetimeLocal(new Date(expense.occurredAt))
+        : toDatetimeLocal(new Date()),
     );
     setIsEstimate(expense?.isEstimate ?? false);
   }, [expense]);
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose, saving]);
 
   const computedUnitCost = useMemo(() => {
     const parsedAmount = Number.parseFloat(amount);
@@ -96,14 +89,12 @@ export function ExpenseFormModal({
     return Math.round((parsedAmount * 100) / parsedQuantity);
   }, [amount, quantity]);
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget && !saving) {
-      onClose();
-    }
-  };
+  const requestClose = useCallback(() => {
+    if (!saving) onClose();
+  }, [onClose, saving]);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError(null);
 
     const parsedAmount = Number.parseFloat(amount);
@@ -119,12 +110,12 @@ export function ExpenseFormModal({
 
     let parsedQuantity: number | undefined;
     if (quantity.trim() !== '') {
-      const q = Number.parseInt(quantity, 10);
-      if (!Number.isInteger(q) || q <= 0) {
+      const parsed = Number.parseInt(quantity, 10);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
         setError('Quantity must be a positive integer');
         return;
       }
-      parsedQuantity = q;
+      parsedQuantity = parsed;
     }
 
     setSaving(true);
@@ -142,59 +133,83 @@ export function ExpenseFormModal({
 
     try {
       await onSubmit(payload);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save expense');
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error ? submitError.message : 'Failed to save expense',
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  const title = (
+    <>
+      {isEdit ? (
+        <Pencil size={19} strokeWidth={1.6} aria-hidden="true" />
+      ) : (
+        <PlusCircle size={19} strokeWidth={1.6} aria-hidden="true" />
+      )}{' '}
+      {isEdit ? 'Edit Expense' : 'Create Expense'}
+    </>
+  );
+
   return (
-    <div
-      ref={backdropRef}
-      className="modal-backdrop"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-label={isEdit ? 'Edit expense' : 'Create expense'}
-      tabIndex={-1}
-    >
-      <div className="modal-content">
-        <div className="modal-header">
-          <h2>{isEdit ? '✏️ Edit Expense' : '➕ Create Expense'}</h2>
-          <button
-            className="modal-close"
-            onClick={onClose}
+    <BlueprintDialog
+      open
+      title={title}
+      onClose={requestClose}
+      closeLabel="Close expense form"
+      className={`commerce-expense-dialog${saving ? ' commerce-dialog-saving' : ''}`}
+      footer={
+        <>
+          <BlueprintButton
+            variant="secondary"
+            onClick={requestClose}
             disabled={saving}
-            aria-label="Close"
+            icon={<X size={16} strokeWidth={1.75} />}
           >
-            ✕
-          </button>
-        </div>
+            Cancel
+          </BlueprintButton>
+          <BlueprintButton
+            type="submit"
+            form="expense-form"
+            variant="primary"
+            disabled={saving}
+            icon={<Save size={16} strokeWidth={1.75} />}
+          >
+            {saving ? 'Saving…' : 'Save Expense'}
+          </BlueprintButton>
+        </>
+      }
+    >
+      <form
+        id="expense-form"
+        onSubmit={handleSubmit}
+        className="commerce-expense-form"
+        noValidate
+      >
+        <BlueprintInput
+          id="expense-amount"
+          label="Amount ($)"
+          type="number"
+          min={0.01}
+          step={0.01}
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          disabled={saving}
+          inputMode="decimal"
+        />
 
-        <form onSubmit={handleSubmit} className="sale-form" noValidate>
-          <div className="sale-field">
-            <label htmlFor="expense-amount">Amount ($)</label>
-            <input
-              id="expense-amount"
-              type="number"
-              min={0.01}
-              step={0.01}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              disabled={saving}
-              className="sale-input"
-            />
-          </div>
-
-          <div className="sale-field">
-            <label htmlFor="expense-category">Category</label>
+        <div className="commerce-dialog-field">
+          <label htmlFor="expense-category">Category</label>
+          <div className="industry-blueprint commerce-dialog-select-frame">
             <select
               id="expense-category"
               value={category}
-              onChange={(e) => setCategory(e.target.value as ExpenseCategory | '')}
+              onChange={(event) =>
+                setCategory(event.target.value as ExpenseCategory | '')
+              }
               disabled={saving}
-              className="shipment-select"
             >
               <option value="">— Select Category —</option>
               {categoryOptions.map((option) => (
@@ -203,115 +218,91 @@ export function ExpenseFormModal({
                 </option>
               ))}
             </select>
+            <BlueprintRegistrationMarks />
           </div>
+        </div>
 
-          <div className="sale-field">
-            <label htmlFor="expense-subcategory">Subcategory</label>
-            <input
-              id="expense-subcategory"
-              type="text"
-              value={subcategory}
-              onChange={(e) => setSubcategory(e.target.value)}
-              disabled={saving}
-              className="sale-input"
-              placeholder="Optional"
-            />
-          </div>
+        <BlueprintInput
+          id="expense-subcategory"
+          label="Subcategory"
+          type="text"
+          value={subcategory}
+          onChange={(event) => setSubcategory(event.target.value)}
+          disabled={saving}
+          placeholder="Optional"
+        />
 
-          <div className="sale-field">
-            <label htmlFor="expense-description">Description</label>
+        <div className="commerce-dialog-field commerce-dialog-field--wide">
+          <label htmlFor="expense-description">Description</label>
+          <div className="industry-blueprint commerce-dialog-select-frame">
             <textarea
               id="expense-description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(event) => setDescription(event.target.value)}
               disabled={saving}
-              className="sale-textarea"
               rows={2}
               placeholder="Optional"
             />
+            <BlueprintRegistrationMarks />
           </div>
+        </div>
 
-          <div className="sale-field">
-            <label htmlFor="expense-quantity">Quantity</label>
-            <input
-              id="expense-quantity"
-              type="number"
-              min={1}
-              step={1}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              disabled={saving}
-              className="sale-input"
-              placeholder="Optional"
-            />
+        <BlueprintInput
+          id="expense-quantity"
+          label="Quantity"
+          type="number"
+          min={1}
+          step={1}
+          value={quantity}
+          onChange={(event) => setQuantity(event.target.value)}
+          disabled={saving}
+          placeholder="Optional"
+          inputMode="numeric"
+        />
+
+        <BlueprintInput
+          id="expense-unit"
+          label="Unit"
+          type="text"
+          value={unit}
+          onChange={(event) => setUnit(event.target.value)}
+          disabled={saving}
+          placeholder="Optional"
+        />
+
+        <BlueprintInput
+          id="expense-date"
+          label="Date"
+          type="datetime-local"
+          value={occurredAt}
+          onChange={(event) => setOccurredAt(event.target.value)}
+          disabled={saving}
+        />
+
+        <label className="commerce-expense-estimate" htmlFor="expense-estimate">
+          <input
+            id="expense-estimate"
+            type="checkbox"
+            checked={isEstimate}
+            onChange={(event) => setIsEstimate(event.target.checked)}
+            disabled={saving}
+          />
+          Mark as estimate
+        </label>
+
+        {computedUnitCost !== null && (
+          <div className="commerce-expense-unit-cost">
+            <span>Per-unit cost:</span>
+            <strong data-numeric>{formatCents(computedUnitCost)}</strong>
           </div>
+        )}
 
-          <div className="sale-field">
-            <label htmlFor="expense-unit">Unit</label>
-            <input
-              id="expense-unit"
-              type="text"
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              disabled={saving}
-              className="sale-input"
-              placeholder="Optional"
-            />
-          </div>
-
-          <div className="sale-field">
-            <label htmlFor="expense-date">Date</label>
-            <input
-              id="expense-date"
-              type="datetime-local"
-              value={occurredAt}
-              onChange={(e) => setOccurredAt(e.target.value)}
-              disabled={saving}
-              className="sale-input"
-            />
-          </div>
-
-          <div className="sale-field">
-            <label htmlFor="expense-estimate">
-              <input
-                id="expense-estimate"
-                type="checkbox"
-                checked={isEstimate}
-                onChange={(e) => setIsEstimate(e.target.checked)}
-                disabled={saving}
-              />{' '}
-              Mark as estimate
-            </label>
-          </div>
-
-          {computedUnitCost !== null && (
-            <div className="sale-total">
-              <span>Per-unit cost:</span>
-              <strong>{formatCents(computedUnitCost)}</strong>
-            </div>
-          )}
-
-          {error && (
-            <span className="interval-error" role="alert">
-              {error}
-            </span>
-          )}
-
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={onClose}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button type="submit" className="button-primary" disabled={saving}>
-              {saving ? '⏳ Saving…' : '💾 Save Expense'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {error && (
+          <p className="industry-field__error commerce-expense-form-error" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </BlueprintDialog>
   );
 }

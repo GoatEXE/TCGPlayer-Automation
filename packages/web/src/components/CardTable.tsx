@@ -1,5 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CircleDollarSign,
+  ClipboardList,
+  ExternalLink,
+  History,
+  Image,
+  LoaderCircle,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
 import type { Card, CreateBulkOrderRequest, CreateSaleRequest } from '../api/types';
+import { useContainerResponsiveMode } from '../hooks/useContainerResponsiveMode';
+import '../styles/inventory.css';
 import { StatusBadge } from './StatusBadge';
 import { ReviewListModal } from './ReviewListModal';
 import { PriceHistoryModal } from './PriceHistoryModal';
@@ -29,6 +48,7 @@ interface CardTableProps {
   defaultShippingCollectedCents?: number;
   needsAttentionCount?: number;
   onLoadNeedsAttentionReviewCards?: () => Promise<Card[]>;
+  showNeedsAttentionReviewLauncher?: boolean;
   sortField?: SortField;
   sortDirection?: SortDirection;
   onSortChange?: (field: SortField, direction: SortDirection) => void;
@@ -36,6 +56,39 @@ interface CardTableProps {
 
 export type SortField = keyof Card | null;
 export type SortDirection = 'asc' | 'desc';
+
+export interface CardTableHandle {
+  openNeedsAttentionReview: () => void;
+}
+
+const MOBILE_SORT_OPTIONS: Array<{
+  field: Exclude<SortField, null>;
+  direction: SortDirection;
+  label: string;
+}> = [
+  { field: 'updatedAt', direction: 'desc', label: 'Recently updated' },
+  { field: 'updatedAt', direction: 'asc', label: 'Oldest updated' },
+  { field: 'productName', direction: 'asc', label: 'Name: A–Z' },
+  { field: 'productName', direction: 'desc', label: 'Name: Z–A' },
+  { field: 'status', direction: 'asc', label: 'Status: A–Z' },
+  { field: 'status', direction: 'desc', label: 'Status: Z–A' },
+  { field: 'setName', direction: 'asc', label: 'Set: A–Z' },
+  { field: 'setName', direction: 'desc', label: 'Set: Z–A' },
+  { field: 'number', direction: 'asc', label: 'Number: low to high' },
+  { field: 'number', direction: 'desc', label: 'Number: high to low' },
+  { field: 'rarity', direction: 'asc', label: 'Rarity: A–Z' },
+  { field: 'rarity', direction: 'desc', label: 'Rarity: Z–A' },
+  { field: 'condition', direction: 'asc', label: 'Condition: A–Z' },
+  { field: 'condition', direction: 'desc', label: 'Condition: Z–A' },
+  { field: 'quantity', direction: 'desc', label: 'Quantity: high to low' },
+  { field: 'quantity', direction: 'asc', label: 'Quantity: low to high' },
+  { field: 'marketPrice', direction: 'desc', label: 'Market: high to low' },
+  { field: 'marketPrice', direction: 'asc', label: 'Market: low to high' },
+  { field: 'listingPrice', direction: 'desc', label: 'Listing: high to low' },
+  { field: 'listingPrice', direction: 'asc', label: 'Listing: low to high' },
+  { field: 'lastCheckedAt', direction: 'desc', label: 'Last checked: newest' },
+  { field: 'lastCheckedAt', direction: 'asc', label: 'Last checked: oldest' },
+];
 
 const CONDITION_OPTIONS = [
   'Near Mint',
@@ -139,7 +192,7 @@ function isValidPhotoUrl(photoUrl: string | null | undefined) {
   }
 }
 
-export function CardTable({
+export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function CardTable({
   cards,
   loading,
   onReprice,
@@ -154,10 +207,11 @@ export function CardTable({
   defaultShippingCollectedCents = 149,
   needsAttentionCount,
   onLoadNeedsAttentionReviewCards,
+  showNeedsAttentionReviewLauncher = true,
   sortField: controlledSortField,
   sortDirection: controlledSortDirection,
   onSortChange,
-}: CardTableProps) {
+}, ref) {
   const [localSortField, setLocalSortField] = useState<SortField>('updatedAt');
   const [localSortDirection, setLocalSortDirection] =
     useState<SortDirection>('desc');
@@ -193,6 +247,11 @@ export function CardTable({
   const [needsAttentionSavedIds, setNeedsAttentionSavedIds] = useState<Set<number>>(new Set());
   const [needsAttentionSaveError, setNeedsAttentionSaveError] = useState<string | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const [expandedMobileCardIds, setExpandedMobileCardIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const responsiveMode = useContainerResponsiveMode(tableContainerRef);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{
     url: string;
@@ -494,8 +553,11 @@ export function CardTable({
     const formattedPrice = `$${parsedPrice.toFixed(2)}`;
     if (isFoil) {
       return (
-        <span title="Price based on Foil variant (no Normal pricing available)">
-          {formattedPrice} ✨
+        <span
+          className="inventory-foil-price"
+          title="Price based on Foil variant (no Normal pricing available)"
+        >
+          {formattedPrice} <Sparkles size={14} aria-label="Foil price fallback" />
         </span>
       );
     }
@@ -503,7 +565,7 @@ export function CardTable({
   };
 
   const handleStartNeedsAttentionReview = async () => {
-    if (reviewPricingCount === 0) return;
+    if (reviewPricingCount === 0 || needsAttentionReviewLoading) return;
     setNeedsAttentionReviewLoading(true);
     setNeedsAttentionReviewError(null);
     setNeedsAttentionCopyStatus(null);
@@ -532,6 +594,12 @@ export function CardTable({
       setNeedsAttentionReviewLoading(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({
+    openNeedsAttentionReview: () => {
+      void handleStartNeedsAttentionReview();
+    },
+  }));
 
   const handleCloseNeedsAttentionReview = () => {
     setNeedsAttentionReviewQueue(null);
@@ -635,22 +703,253 @@ export function CardTable({
     <th onClick={() => handleSort(field)} className="sortable">
       {children}
       {sortField === field && (
-        <span className="sort-indicator">
-          {sortDirection === 'asc' ? ' ↑' : ' ↓'}
+        <span className="sort-indicator" aria-label={`Sorted ${sortDirection}`}>
+          {sortDirection === 'asc' ? (
+            <ChevronUp size={14} aria-hidden="true" />
+          ) : (
+            <ChevronDown size={14} aria-hidden="true" />
+          )}
         </span>
       )}
     </th>
   );
 
+  const handleMobileSortChange = (value: string) => {
+    const [field, direction] = value.split(':') as [
+      Exclude<SortField, null>,
+      SortDirection,
+    ];
+
+    if (onSortChange) {
+      onSortChange(field, direction);
+      return;
+    }
+
+    setLocalSortField(field);
+    setLocalSortDirection(direction);
+  };
+
+  const toggleMobileCardExpanded = (id: number) => {
+    setExpandedMobileCardIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isCardSelectable = (card: Card) => {
+    const isMatched = card.status === 'matched';
+    return effectiveBulkMode === 'list'
+      ? isMatched
+      : effectiveBulkMode === 'sell'
+        ? isSellEligible(card)
+        : isMatched || isSellEligible(card);
+  };
+
+  const getSelectionTitle = (card: Card) => {
+    if (card.status === 'matched') return 'Select for bulk listing';
+    if (isSellEligible(card)) return 'Select for attach to order';
+    if (effectiveBulkMode === 'all') {
+      return 'Only Ready to List, listed, or listed-origin attention cards can be selected';
+    }
+    if (effectiveBulkMode === 'sell') {
+      return 'Only listed or listed-origin attention cards can be selected';
+    }
+    return 'Only Ready to List cards can be selected';
+  };
+
+  const renderListingPrice = (card: Card) => {
+    const canEditListingPrice =
+      card.status === 'listed' || card.status === 'needs_attention';
+
+    if (!canEditListingPrice) {
+      return formatPrice(card.listingPrice);
+    }
+
+    if (editingListingId === card.id) {
+      return (
+        <input
+          type="number"
+          className="listing-price-input"
+          aria-label={`Listing price for ${card.title || card.productName}`}
+          value={listingEditValue}
+          onChange={(event) => setListingEditValue(event.target.value)}
+          onKeyDown={(event) => handleListingKeyDown(event, card.id)}
+          onBlur={() => handleListingSave(card.id)}
+          min="0"
+          step="0.01"
+          placeholder="—"
+          autoFocus
+        />
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className="listing-price-display"
+        onClick={() => handleListingEdit(card)}
+        title="Click to edit listing price"
+      >
+        {formatPrice(card.listingPrice)}
+      </button>
+    );
+  };
+
+  const renderActionMenu = (card: Card) => {
+    const cardName = card.title || card.productName;
+    const isListed = card.status === 'listed';
+    const tcgplayerInventoryUrl = buildTcgplayerInventoryUrl(card);
+
+    return (
+      <div
+        className="action-menu-container inventory-action-menu-container"
+        ref={openActionMenuId === card.id ? actionMenuRef : null}
+      >
+        <button
+          type="button"
+          className="action-menu-trigger"
+          aria-label={`Actions for ${cardName}`}
+          aria-haspopup="menu"
+          aria-expanded={openActionMenuId === card.id}
+          onClick={() =>
+            setOpenActionMenuId((current) =>
+              current === card.id ? null : card.id,
+            )
+          }
+        >
+          <MoreHorizontal size={20} aria-hidden="true" />
+        </button>
+        {openActionMenuId === card.id && (
+          <div className="action-menu inventory-action-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpenActionMenuId(null);
+                handleOpenEditDetails(card);
+              }}
+            >
+              <Pencil size={16} aria-hidden="true" />
+              Edit details
+            </button>
+            {card.status === 'needs_attention' && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpenActionMenuId(null);
+                  handleOpenManualListing(card);
+                }}
+              >
+                <Pencil size={16} aria-hidden="true" />
+                Set manual listing price
+              </button>
+            )}
+            {isListed ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpenActionMenuId(null);
+                    setRecordSaleCardId(card.id);
+                  }}
+                >
+                  <CircleDollarSign size={16} aria-hidden="true" />
+                  Record sale
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpenActionMenuId(null);
+                    handleUnlist(card.id);
+                  }}
+                  disabled={unlistingId === card.id}
+                >
+                  <RefreshCw size={16} aria-hidden="true" />
+                  {unlistingId === card.id
+                    ? 'Removing…'
+                    : 'Remove from listing'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpenActionMenuId(null);
+                  handleReprice(card.id);
+                }}
+                disabled={repricingId === card.id}
+              >
+                <RefreshCw size={16} aria-hidden="true" />
+                {repricingId === card.id ? 'Re-pricing…' : 'Re-price'}
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpenActionMenuId(null);
+                setHistoryCardId(card.id);
+                setHistoryCardName(cardName);
+              }}
+            >
+              <History size={16} aria-hidden="true" />
+              View price history
+            </button>
+            {tcgplayerInventoryUrl && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpenActionMenuId(null);
+                  openTcgplayerInventoryUrl(tcgplayerInventoryUrl);
+                }}
+              >
+                <ExternalLink size={16} aria-hidden="true" />
+                Open in TCG
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpenActionMenuId(null);
+                handleDelete(card.id);
+              }}
+              disabled={deletingId === card.id}
+              className="danger-menu-item"
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              {deletingId === card.id ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
-      <div className="table-loading">
-        <p>⏳ Loading cards...</p>
+      <div className="table-loading inventory-table-loading" role="status">
+        <LoaderCircle className="inventory-loading-icon" size={20} aria-hidden="true" />
+        <p>Loading cards...</p>
       </div>
     );
   }
 
-  if (cards.length === 0) {
+  if (
+    cards.length === 0 &&
+    !needsAttentionReviewLoading &&
+    needsAttentionReviewQueue === null
+  ) {
     return (
       <div className="table-empty">
         <p>No cards found. Import some cards to get started!</p>
@@ -659,18 +958,24 @@ export function CardTable({
   }
 
   return (
-    <div className="table-container">
-      {reviewPricingCount > 0 && (
+    <div
+      ref={tableContainerRef}
+      className="table-container inventory-table-container"
+      data-inventory-mode={responsiveMode}
+    >
+      {showNeedsAttentionReviewLauncher && reviewPricingCount > 0 && (
         <div className="selection-actions needs-attention-review-actions">
           <button
             type="button"
-            className="button-primary"
+            className="button-primary inventory-action-button"
             onClick={handleStartNeedsAttentionReview}
             disabled={needsAttentionReviewLoading}
           >
-            {needsAttentionReviewLoading
-              ? 'Loading pricing review…'
-              : `Review Pricing (${reviewPricingCount} Needs Attention)`}
+            {needsAttentionReviewLoading ? (
+              <><LoaderCircle size={16} className="inventory-loading-icon" aria-hidden="true" /> Loading pricing review…</>
+            ) : (
+              <><ClipboardList size={16} aria-hidden="true" /> Review Pricing ({reviewPricingCount} Needs Attention)</>
+            )}
           </button>
           {needsAttentionReviewError && (
             <span className="form-help" role="alert">
@@ -683,8 +988,9 @@ export function CardTable({
         <div className="selection-actions">
           {(effectiveBulkMode === 'sell' ||
             (effectiveBulkMode === 'all' && selectedSellableCards.length > 0)) && (
-            <button onClick={handleOpenBulkSell} className="button-primary">
-              {`💰 Attach ${selectedSellableCards.length} to Order`}
+            <button onClick={handleOpenBulkSell} className="button-primary inventory-action-button">
+              <CircleDollarSign size={16} aria-hidden="true" />
+              {`Attach ${selectedSellableCards.length} to Order`}
             </button>
           )}
           {(effectiveBulkMode === 'list' ||
@@ -692,22 +998,26 @@ export function CardTable({
             <button
               onClick={handleOpenReview}
               disabled={markingListed}
-              className="button-primary mark-listed"
+              className="button-primary mark-listed inventory-action-button"
             >
-              {markingListed
-                ? '⏳ Marking...'
-                : `📋 Mark ${selectedMatchedCards.length} as Listed`}
+              {markingListed ? (
+                <><LoaderCircle size={16} className="inventory-loading-icon" aria-hidden="true" /> Marking...</>
+              ) : (
+                <><ClipboardList size={16} aria-hidden="true" /> Mark {selectedMatchedCards.length} as Listed</>
+              )}
             </button>
           )}
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="button-secondary"
+            className="button-secondary inventory-action-button"
           >
+            <X size={16} aria-hidden="true" />
             Clear Selection
           </button>
         </div>
       )}
-      <table className="card-table">
+      {responsiveMode === 'desktop' ? (
+        <table className="card-table inventory-card-table">
         <thead>
           <tr>
             <th className="checkbox-column">
@@ -738,35 +1048,14 @@ export function CardTable({
             <SortableHeader field="marketPrice">Market</SortableHeader>
             <th>Rec'd</th>
             <SortableHeader field="listingPrice">Listing</SortableHeader>
-            <SortableHeader field="lastCheckedAt">Last Checked</SortableHeader>
-            <SortableHeader field="updatedAt">Updated</SortableHeader>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {sortedCards.map((card) => {
-            const isMatched = card.status === 'matched';
             const isListed = card.status === 'listed';
-            const isSelectable =
-              effectiveBulkMode === 'list'
-                ? isMatched
-                : effectiveBulkMode === 'sell'
-                  ? isSellEligible(card)
-                  : isMatched || isSellEligible(card);
-            const selectionTitle = isMatched
-              ? 'Select for bulk listing'
-              : isSellEligible(card)
-                ? 'Select for attach to order'
-                : effectiveBulkMode === 'all'
-                  ? 'Only Ready to List, listed, or listed-origin attention cards can be selected'
-                  : effectiveBulkMode === 'sell'
-                    ? 'Only listed or listed-origin attention cards can be selected'
-                    : 'Only Ready to List cards can be selected';
-            const canEditListingPrice =
-              card.status === 'listed' || card.status === 'needs_attention';
             const isSelected = selectedIds.has(card.id);
             const photoUrl = isValidPhotoUrl(card.photoUrl) ? card.photoUrl : null;
-            const tcgplayerInventoryUrl = buildTcgplayerInventoryUrl(card);
 
             return (
               <tr key={card.id} className={isListed ? 'listed-row' : ''}>
@@ -777,8 +1066,8 @@ export function CardTable({
                     onChange={(e) =>
                       handleSelectCard(card.id, e.target.checked)
                     }
-                    disabled={!isSelectable}
-                    title={selectionTitle}
+                    disabled={!isCardSelectable(card)}
+                    title={getSelectionTitle(card)}
                   />
                 </td>
                 <td>
@@ -799,7 +1088,7 @@ export function CardTable({
                         })
                       }
                     >
-                      🖼️
+                      <Image size={16} aria-hidden="true" />
                     </button>
                   )}
                 </td>
@@ -815,163 +1104,162 @@ export function CardTable({
                   {formatRecommendedPrice(card)}
                 </td>
                 <td className="price listing-price-cell">
-                  {canEditListingPrice ? (
-                    editingListingId === card.id ? (
-                      <input
-                        type="number"
-                        className="listing-price-input"
-                        value={listingEditValue}
-                        onChange={(e) => setListingEditValue(e.target.value)}
-                        onKeyDown={(e) => handleListingKeyDown(e, card.id)}
-                        onBlur={() => handleListingSave(card.id)}
-                        min="0"
-                        step="0.01"
-                        placeholder="\u2014"
-                        autoFocus
-                      />
-                    ) : (
-                      <button
-                        className="listing-price-display"
-                        onClick={() => handleListingEdit(card)}
-                        title="Click to edit listing price"
-                      >
-                        {formatPrice(card.listingPrice)}
-                      </button>
-                    )
-                  ) : (
-                    formatPrice(card.listingPrice)
-                  )}
+                  {renderListingPrice(card)}
                 </td>
-                <td className="date">
-                  {card.lastCheckedAt ? formatDate(card.lastCheckedAt) : '—'}
-                </td>
-                <td className="date">{formatDate(card.updatedAt)}</td>
                 <td className="actions">
-                  <div
-                    className="action-menu-container"
-                    ref={openActionMenuId === card.id ? actionMenuRef : null}
-                  >
-                    <button
-                      type="button"
-                      className="action-menu-trigger"
-                      aria-label={`Actions for ${card.title || card.productName}`}
-                      aria-haspopup="menu"
-                      aria-expanded={openActionMenuId === card.id}
-                      onClick={() =>
-                        setOpenActionMenuId((current) =>
-                          current === card.id ? null : card.id,
-                        )
-                      }
-                    >
-                      …
-                    </button>
-                    {openActionMenuId === card.id && (
-                      <div className="action-menu" role="menu">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setOpenActionMenuId(null);
-                            handleOpenEditDetails(card);
-                          }}
-                        >
-                          Edit details
-                        </button>
-                        {card.status === 'needs_attention' && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActionMenuId(null);
-                              handleOpenManualListing(card);
-                            }}
-                          >
-                            Set manual listing price
-                          </button>
-                        )}
-                        {isListed ? (
-                          <>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setOpenActionMenuId(null);
-                                setRecordSaleCardId(card.id);
-                              }}
-                            >
-                              Record sale
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setOpenActionMenuId(null);
-                                handleUnlist(card.id);
-                              }}
-                              disabled={unlistingId === card.id}
-                            >
-                              {unlistingId === card.id
-                                ? 'Removing…'
-                                : 'Remove from listing'}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActionMenuId(null);
-                              handleReprice(card.id);
-                            }}
-                            disabled={repricingId === card.id}
-                          >
-                            {repricingId === card.id ? 'Re-pricing…' : 'Re-price'}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setOpenActionMenuId(null);
-                            setHistoryCardId(card.id);
-                            setHistoryCardName(card.title || card.productName);
-                          }}
-                        >
-                          View price history
-                        </button>
-                        {tcgplayerInventoryUrl && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActionMenuId(null);
-                              openTcgplayerInventoryUrl(tcgplayerInventoryUrl);
-                            }}
-                          >
-                            Open in TCG
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setOpenActionMenuId(null);
-                            handleDelete(card.id);
-                          }}
-                          disabled={deletingId === card.id}
-                          className="danger-menu-item"
-                        >
-                          {deletingId === card.id ? 'Deleting…' : 'Delete'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  {renderActionMenu(card)}
                 </td>
               </tr>
             );
           })}
         </tbody>
-      </table>
+        </table>
+      ) : (
+        <div
+          className="inventory-mobile-list"
+          role="list"
+          aria-label="Inventory cards"
+          data-testid="inventory-mobile-list"
+        >
+          <label className="inventory-mobile-sort">
+            <span>Sort inventory</span>
+            <select
+              value={`${sortField ?? 'updatedAt'}:${sortDirection}`}
+              onChange={(event) => handleMobileSortChange(event.target.value)}
+            >
+              {MOBILE_SORT_OPTIONS.map((option) => (
+                <option
+                  key={`${option.field}:${option.direction}`}
+                  value={`${option.field}:${option.direction}`}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sortedCards.map((card) => {
+            const cardName = card.title || card.productName;
+            const photoUrl = isValidPhotoUrl(card.photoUrl) ? card.photoUrl : null;
+            const isExpanded = expandedMobileCardIds.has(card.id);
+            const isSelected = selectedIds.has(card.id);
+            const detailsId = `inventory-card-details-${card.id}`;
+
+            return (
+              <article
+                key={card.id}
+                role="listitem"
+                className={`inventory-mobile-card ${card.status === 'listed' ? 'inventory-mobile-card--listed' : ''}`}
+              >
+                <div className="inventory-mobile-card__header">
+                  <label className="inventory-mobile-card__select">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(event) =>
+                        handleSelectCard(card.id, event.target.checked)
+                      }
+                      disabled={!isCardSelectable(card)}
+                      title={getSelectionTitle(card)}
+                      aria-label={`Select ${cardName}`}
+                    />
+                  </label>
+                  <div className="inventory-mobile-card__identity">
+                    <div className="inventory-mobile-card__name-row">
+                      <strong>{cardName}</strong>
+                      {photoUrl && (
+                        <button
+                          type="button"
+                          className="photo-link"
+                          title="View photo"
+                          aria-label={`View photo for ${cardName}`}
+                          onClick={() =>
+                            setSelectedPhoto({ url: photoUrl, cardName })
+                          }
+                        >
+                          <Image size={16} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="inventory-mobile-card__meta">
+                      <StatusBadge status={card.status} />
+                      <span>{card.condition}</span>
+                      <span>Qty {card.quantity}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="inventory-mobile-card__expand"
+                    aria-expanded={isExpanded}
+                    aria-controls={detailsId}
+                    aria-label={`${isExpanded ? 'Hide' : 'Show'} details for ${cardName}`}
+                    onClick={() => toggleMobileCardExpanded(card.id)}
+                  >
+                    {isExpanded ? (
+                      <ChevronUp size={20} aria-hidden="true" />
+                    ) : (
+                      <ChevronDown size={20} aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+
+                <dl className="inventory-mobile-card__prices">
+                  <div>
+                    <dt>Listing</dt>
+                    <dd>{renderListingPrice(card)}</dd>
+                  </div>
+                  <div>
+                    <dt>Market</dt>
+                    <dd>{formatPrice(card.marketPrice, card.isFoilPrice)}</dd>
+                  </div>
+                </dl>
+
+                {isExpanded && (
+                  <div id={detailsId} className="inventory-mobile-card__details">
+                    <dl className="inventory-mobile-card__secondary-data">
+                      <div>
+                        <dt>Rec’d</dt>
+                        <dd>{formatRecommendedPrice(card)}</dd>
+                      </div>
+                      <div>
+                        <dt>Set</dt>
+                        <dd>{card.setName || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Number</dt>
+                        <dd>{card.number || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Rarity</dt>
+                        <dd>{card.rarity || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Last checked</dt>
+                        <dd>{card.lastCheckedAt ? formatDate(card.lastCheckedAt) : '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Updated</dt>
+                        <dd>{formatDate(card.updatedAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Product ID</dt>
+                        <dd>{card.tcgProductId ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>SKU</dt>
+                        <dd>{card.tcgplayerId ?? '—'}</dd>
+                      </div>
+                    </dl>
+                    <div className="inventory-mobile-card__actions">
+                      <span>Card actions</span>
+                      {renderActionMenu(card)}
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
       {needsAttentionReviewQueue && (() => {
         const group = needsAttentionReviewQueue[needsAttentionReviewIndex];
         const isComplete = needsAttentionReviewIndex >= needsAttentionReviewQueue.length;
@@ -1008,7 +1296,7 @@ export function CardTable({
                   onClick={handleCloseNeedsAttentionReview}
                   aria-label="Close"
                 >
-                  ×
+                  <X size={20} aria-hidden="true" />
                 </button>
               </div>
 
@@ -1036,7 +1324,9 @@ export function CardTable({
                     <p className="sale-card-name">
                       {group.displayName}, {group.cards.length} {group.cards.length === 1 ? 'variant' : 'variants'}
                       {isGroupUpdated && (
-                        <span className="review-updated-badge">✓ Updated</span>
+                        <span className="review-updated-badge">
+                          <Check size={14} aria-hidden="true" /> Updated
+                        </span>
                       )}
                     </p>
                     <p className="sale-card-details">
@@ -1098,7 +1388,9 @@ export function CardTable({
                             <td>
                               {card.condition}
                               {isSaved && (
-                                <span className="review-updated-badge">✓ Updated</span>
+                                <span className="review-updated-badge">
+                                  <Check size={14} aria-hidden="true" /> Updated
+                                </span>
                               )}
                             </td>
                             <td>{card.quantity}</td>
@@ -1204,7 +1496,7 @@ export function CardTable({
                 onClick={() => setSelectedPhoto(null)}
                 aria-label="Close"
               >
-                ×
+                <X size={20} aria-hidden="true" />
               </button>
             </div>
             <div className="photo-modal-body">
@@ -1241,7 +1533,7 @@ export function CardTable({
                   aria-label="Close"
                   disabled={manualListingSaving}
                 >
-                  ×
+                  <X size={20} aria-hidden="true" />
                 </button>
               </div>
               <div className="edit-details-body">
@@ -1323,7 +1615,7 @@ export function CardTable({
                   aria-label="Close"
                   disabled={editDetailsSaving}
                 >
-                  ×
+                  <X size={20} aria-hidden="true" />
                 </button>
               </div>
               <div className="edit-details-body">
@@ -1438,4 +1730,4 @@ export function CardTable({
       )}
     </div>
   );
-}
+});

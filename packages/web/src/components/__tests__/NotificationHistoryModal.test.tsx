@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
 import { NotificationHistoryModal } from '../NotificationHistoryModal';
@@ -43,9 +43,7 @@ describe('NotificationHistoryModal', () => {
     });
   });
 
-  it('keeps Tab focus within the modal', async () => {
-    const user = userEvent.setup();
-
+  it('keeps Tab focus within the modal', () => {
     render(
       <NotificationHistoryModal
         events={[]}
@@ -61,10 +59,10 @@ describe('NotificationHistoryModal', () => {
     const footerClose = screen.getByRole('button', { name: 'Close' });
 
     footerClose.focus();
-    await user.tab();
+    fireEvent.keyDown(footerClose, { key: 'Tab' });
     expect(headerClose).toHaveFocus();
 
-    await user.tab({ shift: true });
+    fireEvent.keyDown(headerClose, { key: 'Tab', shiftKey: true });
     expect(footerClose).toHaveFocus();
   });
 
@@ -89,7 +87,11 @@ describe('NotificationHistoryModal', () => {
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(2);
 
-    await user.click(screen.getByRole('dialog', { name: /notifications/i }));
+    const dialog = screen.getByRole('dialog', { name: /notifications/i });
+    await user.click(dialog);
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    await user.click(dialog.parentElement!);
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 });

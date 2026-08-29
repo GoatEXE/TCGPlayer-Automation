@@ -206,6 +206,7 @@ vi.mock('../../lib/tcgtracking/client.js', () => {
 });
 
 import { db } from '../../db/index.js';
+import { priceHistory } from '../../db/schema/price-history.js';
 import { parseCsv, parseTxt } from '../../lib/importers/index.js';
 import {
   applyFloorPriceCents,
@@ -2878,28 +2879,82 @@ describe('POST /api/cards/fetch-prices', () => {
 describe('GET /api/cards/price-check-status', () => {
   let app: FastifyInstance;
 
+  const mockLatestPriceHistory = (
+    rows: Array<{ checkedAt: Date | string | null }>,
+  ) => {
+    const limit = vi.fn().mockResolvedValue(rows);
+    const orderBy = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ orderBy });
+    vi.mocked(db.select).mockReturnValue({ from } as any);
+    return { from, orderBy, limit };
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
+    priceCheckMocks.getPriceCheckSchedulerStatus.mockReturnValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
+      running: false,
+      lastRun: null,
+    });
     app = Fastify();
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
 
-  it('should return scheduler status payload', async () => {
+  it('handles the string timestamp returned by the real aggregate driver result', async () => {
+    const { from, orderBy, limit } = mockLatestPriceHistory([
+      { checkedAt: '2026-04-01 10:00:00+00' },
+    ]);
+
     const response = await app.inject({
       method: 'GET',
       url: '/api/cards/price-check-status',
     });
 
     expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
+    expect(JSON.parse(response.body)).toMatchObject({
+      enabled: true,
+      running: false,
+      lastRun: null,
+      latestPriceCheckAt: '2026-04-01T10:00:00.000Z',
+    });
+    expect(from).toHaveBeenCalledWith(priceHistory);
+    expect(orderBy).toHaveBeenCalledOnce();
+    expect(limit).toHaveBeenCalledWith(1);
+  });
 
-    expect(body).toHaveProperty('enabled');
-    expect(body).toHaveProperty('intervalHours');
-    expect(body).toHaveProperty('thresholdPercent');
-    expect(body).toHaveProperty('listedPriceAttentionThresholdPercent');
-    expect(body).toHaveProperty('listedPriceAttentionMinDiffCents');
-    expect(body).toHaveProperty('running');
-    expect(body).toHaveProperty('lastRun');
+  it('returns the latest persisted history timestamp from the native timestamp column', async () => {
+    mockLatestPriceHistory([
+      { checkedAt: new Date('2026-04-01T10:00:00.000Z') },
+    ]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/price-check-status',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      latestPriceCheckAt: '2026-04-01T10:00:00.000Z',
+    });
+  });
+
+  it('returns null when no persisted price-check history exists', async () => {
+    mockLatestPriceHistory([]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/cards/price-check-status',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      lastRun: null,
+      latestPriceCheckAt: null,
+    });
   });
 });
 
@@ -2924,6 +2979,13 @@ describe('POST /api/cards/price-check-settings', () => {
     priceCheckMocks.updateListedPriceAttentionMinDiffCents.mockResolvedValue(
       undefined,
     );
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        orderBy: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    } as any);
     app = Fastify();
     await app.register(cardsRoutes, { prefix: '/api/cards' });
   });
@@ -2951,6 +3013,7 @@ describe('POST /api/cards/price-check-settings', () => {
       listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
+      latestPriceCheckAt: null,
     });
   });
 
@@ -2986,6 +3049,7 @@ describe('POST /api/cards/price-check-settings', () => {
       listedPriceAttentionMinDiffCents: 5,
       running: false,
       lastRun: null,
+      latestPriceCheckAt: null,
     });
   });
 
@@ -3024,6 +3088,7 @@ describe('POST /api/cards/price-check-settings', () => {
       listedPriceAttentionMinDiffCents: 9,
       running: false,
       lastRun: null,
+      latestPriceCheckAt: null,
     });
   });
 

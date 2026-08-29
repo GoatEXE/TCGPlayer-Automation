@@ -1,7 +1,9 @@
-import { useRef } from 'react';
+import { Bell } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
+import type { RefObject } from 'react';
 import type { NotificationEvent } from '../api/types';
+import { BlueprintButton, BlueprintDialog } from '../ui';
 import { NotificationHistoryPanel } from './NotificationHistoryPanel';
-import { useModalFocusTrap } from './useModalFocusTrap';
 
 interface NotificationHistoryModalProps {
   events: NotificationEvent[];
@@ -10,63 +12,56 @@ interface NotificationHistoryModalProps {
   onClose: () => void;
 }
 
+function useUtilityDialogInitialFocus(contentRef: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const timer = window.setTimeout(() => {
+      contentRef.current
+        ?.closest<HTMLElement>('.industry-dialog')
+        ?.querySelector<HTMLButtonElement>('.industry-dialog__close')
+        ?.focus();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [contentRef]);
+}
+
 export function NotificationHistoryModal({
   events,
   loading,
   error,
   onClose,
 }: NotificationHistoryModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useModalFocusTrap({
-    containerRef: dialogRef,
-    initialFocusRef: closeButtonRef,
-    onClose,
-  });
-
-  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
+  const contentRef = useRef<HTMLDivElement>(null);
+  useUtilityDialogInitialFocus(contentRef);
 
   return (
-    <div
-      className="modal-backdrop"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="notification-history-modal-title"
+    <BlueprintDialog
+      open
+      title={
+        <span className="utility-dialog-title">
+          <Bell aria-hidden="true" size={18} strokeWidth={1.5} />
+          Notifications
+        </span>
+      }
+      className="utility-dialog utility-notification-history-dialog"
+      closeLabel="Close notifications"
+      onClose={onClose}
+      footer={
+        <BlueprintButton variant="secondary" onClick={onClose}>
+          Close
+        </BlueprintButton>
+      }
     >
-      <div className="modal-content notification-history-modal" ref={dialogRef}>
-        <div className="modal-header">
-          <h2 id="notification-history-modal-title">Notifications</h2>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="modal-close"
-            onClick={onClose}
-            aria-label="Close notifications"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="notification-history-modal-body">
-          <NotificationHistoryPanel
-            events={events}
-            loading={loading}
-            error={error}
-          />
-        </div>
-
-        <div className="modal-actions">
-          <button type="button" className="button-secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
+      <div
+        ref={contentRef}
+        className="utility-dialog-content notification-history-modal-body"
+      >
+        <NotificationHistoryPanel
+          events={events}
+          loading={loading}
+          error={error}
+        />
       </div>
-    </div>
+    </BlueprintDialog>
   );
 }

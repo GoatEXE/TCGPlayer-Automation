@@ -1,8 +1,10 @@
+import { Save, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   ExpenseSettings,
   UpdateExpenseSettingsRequest,
 } from '../api/types';
+import { BlueprintButton, BlueprintPanel } from '../ui';
 
 interface ExpenseSettingsCardProps {
   settings: ExpenseSettings;
@@ -83,8 +85,8 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
     setTransactionFlatFee(centsToDollars(settings.transactionFlatFeeCents));
   }, [settings]);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError(null);
 
     const shippingCostCents = parseDollarsToCents(shippingCost);
@@ -126,96 +128,121 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
         transactionFeeBps,
         transactionFlatFeeCents,
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : 'Failed to save settings',
+      );
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <section className="price-check-card expense-settings-card">
-      <div className="price-check-header">
-        <span className="price-check-title">⚙️ Expense Settings</span>
-      </div>
+    <BlueprintPanel className="expense-settings-card commerce-expense-settings">
+      <header className="commerce-expense-settings-header">
+        <SlidersHorizontal size={20} strokeWidth={1.6} aria-hidden="true" />
+        <h3>Expense Settings</h3>
+      </header>
 
-      <form onSubmit={handleSubmit} className="price-check-body" noValidate>
-        <div className="shipment-field">
-          <label htmlFor="settings-auto-record-shipping">
+      <form
+        onSubmit={handleSubmit}
+        className="commerce-expense-settings-form"
+        noValidate
+      >
+        <fieldset className="commerce-expense-settings-switches">
+          <legend>Automatic expense entries</legend>
+          <label
+            className="commerce-checkbox-field"
+            htmlFor="settings-auto-record-shipping"
+          >
             <input
               id="settings-auto-record-shipping"
               type="checkbox"
               checked={autoRecordShipping}
-              onChange={(e) => setAutoRecordShipping(e.target.checked)}
+              onChange={(event) => setAutoRecordShipping(event.target.checked)}
               disabled={saving}
-            />{' '}
+            />
             Auto-record shipping
           </label>
-          <label htmlFor="settings-auto-record-supplies">
+          <label
+            className="commerce-checkbox-field"
+            htmlFor="settings-auto-record-supplies"
+          >
             <input
               id="settings-auto-record-supplies"
               type="checkbox"
               checked={autoRecordSupplies}
-              onChange={(e) => setAutoRecordSupplies(e.target.checked)}
+              onChange={(event) => setAutoRecordSupplies(event.target.checked)}
               disabled={saving}
-            />{' '}
+            />
             Auto-record supplies
           </label>
-          <label htmlFor="settings-auto-record-fees">
+          <label
+            className="commerce-checkbox-field"
+            htmlFor="settings-auto-record-fees"
+          >
             <input
               id="settings-auto-record-fees"
               type="checkbox"
               checked={autoRecordTcgplayerFees}
-              onChange={(e) => setAutoRecordTcgplayerFees(e.target.checked)}
+              onChange={(event) =>
+                setAutoRecordTcgplayerFees(event.target.checked)
+              }
               disabled={saving}
-            />{' '}
+            />
             Auto-record TCGplayer fees
           </label>
-        </div>
+        </fieldset>
 
-        <div className="shipment-field">
-          <label htmlFor="settings-shipping-cost">Default postage cost expense ($)</label>
+        <div className="commerce-expense-settings-field">
+          <label htmlFor="settings-shipping-cost">
+            Default postage cost expense ($)
+          </label>
           <input
             id="settings-shipping-cost"
             type="number"
             min={0}
             step={0.01}
             value={shippingCost}
-            onChange={(e) => setShippingCost(e.target.value)}
+            onChange={(event) => setShippingCost(event.target.value)}
             disabled={saving}
-            className="shipment-input"
+            inputMode="decimal"
           />
         </div>
 
-        <div className="shipment-field">
-          <label htmlFor="settings-shipping-collected">Default shipping collected ($)</label>
+        <div className="commerce-expense-settings-field">
+          <label htmlFor="settings-shipping-collected">
+            Default shipping collected ($)
+          </label>
           <input
             id="settings-shipping-collected"
             type="number"
             min={0}
             step={0.01}
             value={defaultShippingCollected}
-            onChange={(e) => setDefaultShippingCollected(e.target.value)}
+            onChange={(event) => setDefaultShippingCollected(event.target.value)}
             disabled={saving}
-            className="shipment-input"
+            inputMode="decimal"
           />
         </div>
 
-        <div className="shipment-field">
-          <label htmlFor="settings-supplies-cost">Default supplies cost ($)</label>
+        <div className="commerce-expense-settings-field">
+          <label htmlFor="settings-supplies-cost">
+            Default supplies cost ($)
+          </label>
           <input
             id="settings-supplies-cost"
             type="number"
             min={0}
             step={0.01}
             value={suppliesCost}
-            onChange={(e) => setSuppliesCost(e.target.value)}
+            onChange={(event) => setSuppliesCost(event.target.value)}
             disabled={saving}
-            className="shipment-input"
+            inputMode="decimal"
           />
         </div>
 
-        <div className="shipment-field">
+        <div className="commerce-expense-settings-field">
           <label htmlFor="settings-marketplace-fee">Marketplace fee (%)</label>
           <input
             id="settings-marketplace-fee"
@@ -223,13 +250,13 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
             min={0}
             step={0.01}
             value={marketplaceFee}
-            onChange={(e) => setMarketplaceFee(e.target.value)}
+            onChange={(event) => setMarketplaceFee(event.target.value)}
             disabled={saving}
-            className="shipment-input"
+            inputMode="decimal"
           />
         </div>
 
-        <div className="shipment-field">
+        <div className="commerce-expense-settings-field">
           <label htmlFor="settings-transaction-fee">Transaction fee (%)</label>
           <input
             id="settings-transaction-fee"
@@ -237,13 +264,13 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
             min={0}
             step={0.01}
             value={transactionFee}
-            onChange={(e) => setTransactionFee(e.target.value)}
+            onChange={(event) => setTransactionFee(event.target.value)}
             disabled={saving}
-            className="shipment-input"
+            inputMode="decimal"
           />
         </div>
 
-        <div className="shipment-field">
+        <div className="commerce-expense-settings-field">
           <label htmlFor="settings-transaction-flat-fee">
             Transaction flat fee ($)
           </label>
@@ -253,9 +280,9 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
             min={0}
             step={0.01}
             value={transactionFlatFee}
-            onChange={(e) => setTransactionFlatFee(e.target.value)}
+            onChange={(event) => setTransactionFlatFee(event.target.value)}
             disabled={saving}
-            className="shipment-input"
+            inputMode="decimal"
           />
         </div>
 
@@ -265,12 +292,17 @@ export function ExpenseSettingsCard({ settings, onSave }: ExpenseSettingsCardPro
           </span>
         )}
 
-        <div className="modal-actions" style={{ padding: '0.75rem 0 0' }}>
-          <button type="submit" className="button-primary" disabled={saving}>
-            {saving ? '⏳ Saving…' : '💾 Save Settings'}
-          </button>
+        <div className="commerce-expense-settings-actions">
+          <BlueprintButton
+            type="submit"
+            variant="primary"
+            disabled={saving}
+            icon={<Save size={16} strokeWidth={1.75} />}
+          >
+            {saving ? 'Saving…' : 'Save Settings'}
+          </BlueprintButton>
         </div>
       </form>
-    </section>
+    </BlueprintPanel>
   );
 }

@@ -1,8 +1,10 @@
-import { useRef } from 'react';
+import { Settings } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
+import type { RefObject } from 'react';
 import type { PriceCheckStatus } from '../api/types';
+import { BlueprintButton, BlueprintDialog } from '../ui';
 import { IntervalSettingsControl } from './IntervalSettingsControl';
 import { ListedPriceThresholdControl } from './ListedPriceThresholdControl';
-import { useModalFocusTrap } from './useModalFocusTrap';
 
 interface PriceCheckSettingsModalProps {
   status: PriceCheckStatus | null;
@@ -27,6 +29,20 @@ function formatRelativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+/** Keeps the first focused element aligned with the previous utility dialog. */
+function useUtilityDialogInitialFocus(contentRef: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const timer = window.setTimeout(() => {
+      contentRef.current
+        ?.closest<HTMLElement>('.industry-dialog')
+        ?.querySelector<HTMLButtonElement>('.industry-dialog__close')
+        ?.focus();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [contentRef]);
+}
+
 export function PriceCheckSettingsModal({
   status,
   loading,
@@ -35,20 +51,8 @@ export function PriceCheckSettingsModal({
   onUpdateInterval,
   onUpdateListedPriceAttentionThreshold,
 }: PriceCheckSettingsModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useModalFocusTrap({
-    containerRef: dialogRef,
-    initialFocusRef: closeButtonRef,
-    onClose,
-  });
-
-  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
+  const contentRef = useRef<HTMLDivElement>(null);
+  useUtilityDialogInitialFocus(contentRef);
 
   const renderBody = () => {
     if (error) {
@@ -111,17 +115,17 @@ export function PriceCheckSettingsModal({
             </span>
             <div className="price-check-results">
               <span className="result-chip result-updated">
-                ✅ {lastRun.updated} updated
+                {lastRun.updated} updated
               </span>
               <span className="result-chip result-notfound">
-                ❓ {lastRun.notFound} not found
+                {lastRun.notFound} not found
               </span>
               <span className="result-chip result-drifted">
-                📈 {lastRun.drifted} drifted
+                {lastRun.drifted} drifted
               </span>
               {lastRun.errors.length > 0 && (
                 <span className="result-chip result-errors">
-                  ⚠️ {lastRun.errors.length} errors
+                  {lastRun.errors.length} errors
                 </span>
               )}
             </div>
@@ -140,45 +144,39 @@ export function PriceCheckSettingsModal({
       : 'Disabled';
 
   return (
-    <div
-      className="modal-backdrop"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="price-check-settings-title"
+    <BlueprintDialog
+      open
+      title={
+        <span className="utility-dialog-title">
+          <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
+          Price check scheduler
+        </span>
+      }
+      className="utility-dialog utility-price-check-dialog"
+      closeLabel="Close price check settings"
+      onClose={onClose}
+      footer={
+        <BlueprintButton variant="secondary" onClick={onClose}>
+          Close
+        </BlueprintButton>
+      }
     >
-      <div className="modal-content price-check-settings-modal" ref={dialogRef}>
-        <div className="modal-header">
-          <div className="price-check-settings-title-row">
-            <h2 id="price-check-settings-title">⚙ Price Check Scheduler</h2>
-            {status && !loading && !error && (
-              <span
-                className={`price-check-badge ${status.enabled ? 'badge-enabled' : 'badge-disabled'}`}
-                aria-label={`Scheduler ${badgeText}`}
-              >
-                {badgeText}
-              </span>
-            )}
-          </div>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="modal-close"
-            onClick={onClose}
-            aria-label="Close price check settings"
-          >
-            ✕
-          </button>
+      <div
+        ref={contentRef}
+        className="utility-dialog-content price-check-settings-body"
+      >
+        <div className="utility-dialog-status-row">
+          {status && !loading && !error ? (
+            <span
+              className={`price-check-badge ${status.enabled ? 'badge-enabled' : 'badge-disabled'}`}
+              aria-label={`Scheduler ${badgeText}`}
+            >
+              {badgeText}
+            </span>
+          ) : null}
         </div>
-
-        <div className="price-check-settings-body">{renderBody()}</div>
-
-        <div className="modal-actions">
-          <button type="button" className="button-secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
+        {renderBody()}
       </div>
-    </div>
+    </BlueprintDialog>
   );
 }
