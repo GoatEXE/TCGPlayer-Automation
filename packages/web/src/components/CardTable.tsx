@@ -192,6 +192,12 @@ function isValidPhotoUrl(photoUrl: string | null | undefined) {
   }
 }
 
+function renderFoilCondition(condition: string) {
+  if (!/\bfoil$/i.test(condition)) return condition;
+
+  return <span className="inventory-condition-foil">{condition}</span>;
+}
+
 export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function CardTable({
   cards,
   loading,
@@ -1244,7 +1250,7 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
                 <td>{card.setName || '—'}</td>
                 <td>{card.number || '—'}</td>
                 <td>{card.rarity || '—'}</td>
-                <td>{card.condition}</td>
+                <td>{renderFoilCondition(card.condition)}</td>
                 <td className="quantity inventory-card-table__numeric-column">{card.quantity}</td>
                 <td className="price inventory-card-table__numeric-column">
                   {formatPrice(card.marketPrice, card.isFoilPrice)}
@@ -1331,7 +1337,7 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
                     </div>
                     <div className="inventory-mobile-card__meta">
                       <StatusBadge status={card.status} />
-                      <span>{card.condition}</span>
+                      <span>{renderFoilCondition(card.condition)}</span>
                       <span>Qty {card.quantity}</span>
                     </div>
                   </div>
