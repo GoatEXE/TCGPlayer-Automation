@@ -10,6 +10,8 @@
   --inventory-accent-dark: var(--color-accent-700);
   --inventory-attention: var(--color-warning);
   --inventory-danger: var(--color-error);
+  --inventory-foil-fallback: #1a668f;
+  --inventory-foil-gradient: linear-gradient(90deg, #176a9a 0%, #7047a6 50%, #08776d 100%);
   margin-bottom: 1.5rem;
   color: var(--inventory-ink);
   font-family: var(--font-body, 'Barlow', system-ui, sans-serif);
@@ -201,6 +203,34 @@
 
 .inventory-status-badge--error {
   color: var(--inventory-danger);
+}
+
+:root[data-theme='dark'] .inventory-table-container {
+  --inventory-foil-fallback: #a6d9fb;
+  --inventory-foil-gradient: linear-gradient(90deg, #91d2ff 0%, #c2a6ff 50%, #74d9cf 100%);
+}
+
+/* Inline terminal-token emphasis only; it inherits all condition typography and spacing. */
+.inventory-condition-foil {
+  color: var(--inventory-foil-fallback);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .inventory-condition-foil {
+    background-image: var(--inventory-foil-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+@media (forced-colors: active) {
+  .inventory-condition-foil {
+    background-image: none;
+    color: LinkText;
+    -webkit-text-fill-color: LinkText;
+  }
 }
 
 .inventory-foil-price {

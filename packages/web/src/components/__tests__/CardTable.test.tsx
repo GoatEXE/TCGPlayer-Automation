@@ -140,6 +140,49 @@ describe('CardTable desktop time columns', () => {
   });
 });
 
+describe('CardTable foil condition emphasis', () => {
+  it('preserves condition text and styles only full case-insensitive terminal Foil conditions', () => {
+    render(
+      <CardTable
+        cards={[
+          makeCard({ id: 1, condition: 'Near Mint Foil' }),
+          makeCard({ id: 2, condition: 'Lightly Played foil' }),
+          makeCard({ id: 3, condition: 'Near Mint' }),
+          makeCard({ id: 4, condition: 'Near Mint Foiled' }),
+          makeCard({ id: 5, condition: 'Foil Finish' }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+      />,
+    );
+
+    const [, firstFoilRow, lowercaseFoilRow, nearMintRow, foiledRow, nonterminalRow] =
+      screen.getAllByRole('row');
+    const firstFoilCell = firstFoilRow.cells[6];
+    const firstFoilCondition = firstFoilCell.querySelector('.inventory-condition-foil');
+
+    expect(firstFoilCell.textContent).toBe('Near Mint Foil');
+    expect(firstFoilCondition).toHaveTextContent('Near Mint Foil');
+    expect(firstFoilCell.querySelectorAll('.inventory-condition-foil')).toHaveLength(1);
+
+    const lowercaseFoilCell = lowercaseFoilRow.cells[6];
+    expect(lowercaseFoilCell.textContent).toBe('Lightly Played foil');
+    expect(lowercaseFoilCell.querySelector('.inventory-condition-foil')).toHaveTextContent(
+      'Lightly Played foil',
+    );
+
+    for (const cell of [nearMintRow.cells[6], foiledRow.cells[6], nonterminalRow.cells[6]]) {
+      expect(cell.querySelector('.inventory-condition-foil')).toBeNull();
+    }
+    expect(nearMintRow.cells[6].textContent).toBe('Near Mint');
+    expect(foiledRow.cells[6].textContent).toBe('Near Mint Foiled');
+    expect(nonterminalRow.cells[6].textContent).toBe('Foil Finish');
+  });
+});
+
 describe('CardTable desktop numeric alignment', () => {
   it('marks the Qty through Actions block with centered desktop column classes', () => {
     render(
@@ -1825,7 +1868,9 @@ describe('CardTable phone inventory rows', () => {
     const list = screen.getByTestId('inventory-mobile-list');
     expect(within(list).getByText('Mobile Card')).toBeInTheDocument();
     expect(within(list).getByText('Listed')).toBeInTheDocument();
-    expect(within(list).getByText('Near Mint Foil')).toBeInTheDocument();
+    const mobileFoilCondition = within(list).getByText('Near Mint Foil');
+    expect(mobileFoilCondition.textContent).toBe('Near Mint Foil');
+    expect(mobileFoilCondition).toHaveClass('inventory-condition-foil');
     expect(within(list).getByText('Qty 3')).toBeInTheDocument();
     expect(within(list).getByText('$2.45')).toBeInTheDocument();
     expect(within(list).getByText('$2.50')).toBeInTheDocument();
