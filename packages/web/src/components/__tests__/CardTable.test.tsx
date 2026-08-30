@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
@@ -118,8 +118,8 @@ describe('CardTable review + confirm flow', () => {
   });
 });
 
-describe('CardTable Last Checked column', () => {
-  it('renders Last Checked column header', () => {
+describe('CardTable desktop time columns', () => {
+  it('does not render Last Checked or Updated headers on desktop', () => {
     render(
       <CardTable
         cards={[makeCard()]}
@@ -131,13 +131,27 @@ describe('CardTable Last Checked column', () => {
       />,
     );
 
-    expect(screen.getByText('Last Checked')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: /^Last Checked$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: /^Updated$/i }),
+    ).not.toBeInTheDocument();
   });
+});
 
-  it('shows dash when lastCheckedAt is null', () => {
+describe('CardTable desktop numeric alignment', () => {
+  it('marks the Qty through Actions block with centered desktop column classes', () => {
     render(
       <CardTable
-        cards={[makeCard({ id: 1, lastCheckedAt: null })]}
+        cards={[
+          makeCard({
+            status: 'listed',
+            quantity: 7,
+            marketPrice: '1.27',
+            listingPrice: '1.25',
+          }),
+        ]}
         onReprice={() => {}}
         onDelete={() => {}}
         onMarkListed={() => {}}
@@ -146,32 +160,33 @@ describe('CardTable Last Checked column', () => {
       />,
     );
 
-    // The Last Checked cell should contain a dash
-    const rows = screen.getAllByRole('row');
-    // row[0] is thead, row[1] is the data row
-    const cells = rows[1].querySelectorAll('td');
-    // Columns: checkbox, status, name, set, number, rarity, condition, qty, market, rec'd, listing, floor, lastChecked, updated, actions
-    const lastCheckedCell = cells[11];
-    expect(lastCheckedCell.textContent).toBe('—');
-  });
-
-  it('shows relative time when lastCheckedAt has a value', () => {
-    const recentDate = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(); // 3h ago
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, lastCheckedAt: recentDate })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
-      />,
+    for (const headerName of ['Qty', 'Market', "Rec'd"]) {
+      expect(screen.getByRole('columnheader', { name: headerName })).toHaveClass(
+        'inventory-card-table__numeric-column',
+      );
+    }
+    expect(screen.getByRole('columnheader', { name: 'Listing' })).toHaveClass(
+      'inventory-card-table__listing-column',
+    );
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toHaveClass(
+      'inventory-card-table__actions-column',
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const lastCheckedCell = cells[11];
-    expect(lastCheckedCell.textContent).toBe('3h ago');
+    expect(screen.getByText('7').closest('td')).toHaveClass(
+      'inventory-card-table__numeric-column',
+    );
+    expect(screen.getByText('$1.27').closest('td')).toHaveClass(
+      'inventory-card-table__numeric-column',
+    );
+    expect(screen.getByText('$1.24').closest('td')).toHaveClass(
+      'inventory-card-table__numeric-column',
+    );
+    expect(screen.getByRole('button', { name: /edit listing price.*\$1\.25/i }).closest('td')).toHaveClass(
+      'inventory-card-table__listing-column',
+    );
+    expect(
+      screen.getByRole('button', { name: /actions for targon's peak/i }).closest('td'),
+    ).toHaveClass('inventory-card-table__actions-column');
   });
 });
 
@@ -701,7 +716,7 @@ describe('CardTable pricing review', () => {
 
     const dialog = screen.getByRole('dialog', { name: /pricing review/i });
     expect(dialog).toHaveTextContent('First Group');
-    expect(within(dialog).getAllByText(/^✓ Updated$/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/^Updated$/i).length).toBeGreaterThan(0);
   });
 
   it('does not mark skipped rows as Updated when navigating back', async () => {
@@ -729,7 +744,7 @@ describe('CardTable pricing review', () => {
 
     dialog = screen.getByRole('dialog', { name: /pricing review/i });
     expect(dialog).toHaveTextContent('Skipped Group');
-    expect(within(dialog).queryByText(/^✓ Updated$/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
 
   it('saves every selected valid row in a grouped review step', async () => {
@@ -850,7 +865,7 @@ describe('CardTable pricing review', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Update failed');
     const dialog = screen.getByRole('dialog', { name: /pricing review/i });
     expect(dialog).toHaveTextContent('Punch First');
-    expect(within(dialog).queryByText(/^✓ Updated$/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
 
   it('disables unavailable actions when Rec’d price or Product ID is missing', async () => {
@@ -1082,7 +1097,9 @@ describe('CardTable row actions menu', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(screen.getByText('Needs Attention')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '$1.25' })).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: /edit listing price for missing foil price, currently \$1\.25/i,
+    })).toBeInTheDocument();
   });
 
   it('triggers Re-price from the row actions menu', async () => {
@@ -1390,202 +1407,238 @@ describe('CardTable recommended price column', () => {
   });
 });
 
-describe('CardTable inline listing price editing', () => {
-  it('listed card shows clickable listing price', () => {
+describe('CardTable display-first listing price editing', () => {
+  const tableProps = {
+    onReprice: () => {},
+    onDelete: () => {},
+    onMarkListed: () => {},
+    onUnlist: () => {},
+  };
+
+  it('renders eligible idle listing prices as plain currency edit triggers', () => {
     render(
       <CardTable
+        {...tableProps}
         cards={[makeCard({ id: 1, status: 'listed', listingPrice: '0.20' })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
         onUpdateCard={vi.fn()}
       />,
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    // listing column is index 10
-    const listingCell = cells[10];
-    const button = listingCell.querySelector('button');
-    expect(button).not.toBeNull();
-    expect(button!.textContent).toBe('$0.20');
+    const trigger = screen.getByRole('button', {
+      name: /edit listing price for targon's peak, currently \$0\.20/i,
+    });
+    expect(trigger).toHaveTextContent('$0.20');
+    expect(trigger).toHaveClass('listing-price-display');
+    expect(trigger.querySelector('.listing-price-display__icon')).not.toBeNull();
+    expect(screen.queryByRole('textbox', { name: /listing price/i })).toBeNull();
   });
 
-  it('clicking opens input pre-filled with current price', async () => {
+  it('activates a decimal editor with auto-selected value and accessible save/cancel controls', async () => {
     const user = userEvent.setup();
     render(
       <CardTable
+        {...tableProps}
         cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
         onUpdateCard={vi.fn()}
       />,
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const listingCell = cells[10];
-    await user.click(listingCell.querySelector('button')!);
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
 
-    const inputs = screen.getAllByRole('spinbutton');
-    // Find the listing price input (should have value 1.50)
-    const listingInput = inputs.find((input) => (input as HTMLInputElement).value === '1.50');
-    expect(listingInput).toBeDefined();
+    const input = screen.getByRole('textbox', { name: /listing price for targon's peak/i }) as HTMLInputElement;
+    expect(input).toHaveValue('1.50');
+    expect(input).toHaveAttribute('inputmode', 'decimal');
+    expect(input).toHaveFocus();
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(4);
+    expect(screen.getByRole('button', { name: /save listing price/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel editing listing price/i })).toBeInTheDocument();
   });
 
-  it('Enter calls onUpdateCard with numeric listingPrice', async () => {
+  it('saves the decimal value through the explicit Save control and confirms success', async () => {
     const user = userEvent.setup();
     const onUpdateCard = vi.fn().mockResolvedValue(makeCard({ id: 1, listingPrice: '2.00' }));
-
     render(
       <CardTable
+        {...tableProps}
         cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
         onUpdateCard={onUpdateCard}
       />,
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const listingCell = cells[10];
-    await user.click(listingCell.querySelector('button')!);
-
-    const inputs = screen.getAllByRole('spinbutton');
-    const listingInput = inputs.find((input) => (input as HTMLInputElement).value === '1.50')!;
-    await user.clear(listingInput);
-    await user.type(listingInput, '2.00');
-    await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    const input = screen.getByRole('textbox', { name: /listing price/i });
+    await user.clear(input);
+    await user.type(input, '2.00');
+    await user.click(screen.getByRole('button', { name: /save listing price/i }));
 
     await waitFor(() => {
-      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.00 });
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2 });
+    });
+    expect(screen.queryByRole('textbox', { name: /listing price/i })).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+  });
+
+  it('saves on Enter without relying on blur', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard({ id: 1, listingPrice: '2.00' }));
+    render(
+      <CardTable
+        {...tableProps}
+        cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    const input = screen.getByRole('textbox', { name: /listing price/i });
+    await user.clear(input);
+    await user.type(input, '2.00{Enter}');
+
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2 });
     });
   });
 
-  it('Escape cancels listing price edit', async () => {
+  it('restores the original value when cancelled by button or Escape without saving', async () => {
     const user = userEvent.setup();
     const onUpdateCard = vi.fn();
-
     render(
       <CardTable
+        {...tableProps}
         cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
         onUpdateCard={onUpdateCard}
       />,
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const listingCell = cells[10];
-    await user.click(listingCell.querySelector('button')!);
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    await user.clear(screen.getByRole('textbox', { name: /listing price/i }));
+    await user.type(screen.getByRole('textbox', { name: /listing price/i }), '4.00');
+    await user.click(screen.getByRole('button', { name: /cancel editing listing price/i }));
+    expect(screen.getByRole('button', { name: /currently \$1\.50/i })).toHaveTextContent('$1.50');
 
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
     await user.keyboard('{Escape}');
-
-    // Input should be gone
-    const listingCell2 = rows[1].querySelectorAll('td')[10];
-    expect(listingCell2.querySelector('input')).toBeNull();
+    expect(screen.getByRole('button', { name: /currently \$1\.50/i })).toBeInTheDocument();
     expect(onUpdateCard).not.toHaveBeenCalled();
   });
 
-  it('needs_attention cards can edit and save listing price', async () => {
+  it('keeps the editor open and surfaces invalid input without mutation', async () => {
     const user = userEvent.setup();
-    const onUpdateCard = vi.fn().mockResolvedValue(
-      makeCard({ id: 1, status: 'needs_attention', listingPrice: '2.00' }),
-    );
-
+    const onUpdateCard = vi.fn();
     render(
       <CardTable
+        {...tableProps}
+        cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    const input = screen.getByRole('textbox', { name: /listing price/i });
+    await user.clear(input);
+    await user.type(input, 'not-a-price');
+    await user.click(screen.getByRole('button', { name: /save listing price/i }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/non-negative dollar amount/i);
+    expect(screen.getByRole('textbox', { name: /listing price/i })).toBeInTheDocument();
+    expect(onUpdateCard).not.toHaveBeenCalled();
+  });
+
+  it('disables editor controls while saving and deduplicates repeated submission', async () => {
+    const user = userEvent.setup();
+    let resolveUpdate: (card: Card) => void;
+    const pendingUpdate = new Promise<Card>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    const onUpdateCard = vi.fn().mockReturnValue(pendingUpdate);
+    render(
+      <CardTable
+        {...tableProps}
+        cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    await user.click(screen.getByRole('button', { name: /save listing price/i }));
+
+    const saveButton = screen.getByRole('button', { name: /save listing price/i });
+    const cancelButton = screen.getByRole('button', { name: /cancel editing listing price/i });
+    await waitFor(() => {
+      expect(saveButton).toBeDisabled();
+      expect(cancelButton).toBeDisabled();
+    });
+    await user.click(saveButton);
+    expect(onUpdateCard).toHaveBeenCalledTimes(1);
+
+    resolveUpdate!(makeCard({ id: 1, listingPrice: '1.50' }));
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('Saved');
+    });
+  });
+
+  it('retains editing for needs_attention cards with missing Market values', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(
+      makeCard({ id: 1, status: 'needs_attention', marketPrice: null, listingPrice: '2.00' }),
+    );
+    render(
+      <CardTable
+        {...tableProps}
         cards={[
           makeCard({
             id: 1,
             status: 'needs_attention',
-            listingPrice: '1.50',
+            marketPrice: null,
+            listingPrice: null,
           }),
         ]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
         onUpdateCard={onUpdateCard}
       />,
     );
 
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const listingCell = cells[10];
-    await user.click(listingCell.querySelector('button')!);
-
-    const inputs = screen.getAllByRole('spinbutton');
-    const listingInput = inputs.find(
-      (input) => (input as HTMLInputElement).value === '1.50',
-    )!;
-    await user.clear(listingInput);
-    await user.type(listingInput, '2.00');
-    await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    const input = screen.getByRole('textbox', { name: /listing price/i });
+    await user.type(input, '2.00');
+    await user.click(screen.getByRole('button', { name: /save listing price/i }));
 
     await waitFor(() => {
-      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2.0 });
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2 });
     });
   });
 
-  it('non-listed and non-attention cards show non-editable listing price', () => {
+  it('surfaces save errors without discarding the editor value', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockRejectedValue(new Error('Save failed'));
     render(
       <CardTable
+        {...tableProps}
+        cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
+        onUpdateCard={onUpdateCard}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /edit listing price/i }));
+    await user.click(screen.getByRole('button', { name: /save listing price/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Save failed');
+    expect(screen.getByRole('textbox', { name: /listing price/i })).toHaveValue('1.50');
+  });
+
+  it('keeps non-listed and non-attention listing values as non-editable plain text', () => {
+    render(
+      <CardTable
+        {...tableProps}
         cards={[makeCard({ id: 1, status: 'matched', listingPrice: '0.20' })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
         onUpdateCard={vi.fn()}
       />,
     );
 
     const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const listingCell = cells[10];
-    // Should have no button (plain text)
+    const listingCell = rows[1].querySelectorAll('td')[10];
     expect(listingCell.querySelector('button')).toBeNull();
-    expect(listingCell.textContent).toBe('$0.20');
-  });
-
-  it('blur saves listing price edit', async () => {
-    const user = userEvent.setup();
-    const onUpdateCard = vi.fn().mockResolvedValue(makeCard({ id: 1, listingPrice: '3.00' }));
-
-    render(
-      <CardTable
-        cards={[makeCard({ id: 1, status: 'listed', listingPrice: '1.50' })]}
-        onReprice={() => {}}
-        onDelete={() => {}}
-        onMarkListed={() => {}}
-        onUnlist={() => {}}
-        onUpdateCard={onUpdateCard}
-      />,
-    );
-
-    const rows = screen.getAllByRole('row');
-    const cells = rows[1].querySelectorAll('td');
-    const listingCell = cells[10];
-    await user.click(listingCell.querySelector('button')!);
-
-    const inputs = screen.getAllByRole('spinbutton');
-    const listingInput = inputs.find((input) => (input as HTMLInputElement).value === '1.50')!;
-    await user.clear(listingInput);
-    await user.type(listingInput, '3.00');
-    // Tab away to trigger blur
-    await user.tab();
-
-    await waitFor(() => {
-      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 3.00 });
-    });
+    expect(listingCell).toHaveTextContent('$0.20');
   });
 });
 
@@ -1712,6 +1765,154 @@ describe('CardTable Record Sale button', () => {
         }),
       );
     });
+  });
+});
+
+describe('CardTable phone inventory rows', () => {
+  let innerWidthDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    innerWidthDescriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 640,
+      writable: true,
+    });
+    vi.stubGlobal('ResizeObserver', undefined);
+  });
+
+  afterEach(() => {
+    if (innerWidthDescriptor) {
+      Object.defineProperty(window, 'innerWidth', innerWidthDescriptor);
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it('uses collapsed touch rows instead of the inventory table and exposes data and actions on expansion', async () => {
+    const user = userEvent.setup();
+    const onSortChange = vi.fn();
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            productName: 'Mobile Card',
+            status: 'listed',
+            condition: 'Near Mint Foil',
+            quantity: 3,
+            marketPrice: '2.50',
+            listingPrice: '2.45',
+            tcgProductId: 685490,
+            tcgplayerId: 12345,
+            photoUrl: 'https://example.com/mobile-card.jpg',
+            lastCheckedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          }),
+        ]}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={vi.fn().mockResolvedValue(makeCard())}
+        onSortChange={onSortChange}
+        sortField="updatedAt"
+        sortDirection="desc"
+      />,
+    );
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    const list = screen.getByTestId('inventory-mobile-list');
+    expect(within(list).getByText('Mobile Card')).toBeInTheDocument();
+    expect(within(list).getByText('Listed')).toBeInTheDocument();
+    expect(within(list).getByText('Near Mint Foil')).toBeInTheDocument();
+    expect(within(list).getByText('Qty 3')).toBeInTheDocument();
+    expect(within(list).getByText('$2.45')).toBeInTheDocument();
+    expect(within(list).getByText('$2.50')).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: /view photo for mobile card/i })).toBeInTheDocument();
+    expect(within(list).queryByText('Origins')).not.toBeInTheDocument();
+
+    await user.selectOptions(
+      within(list).getByLabelText(/sort inventory/i),
+      'productName:asc',
+    );
+    expect(onSortChange).toHaveBeenCalledWith('productName', 'asc');
+
+    await user.click(
+      within(list).getByRole('button', { name: /show details for mobile card/i }),
+    );
+
+    expect(within(list).getByText('Origins')).toBeInTheDocument();
+    expect(within(list).getByText('12345')).toBeInTheDocument();
+    expect(within(list).getByText('685490')).toBeInTheDocument();
+    expect(within(list).getByText("Rec’d")).toBeInTheDocument();
+    expect(within(list).getByText('Last checked')).toBeInTheDocument();
+    expect(within(list).getByText('1h ago')).toBeInTheDocument();
+    expect(within(list).getByText('Updated')).toBeInTheDocument();
+    expect(within(list).getByText('2h ago')).toBeInTheDocument();
+
+    await user.click(
+      within(list).getByRole('button', { name: /actions for mobile card/i }),
+    );
+    expect(screen.getByRole('menuitem', { name: /record sale/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /remove from listing/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /view price history/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /open in tcg/i })).toBeInTheDocument();
+  });
+
+  it('retains selection, listing edits, and global Needs Attention review in phone mode', async () => {
+    const user = userEvent.setup();
+    const onUpdateCard = vi.fn().mockResolvedValue(makeCard());
+    const onLoadNeedsAttentionReviewCards = vi.fn().mockResolvedValue([
+      makeCard({
+        id: 2,
+        productName: 'Off-page Attention Card',
+        status: 'needs_attention',
+        marketPrice: '4.00',
+      }),
+    ]);
+
+    render(
+      <CardTable
+        cards={[
+          makeCard({
+            id: 1,
+            productName: 'Phone Listed Card',
+            status: 'listed',
+            listingPrice: '1.50',
+          }),
+        ]}
+        needsAttentionCount={1}
+        onLoadNeedsAttentionReviewCards={onLoadNeedsAttentionReviewCards}
+        onReprice={() => {}}
+        onDelete={() => {}}
+        onMarkListed={() => {}}
+        onUnlist={() => {}}
+        onUpdateCard={onUpdateCard}
+        enableSellFlow
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /select phone listed card/i }));
+    expect(screen.getByRole('button', { name: /attach 1 to order/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', {
+      name: /edit listing price for phone listed card/i,
+    }));
+    const listingInput = screen.getByRole('textbox', {
+      name: /listing price for phone listed card/i,
+    });
+    await user.clear(listingInput);
+    await user.type(listingInput, '2.00');
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(onUpdateCard).toHaveBeenCalledWith(1, { listingPrice: 2 });
+    });
+
+    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    const dialog = await screen.findByRole('dialog', { name: /pricing review/i });
+    expect(onLoadNeedsAttentionReviewCards).toHaveBeenCalledOnce();
+    expect(dialog).toHaveTextContent('Off-page Attention Card');
   });
 });
 

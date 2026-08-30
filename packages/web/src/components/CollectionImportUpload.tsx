@@ -1,12 +1,17 @@
+import { FileUp, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
+import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react';
 import { api } from '../api/client';
 import type {
   CollectionImportCommitResponse,
   CollectionImportPreviewResponse,
 } from '../api/types';
+import type { ResponsiveMode } from '../hooks/useContainerResponsiveMode';
+import { BlueprintButton, BlueprintPanel } from '../ui';
 
 interface CollectionImportUploadProps {
   collectionId: number | null;
+  layout?: ResponsiveMode;
   onImportCommitted: () => void | Promise<void>;
 }
 
@@ -21,6 +26,7 @@ function allWarnings(preview: CollectionImportPreviewResponse | null) {
 
 export function CollectionImportUpload({
   collectionId,
+  layout = 'desktop',
   onImportCommitted,
 }: CollectionImportUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -90,24 +96,24 @@ export function CollectionImportUpload({
     void previewFile(file, collectionId, requestId);
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     event.target.value = '';
     selectFile(file);
   };
 
-  const handleDrop = (event: React.DragEvent) => {
+  const handleDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragActive(false);
     selectFile(event.dataTransfer.files?.[0] ?? null);
   };
 
-  const handleDragOver = (event: React.DragEvent) => {
+  const handleDragOver = (event: DragEvent) => {
     event.preventDefault();
     setDragActive(true);
   };
 
-  const handleDropzoneKeyDown = (event: React.KeyboardEvent) => {
+  const handleDropzoneKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       fileInputRef.current?.click();
@@ -141,14 +147,18 @@ export function CollectionImportUpload({
   );
 
   return (
-    <section className="collection-import-card" aria-label="Import to Owned Collection">
+    <BlueprintPanel
+      className="collection-import-card"
+      aria-label="Import to Owned Collection"
+    >
       <div className="collection-import-header">
-        <div>
-          <h3>Import to Owned Collection</h3>
-          <p>
-            Each imported CSV quantity is added to a matching Owned Collection row. If no matching row exists, it is created with that imported quantity. This never imports into Selling Inventory.
-          </p>
-        </div>
+        <p className="collection-step__eyebrow">Step 01 · Additive intake</p>
+        <h3>Import to Owned Collection</h3>
+        <p>
+          Each imported CSV quantity is added to a matching Owned Collection row.
+          If no matching row exists, it is created with that imported quantity.
+          This never imports into Selling Inventory.
+        </p>
       </div>
 
       <div
@@ -163,6 +173,7 @@ export function CollectionImportUpload({
         onDragOver={handleDragOver}
         onDragLeave={() => setDragActive(false)}
       >
+        <FileUp className="collection-import-upload-icon" aria-hidden="true" strokeWidth={1.5} />
         <input
           ref={fileInputRef}
           type="file"
@@ -173,10 +184,10 @@ export function CollectionImportUpload({
           aria-label="Owned collection CSV file"
         />
         <p className="collection-import-dropzone-text">
-          📁 Drop a TCGPlayer collection CSV here, or click to browse
+          Drop a TCGPlayer collection CSV here, or click to browse
         </p>
         <p id="collection-import-dropzone-hint" className="collection-import-dropzone-hint">
-          CSV files only. Review the import before committing; this does not import into Selling Inventory.
+          CSV files only. A preview is generated automatically; nothing changes until you commit it.
         </p>
         <p className="collection-import-selected-file" aria-live="polite">
           {selectedFile ? `Selected: ${selectedFile.name}` : 'No file selected'}
@@ -197,9 +208,9 @@ export function CollectionImportUpload({
 
       {preview && (
         <div className="collection-import-preview" aria-label="Collection import preview">
-          <div className="collection-import-selected-mode">
-            Import behavior: <strong>Add imported quantities to Owned Collection</strong>
-          </div>
+          <p className="collection-import-selected-mode">
+            Import behavior: Add imported quantities to Owned Collection after you commit.
+          </p>
 
           <div className="collection-summary-grid collection-import-summary">
             <div className="collection-summary-card">
@@ -243,51 +254,74 @@ export function CollectionImportUpload({
             </details>
           )}
 
-          {preview.rows.length > 0 && (
-            <div className="table-container collection-import-rows">
-              <table className="card-table">
-                <thead>
-                  <tr>
-                    <th>Row</th>
-                    <th>Card</th>
-                    <th>Set / #</th>
-                    <th>Finish</th>
-                    <th>Qty</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.rows.slice(0, 10).map((row) => (
-                    <tr key={`${row.rowNumber}-${row.productName}`}>
-                      <td>{row.rowNumber}</td>
-                      <td>{row.productName || '-'}</td>
-                      <td>
-                        {row.setName ?? '-'}{' '}
-                        <span className="collection-muted">{row.number ?? ''}</span>
-                      </td>
-                      <td>{row.finish ?? '-'}</td>
-                      <td>{row.quantity}</td>
-                      <td>
-                        <span className={`collection-import-status status-${row.status}`}>
-                          {row.status}
-                        </span>
-                      </td>
+          {preview.rows.length > 0 &&
+            (layout === 'phone' ? (
+              <div className="collection-mobile-preview-list" aria-label="Import rows">
+                {preview.rows.slice(0, 10).map((row) => (
+                  <article
+                    className="collection-mobile-preview-card"
+                    key={`${row.rowNumber}-${row.productName}`}
+                  >
+                    <div className="collection-mobile-preview-card__header">
+                      <strong>{row.productName || '-'}</strong>
+                      <span className={`collection-import-status status-${row.status}`}>
+                        {row.status}
+                      </span>
+                    </div>
+                    <p className="collection-mobile-preview-card__meta">
+                      Row {row.rowNumber} · {row.setName ?? '-'} {row.number ?? ''}
+                    </p>
+                    <p>
+                      {row.finish ?? '-'} · Qty {row.quantity}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="table-container collection-import-rows">
+                <table className="card-table">
+                  <thead>
+                    <tr>
+                      <th>Row</th>
+                      <th>Card</th>
+                      <th>Set / #</th>
+                      <th>Finish</th>
+                      <th>Qty</th>
+                      <th>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {preview.rows.slice(0, 10).map((row) => (
+                      <tr key={`${row.rowNumber}-${row.productName}`}>
+                        <td>{row.rowNumber}</td>
+                        <td>{row.productName || '-'}</td>
+                        <td>
+                          {row.setName ?? '-'}{' '}
+                          <span className="collection-muted">{row.number ?? ''}</span>
+                        </td>
+                        <td>{row.finish ?? '-'}</td>
+                        <td>{row.quantity}</td>
+                        <td>
+                          <span className={`collection-import-status status-${row.status}`}>
+                            {row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
 
           <div className="collection-import-actions">
-            <button
-              type="button"
-              className="button-primary"
+            <BlueprintButton
+              variant="primary"
               onClick={handleCommit}
               disabled={!canCommit}
+              icon={<Upload aria-hidden="true" strokeWidth={1.5} />}
             >
               {isCommitting ? 'Importing…' : 'Commit Import to Owned Collection'}
-            </button>
+            </BlueprintButton>
             {commitResult && (
               <span className="collection-import-success" role="status">
                 Imported. Inserted {commitResult.inserted}, updated {commitResult.updated}.
@@ -296,6 +330,6 @@ export function CollectionImportUpload({
           </div>
         </div>
       )}
-    </section>
+    </BlueprintPanel>
   );
 }

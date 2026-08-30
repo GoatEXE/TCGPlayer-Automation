@@ -129,10 +129,44 @@ interface PriceCheckStatusResponse {
     drifted: number;
     errors: string[];
   } | null;
+  latestPriceCheckAt: string | null;
 }
 
 interface PriceHistoryResponse {
   history: PriceHistory[];
+}
+
+function serializePriceCheckTimestamp(
+  timestamp: Date | string | null | undefined,
+): string | null {
+  if (timestamp instanceof Date) {
+    return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+  }
+
+  if (typeof timestamp !== 'string') {
+    return null;
+  }
+
+  const parsedTimestamp = new Date(timestamp);
+  return Number.isNaN(parsedTimestamp.getTime())
+    ? null
+    : parsedTimestamp.toISOString();
+}
+
+async function getPriceCheckStatusResponse(): Promise<PriceCheckStatusResponse> {
+  const schedulerStatus = getPriceCheckSchedulerStatus();
+  const [latestPriceCheck] = await db
+    .select({ checkedAt: priceHistory.checkedAt })
+    .from(priceHistory)
+    .orderBy(desc(priceHistory.checkedAt))
+    .limit(1);
+
+  return {
+    ...schedulerStatus,
+    latestPriceCheckAt: serializePriceCheckTimestamp(
+      latestPriceCheck?.checkedAt,
+    ),
+  };
 }
 
 function isQueryableCardStatus(
@@ -875,7 +909,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
           );
         }
 
-        return reply.send(getPriceCheckSchedulerStatus());
+        return reply.send(await getPriceCheckStatusResponse());
       } catch (error) {
         fastify.log.error(error);
         return reply
@@ -888,7 +922,7 @@ export async function cardsRoutes(fastify: FastifyInstance) {
   // GET /price-check-status - Get scheduler status and last run metadata
   fastify.get('/price-check-status', async (_request, reply) => {
     try {
-      return reply.send(getPriceCheckSchedulerStatus());
+      return reply.send(await getPriceCheckStatusResponse());
     } catch (error) {
       fastify.log.error(error);
       return reply

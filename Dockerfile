@@ -19,6 +19,7 @@ COPY packages/web/tsconfig.json packages/web/vite.config.ts packages/web/index.h
 # Stage 2: Build frontend (inherits deps + configs)
 FROM deps AS build-web
 COPY packages/web/src ./packages/web/src
+COPY packages/web/public ./packages/web/public
 RUN pnpm --filter web build
 
 # Stage 3: Build server (inherits deps + configs)

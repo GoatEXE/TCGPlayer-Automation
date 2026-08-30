@@ -65,6 +65,15 @@ const baseRow = {
   transferItems: [],
 };
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: width,
+    writable: true,
+  });
+  window.dispatchEvent(new Event('resize'));
+}
+
 function paginationRows(count: number) {
   return Array.from({ length: count }, (_, index) => {
     const id = 1000 + index;
@@ -103,6 +112,7 @@ function paginationRows(count: number) {
 
 describe('CollectionView', () => {
   beforeEach(() => {
+    setViewportWidth(1024);
     vi.clearAllMocks();
     apiMocks.getCollections.mockResolvedValue({
       collections: [
@@ -366,7 +376,8 @@ describe('CollectionView', () => {
     expect(screen.queryByLabelText(/to be sold collection/i)).toBeNull();
     expect(screen.queryByRole('heading', { name: /to be sold/i })).toBeNull();
     const collectionSection = document.querySelector('.collection-section');
-    expect(collectionSection?.firstElementChild).toHaveClass('collection-import-card');
+    expect(collectionSection?.firstElementChild).toHaveClass('collection-workflow__header');
+    expect(collectionSection?.querySelector('.collection-stepper')).toBeTruthy();
     expect(collectionSection?.querySelector('.section-header')).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
     expect(screen.getByText(/never imports into selling inventory/i)).toBeTruthy();
@@ -383,6 +394,63 @@ describe('CollectionView', () => {
     expect(screen.getByText('Mystery Card')).toBeTruthy();
     expect(screen.getAllByText('Needs Classification').length).toBeGreaterThan(0);
     expect(screen.getByText('Token/Rune excluded')).toBeTruthy();
+  });
+
+  it('uses expandable touch-friendly phone cards without horizontal tables while preserving review and transfer controls', async () => {
+    const user = userEvent.setup();
+    setViewportWidth(375);
+    render(<CollectionView />);
+
+    const sellCardTitle = await screen.findByText('Sell Extra Card');
+    const sellCard = sellCardTitle.closest('article');
+    expect(sellCard).not.toBeNull();
+    expect(document.querySelector('.collection-section')).toHaveAttribute('data-layout', 'phone');
+    expect(document.querySelector('.collection-table')).toBeNull();
+    expect(within(sellCard!).getByText('Normal')).toBeTruthy();
+    expect(within(sellCard!).getByText('Foil')).toBeTruthy();
+    expect(within(sellCard!).getByText('Sell')).toBeTruthy();
+
+    await user.click(
+      within(sellCard!).getByRole('button', { name: /show details for sell extra card/i }),
+    );
+    expect(within(sellCard!).getByText('Keep target')).toBeTruthy();
+    expect(within(sellCard!).getByText('Recommended sell')).toBeTruthy();
+    expect(within(sellCard!).getByText('Set aside to sell')).toBeTruthy();
+    expect(
+      within(sellCard!).getByLabelText(/card kind for sell extra card/i),
+    ).toBeTruthy();
+    expect(
+      within(sellCard!).getByLabelText(/move quantity for sell extra card/i),
+    ).toHaveValue(2);
+
+    await user.click(
+      within(sellCard!).getByLabelText(/move sell extra card to selling inventory/i),
+    );
+    fireEvent.change(
+      within(sellCard!).getByLabelText(/move quantity for sell extra card/i),
+      { target: { value: '99' } },
+    );
+    expect(
+      within(sellCard!).getByLabelText(/move quantity for sell extra card/i),
+    ).toHaveValue(2);
+    await user.click(screen.getByRole('button', { name: /preview move/i }));
+    await waitFor(() => {
+      expect(apiMocks.previewCollectionTransferToInventory).toHaveBeenCalledWith(1, {
+        items: [{ collectionItemId: 111, quantity: 2 }],
+      });
+    });
+    const preview = await screen.findByLabelText(/^transfer preview$/i);
+    expect(preview).toHaveTextContent('Ready to List');
+    expect(within(preview).queryByRole('table')).toBeNull();
+
+    await user.click(
+      within(sellCard!).getByRole('button', { name: /actions for sell extra card/i }),
+    );
+    expect(screen.getByRole('menuitem', { name: /adjust count/i })).toBeTruthy();
+    await user.click(screen.getByRole('menuitem', { name: /adjust count/i }));
+    expect(
+      screen.getByRole('dialog', { name: /adjust count for sell extra card/i }),
+    ).toBeTruthy();
   });
 
   it('paginates the complete sorted collection result set and clears hidden transfer selections', async () => {
@@ -723,11 +791,10 @@ describe('CollectionView', () => {
     const dialog = screen.getByRole('dialog', { name: /adjust count for dual finish card/i });
     const normalInput = within(dialog).getByLabelText('Normal · Near Mint · EN');
     const foilInput = within(dialog).getByLabelText('Foil · Lightly Played · EN');
-    expect(normalInput).toHaveValue(4);
-    expect(foilInput).toHaveValue(2);
+    expect(normalInput).toHaveValue('4');
+    expect(foilInput).toHaveValue('2');
 
-    await user.clear(normalInput);
-    await user.type(normalInput, '1.5');
+    fireEvent.change(normalInput, { target: { value: '1.5' } });
     await user.click(within(dialog).getByRole('button', { name: /^save counts$/i }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent(
       /non-negative whole number/i,

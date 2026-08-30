@@ -1,3 +1,5 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
 interface PaginationProps {
   currentPage: number;
   totalItems: number;
@@ -21,13 +23,14 @@ export function Pagination({
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
-    <div className="pagination">
+    <nav className="pagination industry-pagination" aria-label="Pagination">
       <button
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
         className="pagination-button"
       >
-        ← Previous
+        <ChevronLeft size={16} aria-hidden="true" />
+        Previous
       </button>
       <span className="pagination-info">
         Showing {startItem}–{endItem} of {totalItems} ({currentPage} of{' '}
@@ -38,8 +41,9 @@ export function Pagination({
         disabled={currentPage === totalPages}
         className="pagination-button"
       >
-        Next →
+        Next
+        <ChevronRight size={16} aria-hidden="true" />
       </button>
-    </div>
+    </nav>
   );
 }

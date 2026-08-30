@@ -1,3 +1,16 @@
+import {
+  AlertTriangle,
+  Bell,
+  Box,
+  ChevronRight,
+  DollarSign,
+  LoaderCircle,
+  Moon,
+  RefreshCw,
+  Search,
+  Settings,
+  Sun,
+} from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api/client';
 import type {
@@ -29,7 +42,11 @@ import type { ShipmentSubmitPayload } from './components/ShipmentFormModal';
 import { PriceCheckSettingsModal } from './components/PriceCheckSettingsModal';
 import { NotificationHistoryModal } from './components/NotificationHistoryModal';
 import { CardTable } from './components/CardTable';
-import type { SortDirection, SortField } from './components/CardTable';
+import type {
+  CardTableHandle,
+  SortDirection,
+  SortField,
+} from './components/CardTable';
 import { Pagination } from './components/Pagination';
 import { PerformanceSummaryCard } from './components/PerformanceSummaryCard';
 import { ExpenseSettingsCard } from './components/ExpenseSettingsCard';
@@ -38,7 +55,9 @@ import { ExpenseFormModal } from './components/ExpenseFormModal';
 import { ViewTabs } from './components/ViewTabs';
 import type { ViewMode } from './components/ViewTabs';
 import { CollectionView } from './components/CollectionView';
+import { useTheme } from './hooks/useTheme';
 import './App.css';
+import './styles/shell.css';
 
 type StatusFilter = 'all' | Card['status'];
 
@@ -50,7 +69,43 @@ interface ExpenseFilters {
   dateTo: string;
 }
 
+function formatRelativePriceCheckTime(dateString: string): string | null {
+  const timestamp = new Date(dateString).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+
+  const elapsedMinutes = Math.max(
+    0,
+    Math.floor((Date.now() - timestamp) / 60_000),
+  );
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 7) return `${elapsedDays}d ago`;
+
+  return new Date(dateString).toLocaleDateString();
+}
+
+function getPriceCheckSubtitle(
+  status: PriceCheckStatus | null,
+  loading: boolean,
+): string | null {
+  if (loading) return 'Checking price status…';
+  if (!status) return null;
+  if (status.running) return 'Price check in progress';
+
+  if (status.latestPriceCheckAt) {
+    const relativeTime = formatRelativePriceCheckTime(status.latestPriceCheckAt);
+    return relativeTime ? `Last checked ${relativeTime}` : 'Last checked';
+  }
+
+  return 'Never checked';
+}
+
 export function App() {
+  const { theme, toggleTheme } = useTheme();
   const [cards, setCards] = useState<Card[]>([]);
   const [stats, setStats] = useState<CardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +127,7 @@ export function App() {
   const [isPriceCheckSettingsOpen, setIsPriceCheckSettingsOpen] =
     useState(false);
   const priceCheckSettingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const cardTableRef = useRef<CardTableHandle>(null);
   const wasPriceCheckSettingsOpenRef = useRef(false);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
@@ -379,6 +435,7 @@ export function App() {
       const updatedCard = await api.repriceCard(id);
       setCards(cards.map((c) => (c.id === id ? updatedCard : c)));
       fetchStats();
+      fetchPriceCheckStatus();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to reprice card');
     }
@@ -403,6 +460,7 @@ export function App() {
       alert(`✅ Re-priced ${result.updated} cards`);
       fetchCards();
       fetchStats();
+      fetchPriceCheckStatus();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to reprice all cards');
     } finally {
@@ -632,6 +690,14 @@ export function App() {
     setSelectedExpenseForEdit(null);
   };
 
+  const handleClosePriceCheckSettings = useCallback(() => {
+    setIsPriceCheckSettingsOpen(false);
+  }, []);
+
+  const handleCloseNotificationHistory = useCallback(() => {
+    setIsNotificationHistoryOpen(false);
+  }, []);
+
   const handleCardSortChange = (field: SortField, direction: SortDirection) => {
     setCardSortField(field);
     setCardSortDirection(direction);
@@ -677,52 +743,97 @@ export function App() {
     setExpensePage(1);
   };
 
-  const statusFilters: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'All' },
-    { value: 'listed', label: 'Listed (On Sale)' },
-    { value: 'needs_attention', label: 'Needs Attention' },
-    { value: 'pending', label: 'Pending' },
-    { value: 'matched', label: 'Ready to List' },
-    { value: 'error', label: 'Error' },
+  const activeInventoryQuantity = stats
+    ? Math.max(0, stats.total - (stats.sold ?? 0) - (stats.gifted ?? 0))
+    : undefined;
+  const needsAttentionCount = stats?.needs_attention ?? 0;
+  const priceCheckSubtitle = getPriceCheckSubtitle(
+    priceCheckStatus,
+    priceCheckLoading,
+  );
+  const statusFilters: Array<{
+    value: StatusFilter;
+    label: string;
+    count?: number;
+  }> = [
+    { value: 'all', label: 'All', count: activeInventoryQuantity },
+    { value: 'listed', label: 'Listed (On Sale)', count: stats?.listed },
+    {
+      value: 'needs_attention',
+      label: 'Needs Attention',
+      count: stats?.needs_attention,
+    },
+    { value: 'pending', label: 'Pending', count: stats?.pending },
+    { value: 'matched', label: 'Ready to List', count: stats?.matched },
+    { value: 'error', label: 'Error', count: stats?.error },
   ];
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="app-header-top">
-          <h1>📦 TCGPlayer Automation</h1>
-          <div className="header-icon-actions">
+    <div className="app app-shell">
+      <header className="app-header app-shell-header">
+        <div className="app-header-top app-shell-header-top">
+          <h1 className="shell-brand" aria-label="TCGPLAYER AUTOMATION">
+            <Box
+              className="shell-brand-icon"
+              aria-hidden="true"
+              size={18}
+              strokeWidth={1.5}
+            />
+            <span className="shell-brand-mark">TCGPLAYER</span>
+            <span className="shell-brand-product">Automation</span>
+          </h1>
+
+          <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
+
+          <div className="header-icon-actions shell-utility-actions">
+            <button
+              type="button"
+              className="theme-toggle shell-utility-button"
+              onClick={toggleTheme}
+              aria-label={
+                theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+              }
+              aria-pressed={theme === 'dark'}
+              title={
+                theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+              }
+            >
+              {theme === 'dark' ? (
+                <Moon aria-hidden="true" size={19} strokeWidth={1.5} />
+              ) : (
+                <Sun aria-hidden="true" size={19} strokeWidth={1.5} />
+              )}
+            </button>
             <button
               ref={notificationHistoryTriggerRef}
               type="button"
-              className="notification-history-trigger"
+              className="notification-history-trigger shell-utility-button"
               onClick={() => setIsNotificationHistoryOpen(true)}
               aria-label="Notifications"
               title="Notifications"
               aria-haspopup="dialog"
               aria-expanded={isNotificationHistoryOpen}
             >
-              <span aria-hidden="true">🔔</span>
+              <Bell aria-hidden="true" size={19} strokeWidth={1.5} />
             </button>
             <button
               ref={priceCheckSettingsTriggerRef}
               type="button"
-              className="price-check-settings-trigger"
+              className="price-check-settings-trigger shell-utility-button"
               onClick={() => setIsPriceCheckSettingsOpen(true)}
               aria-label="Price Check Settings"
               title="Price Check Settings"
               aria-haspopup="dialog"
               aria-expanded={isPriceCheckSettingsOpen}
             >
-              <span aria-hidden="true">⚙</span>
+              <Settings aria-hidden="true" size={19} strokeWidth={1.5} />
             </button>
           </div>
         </div>
-        <StatsBar stats={stats} loading={statsLoading} />
       </header>
 
-      <main className="app-main">
-        <ViewTabs activeView={activeView} onChangeView={handleChangeView} />
+      <main className="app-main app-shell-main" id="dashboard-panel">
+        <StatsBar stats={stats} loading={statsLoading} />
 
         {activeView === 'sales-history' ? (
           <section className="cards-section">
@@ -957,58 +1068,116 @@ export function App() {
             )}
           </section>
         ) : (
-          <section className="cards-section">
-            <div className="section-header">
-              <h2>Card Inventory</h2>
-              <div className="button-group">
+          <section className="cards-section inventory-workspace" aria-labelledby="inventory-title">
+            <div className="section-header inventory-section-header">
+              <div className="inventory-section-title-group">
+                <h2 id="inventory-title">Selling Inventory</h2>
+                {priceCheckSubtitle && (
+                  <p className="inventory-price-freshness">{priceCheckSubtitle}</p>
+                )}
+              </div>
+              <div className="button-group inventory-header-actions">
                 <button
+                  type="button"
                   onClick={handleFetchPrices}
                   disabled={fetchingPrices}
-                  className="button-primary"
+                  className="inventory-header-action inventory-header-action--fetch"
                   title="Fetch latest market prices from TCGTracking API"
                 >
-                  {fetchingPrices ? '⏳ Fetching...' : '🔄 Fetch Latest Prices'}
+                  {fetchingPrices ? (
+                    <LoaderCircle
+                      className="inventory-loading-icon"
+                      size={16}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <RefreshCw size={16} aria-hidden="true" />
+                  )}
+                  <span>{fetchingPrices ? 'Fetching prices' : 'Fetch Latest Prices'}</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleRepriceAll}
                   disabled={repricingAll || cards.length === 0}
-                  className="button-primary"
+                  className="inventory-header-action inventory-header-action--reprice"
                 >
-                  {repricingAll ? '⏳ Re-pricing...' : '💰 Re-price All'}
+                  {repricingAll ? (
+                    <LoaderCircle
+                      className="inventory-loading-icon"
+                      size={16}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <DollarSign size={16} aria-hidden="true" />
+                  )}
+                  <span>{repricingAll ? 'Re-pricing' : 'Re-price All'}</span>
                 </button>
               </div>
             </div>
 
-            <div className="filters">
+            {needsAttentionCount > 0 && (
+              <aside
+                className="inventory-attention-banner"
+                aria-label="Needs Attention pricing review"
+              >
+                <div className="inventory-attention-banner__message">
+                  <AlertTriangle size={18} aria-hidden="true" />
+                  <div>
+                    <strong>
+                      {needsAttentionCount} inventory{' '}
+                      {needsAttentionCount === 1 ? 'item needs' : 'items need'} attention.
+                    </strong>
+                    <p>Review pricing across every Needs Attention card.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="inventory-attention-banner__action"
+                  onClick={() => cardTableRef.current?.openNeedsAttentionReview()}
+                >
+                  Review pricing
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </aside>
+            )}
+
+            <div className="filters inventory-toolbar" data-testid="inventory-toolbar">
               {activeView === 'inventory' && (
-                <div className="status-filters">
+                <div className="status-filters inventory-status-filters" aria-label="Inventory status filters">
                   {statusFilters.map((filter) => (
                     <button
                       key={filter.value}
+                      type="button"
                       onClick={() => handleStatusFilter(filter.value)}
+                      aria-pressed={statusFilter === filter.value}
                       className={`filter-button ${statusFilter === filter.value ? 'active' : ''}`}
                     >
-                      {filter.label}
+                      <span>{filter.label}</span>
+                      {filter.count !== undefined && (
+                        <span className="inventory-filter-count">{filter.count}</span>
+                      )}
                     </button>
                   ))}
                 </div>
               )}
 
-              <form onSubmit={handleSearch} className="search-form">
+              <form onSubmit={handleSearch} className="search-form inventory-search-form">
                 <input
                   type="text"
                   placeholder="Search by card name..."
+                  aria-label="Search inventory by card name"
                   value={searchQuery}
                   onChange={(e) => handleSearchQueryChange(e.target.value)}
                   className="search-input"
                 />
-                <button type="submit" className="search-button">
-                  🔍
+                <button type="submit" className="search-button" aria-label="Search inventory">
+                  <Search size={16} aria-hidden="true" />
                 </button>
               </form>
             </div>
 
             <CardTable
+              ref={cardTableRef}
               cards={cards}
               loading={loading}
               onReprice={handleReprice}
@@ -1029,8 +1198,9 @@ export function App() {
               defaultShippingCollectedCents={
                 expenseSettings?.defaultShippingCollectedCents ?? 149
               }
-              needsAttentionCount={stats?.needs_attention ?? 0}
+              needsAttentionCount={needsAttentionCount}
               onLoadNeedsAttentionReviewCards={fetchAllNeedsAttentionCards}
+              showNeedsAttentionReviewLauncher={false}
               sortField={cardSortField}
               sortDirection={cardSortDirection}
               onSortChange={handleCardSortChange}
@@ -1051,7 +1221,7 @@ export function App() {
           status={priceCheckStatus}
           loading={priceCheckLoading}
           error={priceCheckError}
-          onClose={() => setIsPriceCheckSettingsOpen(false)}
+          onClose={handleClosePriceCheckSettings}
           onUpdateInterval={handleUpdateInterval}
           onUpdateListedPriceAttentionThreshold={
             handleUpdateListedPriceAttentionThreshold
@@ -1064,7 +1234,7 @@ export function App() {
           events={notificationEvents}
           loading={notificationsLoading}
           error={notificationsError}
-          onClose={() => setIsNotificationHistoryOpen(false)}
+          onClose={handleCloseNotificationHistory}
         />
       )}
     </div>

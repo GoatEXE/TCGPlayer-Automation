@@ -1,0 +1,566 @@
+/* Industry dashboard shell: this file deliberately scopes changes to the app shell
+   so established feature styles in App.css remain usable below the new frame. */
+.app.app-shell {
+  width: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--color-text) 3%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-text) 3%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 2.125rem 2.125rem;
+  container-type: inline-size;
+}
+
+/* The header is a single, full-width instrument bar. Metrics deliberately live
+   in the workspace below so the top edge retains the reference hierarchy. */
+.app.app-shell .app-header {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  box-shadow: none;
+}
+
+.app.app-shell .app-header-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 3.75rem;
+  padding: 0 var(--space-4);
+}
+
+.app.app-shell .app-main {
+  display: flex;
+  width: min(100%, 100rem);
+  flex-direction: column;
+  gap: var(--space-5);
+  margin: var(--space-5) auto 0;
+  padding: 0 clamp(var(--space-3), 2vw, var(--space-8)) var(--space-8);
+}
+
+.shell-brand {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.shell-brand-icon {
+  flex: none;
+  color: var(--color-accent-700);
+}
+
+.shell-brand-mark,
+.shell-brand-product {
+  color: var(--color-text);
+}
+
+.shell-brand-product {
+  font-weight: 600;
+}
+
+.app-shell .header-icon-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
+.app-shell button.shell-utility-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.app-shell button.shell-utility-button:hover,
+.app-shell button.shell-utility-button[aria-expanded='true'],
+.app-shell button.shell-utility-button[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent-800);
+}
+
+.app-shell button.shell-utility-button svg {
+  display: block;
+}
+
+.app-shell .cards-section {
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+  box-shadow: none;
+}
+
+.app-shell .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.app-shell .section-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Tabs remain in their own horizontal scroll context, keeping every view
+   reachable on compact and touch devices without shrinking tap targets. */
+.app-shell .shell-view-tabs {
+  display: flex;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  justify-self: end;
+  margin: 0;
+  border: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--color-divider) transparent;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: inline proximity;
+  touch-action: pan-x;
+}
+
+.app-shell .shell-view-tabs::-webkit-scrollbar {
+  height: 0.35rem;
+}
+
+.app-shell .shell-view-tabs::-webkit-scrollbar-thumb {
+  background: var(--color-divider);
+}
+
+.app-shell .view-tab {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  scroll-snap-align: start;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-shell .view-tab:hover {
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+  color: var(--color-text);
+}
+
+.app-shell .view-tab.view-tab-active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  color: var(--color-accent-800);
+}
+
+.app-shell .view-tab-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.app-shell .view-tab-icon svg {
+  display: block;
+}
+
+.app-shell .stats-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.4rem, 1fr));
+  gap: 1px;
+  margin-block: var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: var(--color-divider);
+  color: var(--color-text);
+}
+
+.app-shell .stats-plate {
+  min-height: 5.25rem;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: var(--color-bg);
+  box-shadow: none;
+}
+
+.app-shell .stats-plate-label {
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.app-shell .stats-plate-value {
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-shell .stats-plate-detail {
+  min-height: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.app-shell .stats-plate-accent .stats-plate-value {
+  color: var(--color-accent-700);
+}
+
+.app-shell .stats-plate-attention .stats-plate-value {
+  color: var(--color-warning, #a15c00);
+}
+
+.app-shell .stats-plate-error .stats-plate-value {
+  color: var(--color-error, #b42318);
+}
+
+.app-shell .stats-bar-loading {
+  display: flex;
+  min-height: 5.25rem;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+/* Utility dialogs use the shared portal/focus trap and receive the same square
+   technical treatment as the shell. Their bodies own the scroll area. */
+.industry-dialog.utility-dialog {
+  width: min(42rem, 100%);
+  max-height: min(43rem, calc(100dvh - (var(--space-4) * 2)));
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-color: color-mix(in srgb, var(--color-text) 28%, transparent);
+  background: var(--color-bg);
+}
+
+.industry-dialog.utility-notification-history-dialog {
+  width: min(44rem, 100%);
+}
+
+.utility-dialog .industry-dialog__header {
+  align-items: center;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.utility-dialog .industry-dialog__title,
+.utility-dialog-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.utility-dialog-title svg {
+  color: var(--color-accent-700);
+}
+
+.utility-dialog .industry-dialog__close {
+  color: var(--color-text-muted);
+}
+
+.utility-dialog .industry-dialog__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.utility-dialog .industry-dialog__footer {
+  margin-top: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.utility-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.utility-dialog .price-check-settings-body,
+.utility-dialog .notification-history-modal-body {
+  padding: 0;
+}
+
+.utility-dialog-status-row {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.utility-dialog .price-check-badge,
+.utility-dialog .result-chip {
+  border-radius: 0;
+}
+
+.utility-dialog .price-check-badge {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid currentColor;
+  background: transparent;
+  font-family: var(--font-heading);
+  letter-spacing: 0.065em;
+}
+
+.utility-dialog .badge-enabled {
+  color: var(--color-accent-700);
+}
+
+.utility-dialog .badge-disabled {
+  color: var(--color-text-muted);
+}
+
+.utility-dialog .price-check-config {
+  gap: var(--space-4);
+  color: var(--color-text-muted);
+}
+
+.utility-dialog .interval-settings-control {
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.utility-dialog .interval-settings-control:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.utility-dialog .interval-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4.75rem, 6rem) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.utility-dialog .interval-label {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.utility-dialog .interval-input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.utility-dialog .interval-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: none;
+}
+
+.utility-dialog .interval-save-button {
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: 0;
+}
+
+.utility-dialog .price-check-last-run {
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.utility-dialog .price-check-results {
+  gap: var(--space-2);
+}
+
+.utility-dialog .result-chip {
+  padding: var(--space-1) var(--space-2);
+  border-color: var(--color-divider);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.utility-dialog .notification-history-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.utility-dialog .notification-history-title {
+  margin-bottom: var(--space-3);
+  font-family: var(--font-heading);
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.utility-dialog .notification-history-list {
+  max-height: none;
+  gap: var(--space-2);
+}
+
+.utility-dialog .notification-history-item {
+  padding: var(--space-3);
+  border-radius: 0;
+  background: var(--color-surface);
+}
+
+@media (min-width: 760px) and (max-width: 1023px) {
+  .app-shell .stats-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .app-shell .stats-plate:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 759px) {
+  .app.app-shell .app-header-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .app-shell .shell-view-tabs[data-layout='phone'] {
+    grid-column: 1 / -1;
+    order: 3;
+    width: 100%;
+    max-width: none;
+    justify-self: stretch;
+  }
+
+  .app-shell .view-tab {
+    min-height: 3rem;
+    padding-inline: var(--space-3);
+  }
+
+  .app-shell .stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell .stats-plate {
+    min-height: 4.75rem;
+  }
+
+  .app-shell .stats-plate:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .app-shell .cards-section,
+  .app-shell .collection-import-card {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .app-shell .app-main {
+    width: 100%;
+    margin-top: var(--space-4);
+    padding: 0 var(--space-2) var(--space-4);
+  }
+
+  .app-shell .cards-section {
+    padding: var(--space-4);
+  }
+
+  .app-shell .section-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-shell .section-header .button-group {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell .section-header .button-primary {
+    width: 100%;
+  }
+
+  .industry-dialog.utility-dialog {
+    max-height: min(90dvh, 43rem);
+    padding: var(--space-4);
+  }
+
+  .utility-dialog .interval-field {
+    grid-template-columns: minmax(0, 1fr) minmax(4.4rem, 5.5rem) auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell-brand {
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+  }
+
+  .app-shell .header-icon-actions {
+    gap: 0.125rem;
+  }
+
+  .app-shell button.shell-utility-button {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .app-shell .view-tab-label {
+    font-size: 0.78rem;
+  }
+
+  .utility-dialog .interval-field {
+    grid-template-columns: 1fr auto;
+  }
+
+  .utility-dialog .interval-label {
+    grid-column: 1 / -1;
+  }
+}

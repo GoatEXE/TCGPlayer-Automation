@@ -1,4 +1,6 @@
+import { ChartNoAxesCombined } from 'lucide-react';
 import type { ExpenseCategory, PerformanceSummaryResponse } from '../api/types';
+import { BlueprintPanel } from '../ui';
 
 interface PerformanceSummaryCardProps {
   summary: PerformanceSummaryResponse;
@@ -35,48 +37,56 @@ export function PerformanceSummaryCard({ summary }: PerformanceSummaryCardProps)
   const categoryMap = new Map(
     summary.byCategory.map((row) => [row.category, row] as const),
   );
+  const metrics = [
+    {
+      label: 'Revenue (product + shipping collected)',
+      value: formatCents(summary.revenueCents),
+    },
+    { label: 'Expenses', value: formatCents(summary.expensesCents) },
+    {
+      label: 'Net Profit after fees + manual expenses',
+      value: formatCents(summary.netProfitCents),
+    },
+    { label: 'Margin', value: formatMargin(summary.marginPercent) },
+    { label: 'Sales Count', value: String(summary.salesCount) },
+    { label: 'Expense Count', value: String(summary.expenseCount) },
+  ];
 
   return (
-    <section className="price-check-card performance-summary-card">
-      <div className="price-check-header">
-        <span className="price-check-title">📊 Profit &amp; Loss</span>
-      </div>
+    <BlueprintPanel className="performance-summary-card commerce-performance-summary">
+      <header className="commerce-performance-card-header">
+        <ChartNoAxesCombined size={20} strokeWidth={1.6} aria-hidden="true" />
+        <h3>Profit &amp; Loss</h3>
+      </header>
 
-      <div className="price-check-body performance-summary-grid">
-        <span className="stat-item">
-          <strong>{formatCents(summary.revenueCents)}</strong> Revenue (product + shipping collected)
-        </span>
-        <span className="stat-item">
-          <strong>{formatCents(summary.expensesCents)}</strong> Expenses
-        </span>
-        <span className="stat-item">
-          <strong>{formatCents(summary.netProfitCents)}</strong> Net Profit after fees + manual expenses
-        </span>
-        <span className="stat-item">
-          Margin <strong>{formatMargin(summary.marginPercent)}</strong>
-        </span>
-        <span className="stat-item">
-          Sales Count <strong>{summary.salesCount}</strong>
-        </span>
-        <span className="stat-item">
-          Expense Count <strong>{summary.expenseCount}</strong>
-        </span>
-      </div>
+      <dl className="performance-summary-grid commerce-performance-metrics">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="stat-item commerce-performance-metric">
+            <dt>{metric.label}</dt>
+            <dd data-numeric>{metric.value}</dd>
+          </div>
+        ))}
+      </dl>
 
-      <div className="price-check-body performance-summary-split">
+      <div className="performance-summary-split commerce-performance-detail-strip">
         <span className="stat-item">
-          Estimated TCGplayer Fees <strong>{formatCents(summary.estimatedTcgplayerFeesCents ?? 0)}</strong>
+          Estimated TCGplayer Fees
+          <strong data-numeric>
+            {formatCents(summary.estimatedTcgplayerFeesCents ?? 0)}
+          </strong>
         </span>
         <span className="stat-item">
-          Estimated Expenses <strong>{formatCents(summary.estimatedExpensesCents)}</strong>
+          Estimated Expenses
+          <strong data-numeric>{formatCents(summary.estimatedExpensesCents)}</strong>
         </span>
         <span className="stat-item">
-          Actual Expenses <strong>{formatCents(summary.actualExpensesCents)}</strong>
+          Actual Expenses
+          <strong data-numeric>{formatCents(summary.actualExpensesCents)}</strong>
         </span>
       </div>
 
-      <div className="price-check-body performance-summary-breakdown">
-        <span className="price-check-title">Expense Breakdown</span>
+      <div className="performance-summary-breakdown">
+        <h4 className="commerce-breakdown-title">Expense Breakdown</h4>
         <ul
           className="performance-category-list"
           aria-label="Expense category breakdown"
@@ -86,7 +96,7 @@ export function PerformanceSummaryCard({ summary }: PerformanceSummaryCardProps)
             return (
               <li key={category} className="performance-category-item">
                 <span>{categoryLabels[category]}</span>
-                <strong>{formatCents(row?.totalCents ?? 0)}</strong>
+                <strong data-numeric>{formatCents(row?.totalCents ?? 0)}</strong>
                 <span className="price-check-no-runs">
                   {row?.count ?? 0} entr{(row?.count ?? 0) === 1 ? 'y' : 'ies'}
                 </span>
@@ -95,6 +105,6 @@ export function PerformanceSummaryCard({ summary }: PerformanceSummaryCardProps)
           })}
         </ul>
       </div>
-    </section>
+    </BlueprintPanel>
   );
 }

@@ -95,6 +95,7 @@ const expenseFixture = {
 describe('App view tabs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.removeItem('tcgplayer-theme');
 
     apiMocks.getCards.mockResolvedValue({
       cards: [],
@@ -240,6 +241,44 @@ describe('App view tabs', () => {
     expect(screen.getByRole('tab', { name: /inventory/i })).toBeTruthy();
   });
 
+  it('composes the compact header with right-side tabs followed by utility controls in light mode', () => {
+    window.localStorage.setItem('tcgplayer-theme', 'light');
+    render(<App />);
+
+    const headerTop = document.querySelector('.app-shell-header-top');
+    expect(headerTop).toBeTruthy();
+    expect(Array.from(headerTop!.children)).toEqual([
+      headerTop!.querySelector('.shell-brand'),
+      headerTop!.querySelector('[role="tablist"]'),
+      headerTop!.querySelector('.shell-utility-actions'),
+    ]);
+
+    expect(headerTop!.querySelector('.shell-brand-icon')).toBeTruthy();
+    const utilityActions = within(
+      headerTop!.querySelector('.shell-utility-actions') as HTMLElement,
+    ).getAllByRole('button');
+    expect(utilityActions.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Switch to dark theme',
+      'Notifications',
+      'Price Check Settings',
+    ]);
+    expect(utilityActions[0]).toHaveAttribute('aria-pressed', 'false');
+    expect(utilityActions[0]).toHaveAccessibleName('Switch to dark theme');
+    expect(utilityActions[0]).toHaveAttribute('title', 'Switch to dark theme');
+  });
+
+  it('describes switching to the light theme in dark mode', () => {
+    window.localStorage.setItem('tcgplayer-theme', 'dark');
+    render(<App />);
+
+    const themeToggle = screen.getByRole('button', {
+      name: 'Switch to light theme',
+    });
+    expect(themeToggle).toHaveAccessibleName('Switch to light theme');
+    expect(themeToggle).toHaveAttribute('aria-pressed', 'true');
+    expect(themeToggle).toHaveAttribute('title', 'Switch to light theme');
+  });
+
   it('keeps legacy selling imports out of Inventory and exposes owned collection import from Collection', async () => {
     const user = userEvent.setup();
 
@@ -281,7 +320,7 @@ describe('App view tabs', () => {
     expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(trigger).toHaveAttribute('title', 'Price Check Settings');
-    expect(trigger).toHaveTextContent('⚙');
+    expect(trigger.querySelector('svg.lucide-settings')).toBeTruthy();
     expect(trigger).not.toHaveTextContent('Price Check Settings');
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -319,7 +358,7 @@ describe('App view tabs', () => {
     expect(trigger).toHaveAttribute('title', 'Notifications');
     expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    expect(trigger).toHaveTextContent('🔔');
+    expect(trigger.querySelector('svg.lucide-bell')).toBeTruthy();
     expect(trigger).not.toHaveTextContent('Notifications');
 
     await user.click(trigger);
@@ -399,8 +438,9 @@ describe('App view tabs', () => {
 
     expect(screen.queryByRole('heading', { level: 2, name: 'Collection' })).toBeNull();
     expect(document.querySelector('.collection-section')?.firstElementChild).toHaveClass(
-      'collection-import-card',
+      'collection-workflow__header',
     );
+    expect(document.querySelector('.collection-stepper')).toBeTruthy();
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
     expect(
@@ -449,14 +489,34 @@ describe('App view tabs', () => {
     };
 
     apiMocks.getStats.mockResolvedValue({
-      total: 2,
-      pending: 0,
-      matched: 1,
-      listed: 0,
-      gift: 0,
-      needs_attention: 1,
+      total: 8,
+      pending: 1,
+      matched: 2,
+      listed: 3,
+      gifted: 0,
+      needs_attention: 2,
       sold: 0,
       error: 0,
+    });
+    apiMocks.getPriceCheckStatus.mockResolvedValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
+      running: false,
+      lastRun: {
+        startedAt: '2026-04-01T00:00:00.000Z',
+        finishedAt: '2026-04-01T00:02:00.000Z',
+        success: true,
+        updated: 1,
+        notFound: 0,
+        drifted: 0,
+        errors: [],
+      },
+      latestPriceCheckAt: new Date(
+        Date.now() - 2 * 60 * 60 * 1000,
+      ).toISOString(),
     });
     apiMocks.getCards.mockImplementation((params) => {
       if (params?.status === 'needs_attention') {
@@ -481,7 +541,26 @@ describe('App view tabs', () => {
       expect(screen.getByText('Displayed Matched Card')).toBeTruthy();
     });
 
-    await user.click(screen.getByRole('button', { name: /review pricing/i }));
+    expect(screen.getByRole('heading', { name: 'Selling Inventory' })).toBeTruthy();
+    expect(screen.getByText('Last checked 2h ago')).toBeTruthy();
+    expect(screen.queryByText(/last price check completed/i)).toBeNull();
+    expect(screen.queryByText(/^Last updated/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Fetch Latest Prices' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Re-price All' })).toBeTruthy();
+
+    const toolbar = screen.getByTestId('inventory-toolbar');
+    expect(within(toolbar).getByRole('button', { name: /all\s*8/i })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: /listed \(on sale\)\s*3/i })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: /needs attention\s*2/i })).toBeTruthy();
+    expect(within(toolbar).getByLabelText('Search inventory by card name')).toBeTruthy();
+
+    const attentionBanner = screen.getByLabelText('Needs Attention pricing review');
+    expect(attentionBanner).toHaveTextContent('2 inventory items need attention.');
+    expect(attentionBanner).toHaveTextContent(
+      'Review pricing across every Needs Attention card.',
+    );
+
+    await user.click(within(attentionBanner).getByRole('button', { name: /review pricing/i }));
 
     const dialog = await screen.findByRole('dialog', {
       name: /pricing review/i,
@@ -494,6 +573,48 @@ describe('App view tabs', () => {
         limit: 200,
       }),
     );
+  });
+
+  it('uses the persisted global price-check timestamp after scheduler memory resets', async () => {
+    const latestPriceCheckAt = new Date(
+      Date.now() - 2 * 60 * 60 * 1000,
+    ).toISOString();
+    apiMocks.getPriceCheckStatus.mockResolvedValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
+      running: false,
+      lastRun: null,
+      latestPriceCheckAt,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('Last checked 2h ago')).toBeTruthy();
+    expect(screen.queryByText('Price checks are scheduled')).toBeNull();
+  });
+
+  it('uses Never checked wording when no persisted price check exists', async () => {
+    apiMocks.getPriceCheckStatus.mockResolvedValue({
+      enabled: true,
+      intervalHours: 12,
+      thresholdPercent: 2,
+      listedPriceAttentionThresholdPercent: 10,
+      listedPriceAttentionMinDiffCents: 5,
+      running: false,
+      lastRun: null,
+      latestPriceCheckAt: null,
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByText('Never checked'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Price checks are scheduled')).toBeNull();
+    expect(screen.queryByText(/last price check completed/i)).toBeNull();
   });
 
   it('requests globally sorted cards and resets to page 1 when Name sort is clicked', async () => {

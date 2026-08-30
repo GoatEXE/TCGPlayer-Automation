@@ -1,0 +1,500 @@
+@import '@fontsource/barlow/400.css';
+@import '@fontsource/barlow/500.css';
+@import '@fontsource/barlow/600.css';
+@import '@fontsource/barlow/700.css';
+@import '@fontsource/barlow-condensed/500.css';
+@import '@fontsource/barlow-condensed/600.css';
+@import '@fontsource/barlow-condensed/700.css';
+
+:root {
+  color-scheme: light;
+
+  /* Industry: light technical ground, ink, and steel-blue accent. */
+  --industry-ground: #f2f2f3;
+  --industry-surface: #e9e9ea;
+  --industry-surface-raised: #f7f7f8;
+  --industry-surface-strong: #dedee0;
+  --industry-ink: #1d1f20;
+  --industry-steel-blue: #5980a6;
+
+  --color-bg: var(--industry-ground);
+  --color-surface: var(--industry-surface);
+  --color-surface-raised: var(--industry-surface-raised);
+  --color-surface-strong: var(--industry-surface-strong);
+  --color-text: var(--industry-ink);
+  --color-text-muted: #5d5d60;
+  --color-accent: var(--industry-steel-blue);
+  --color-divider: color-mix(in srgb, var(--color-text) 16%, transparent);
+  --color-on-accent: #fff;
+
+  /* Semantic feedback tokens stay legible on light and dark workspaces. */
+  --color-success: #25704b;
+  --color-success-surface: #e4f4ea;
+  --color-success-strong: #1e5a3c;
+  --color-warning: #a15c00;
+  --color-warning-surface: #fff8e8;
+  --color-warning-strong: #724d04;
+  --color-error: #b42318;
+  --color-error-surface: #fff1f0;
+  --color-error-strong: #8f1d15;
+  --color-info: #315e89;
+  --color-info-surface: #e7f1fb;
+  --color-info-strong: #1e3a8a;
+
+  --color-neutral-100: #f5f5f8;
+  --color-neutral-200: #e7e7ea;
+  --color-neutral-300: #d4d4d7;
+  --color-neutral-400: #b7b7ba;
+  --color-neutral-500: #98989b;
+  --color-neutral-600: #7a7a7d;
+  --color-neutral-700: #5d5d60;
+  --color-neutral-800: #424244;
+  --color-neutral-900: #2b2b2d;
+
+  --color-accent-100: #eef6ff;
+  --color-accent-200: #d6ebff;
+  --color-accent-300: #b5d9fd;
+  --color-accent-400: #94bce3;
+  --color-accent-500: #749dc4;
+  --color-accent-600: #597ea3;
+  --color-accent-700: #416180;
+  --color-accent-800: #2c455d;
+  --color-accent-900: #1d2d3d;
+
+  /* Legacy semantic aliases keep established feature CSS on the same palette. */
+  --color-primary: var(--color-accent);
+  --color-primary-hover: var(--color-accent-600);
+  --color-border: var(--color-divider);
+  --radius: 0;
+
+  --font-heading: 'Barlow Condensed', system-ui, sans-serif;
+  --font-heading-weight: 600;
+  --font-body: 'Barlow', system-ui, sans-serif;
+
+  /* The supplied 0.85 density scale, expressed as reusable layout tokens. */
+  --space-1: 0.2125rem;
+  --space-2: 0.425rem;
+  --space-3: 0.6375rem;
+  --space-4: 0.85rem;
+  --space-5: 1.0625rem;
+  --space-6: 1.275rem;
+  --space-8: 1.7rem;
+  --space-10: 2.125rem;
+
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --shadow-sm: 0 1px 2px
+    color-mix(in srgb, var(--color-neutral-900) 14%, transparent);
+  --shadow-md: 0 3px 10px
+    color-mix(in srgb, var(--color-neutral-900) 16%, transparent);
+  --shadow-lg: 0 12px 32px
+    color-mix(in srgb, var(--color-neutral-900) 22%, transparent);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --industry-ground: #151a1e;
+  --industry-surface: #20272d;
+  --industry-surface-raised: #262f36;
+  --industry-surface-strong: #303940;
+  --industry-ink: #edf2f5;
+  --industry-steel-blue: #84b4dd;
+
+  --color-text-muted: #adb9c2;
+  --color-divider: color-mix(in srgb, var(--color-text) 24%, transparent);
+  --color-on-accent: #10202d;
+
+  --color-success: #78cb9b;
+  --color-success-surface: #173f2c;
+  --color-success-strong: #c5efd4;
+  --color-warning: #f2c36d;
+  --color-warning-surface: #49371d;
+  --color-warning-strong: #f9dda0;
+  --color-error: #f28b82;
+  --color-error-surface: #4a2928;
+  --color-error-strong: #ffd5d0;
+  --color-info: #9cc9f0;
+  --color-info-surface: #263e53;
+  --color-info-strong: #cce6ff;
+
+  --color-neutral-100: #e9eef1;
+  --color-neutral-200: #d3dce2;
+  --color-neutral-300: #b8c3cb;
+  --color-neutral-400: #94a3af;
+  --color-neutral-500: #748491;
+  --color-neutral-600: #596873;
+  --color-neutral-700: #43505a;
+  --color-neutral-800: #303a42;
+  --color-neutral-900: #182027;
+
+  --color-accent-100: #d8edff;
+  --color-accent-200: #b8d9f4;
+  --color-accent-300: #9ac8e8;
+  --color-accent-400: #84b4dd;
+  --color-accent-500: #6a9dc6;
+  --color-accent-600: #5485ac;
+  --color-accent-700: #a9d0f0;
+  --color-accent-800: #d0e8fa;
+  --color-accent-900: #edf8ff;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+body {
+  margin: 0;
+  min-width: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  letter-spacing: -0.015em;
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+:where(
+  .industry-tabular-nums,
+  [data-numeric],
+  input[type='number'],
+  input[type='date'],
+  input[type='time']
+) {
+  font-variant-numeric: tabular-nums;
+}
+
+.industry-blueprint {
+  position: relative;
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+}
+
+.industry-blueprint__mark {
+  position: absolute;
+  z-index: 1;
+  width: 0.6875rem;
+  height: 0.6875rem;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  pointer-events: none;
+}
+
+.industry-blueprint__mark::before,
+.industry-blueprint__mark::after {
+  position: absolute;
+  display: block;
+  background: currentColor;
+  content: '';
+}
+
+.industry-blueprint__mark::before {
+  top: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+  height: 100%;
+}
+
+.industry-blueprint__mark::after {
+  top: calc(50% - 0.5px);
+  left: 0;
+  width: 100%;
+  height: 1px;
+}
+
+.industry-blueprint__mark--top-left {
+  top: -0.375rem;
+  left: -0.375rem;
+}
+
+.industry-blueprint__mark--top-right {
+  top: -0.375rem;
+  right: -0.375rem;
+}
+
+.industry-blueprint__mark--bottom-left {
+  bottom: -0.375rem;
+  left: -0.375rem;
+}
+
+.industry-blueprint__mark--bottom-right {
+  right: -0.375rem;
+  bottom: -0.375rem;
+}
+
+.industry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: transparent;
+}
+
+.industry-panel--surface {
+  background: var(--color-surface);
+}
+
+.industry-button {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  font-weight: var(--font-heading-weight);
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.industry-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.industry-button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+}
+
+.industry-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.industry-button--primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.industry-button--primary:hover:not(:disabled) {
+  background: var(--color-accent-600);
+}
+
+.industry-button--primary:active:not(:disabled) {
+  background: var(--color-accent-700);
+}
+
+.industry-button--primary .industry-blueprint__mark {
+  color: color-mix(in srgb, var(--color-bg) 70%, transparent);
+}
+
+.industry-button--ghost {
+  border-color: transparent;
+  color: var(--color-accent-700);
+}
+
+.industry-button--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.industry-button--ghost:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.industry-button--icon-only {
+  width: 2.25rem;
+  padding-inline: 0;
+}
+
+.industry-button--block {
+  width: 100%;
+}
+
+.industry-button__icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.industry-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.industry-field__label {
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.industry-field__required {
+  color: var(--color-accent-700);
+}
+
+.industry-input-frame {
+  background: var(--color-surface);
+}
+
+.industry-input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  caret-color: var(--color-accent);
+  font-size: 0.875rem;
+}
+
+.industry-input:hover {
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
+}
+
+.industry-input:focus-visible {
+  outline-offset: 0;
+}
+
+.industry-input-frame:has(.industry-input:focus-visible) {
+  border-color: var(--color-accent);
+}
+
+.industry-input-frame:has(.industry-input[aria-invalid='true']) {
+  border-color: var(--color-error, #b42318);
+}
+
+.industry-field__hint,
+.industry-field__error {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.industry-field__hint {
+  color: var(--color-text-muted);
+}
+
+.industry-field__error {
+  color: var(--color-error, #b42318);
+}
+
+.industry-dialog-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
+
+.industry-dialog {
+  display: flex;
+  width: min(34rem, 100%);
+  max-height: min(42rem, calc(100dvh - (var(--space-4) * 2)));
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: auto;
+  /* Blueprint registration marks intentionally overhang their field frames;
+     do not turn that decorative overhang into a dialog scrollbar. */
+  overflow-x: hidden;
+  padding: var(--space-4);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.industry-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.industry-dialog__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: var(--font-heading-weight);
+  line-height: 1.1;
+}
+
+.industry-dialog__close {
+  width: 2rem;
+  min-height: 2rem;
+  flex: none;
+  padding: 0;
+}
+
+.industry-dialog__body {
+  color: color-mix(in srgb, var(--color-text) 85%, transparent);
+}
+
+.industry-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 759px) {
+  .industry-dialog-backdrop {
+    align-items: end;
+    padding: var(--space-2);
+  }
+
+  .industry-dialog {
+    width: 100%;
+    max-height: min(90dvh, 42rem);
+  }
+
+  .industry-dialog__footer {
+    flex-direction: column-reverse;
+  }
+
+  .industry-dialog__footer .industry-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .industry-button {
+    transition: none;
+  }
+}
