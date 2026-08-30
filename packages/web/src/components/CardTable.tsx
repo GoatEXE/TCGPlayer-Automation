@@ -227,6 +227,12 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
   const [historyCardName, setHistoryCardName] = useState<string>('');
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listingEditValue, setListingEditValue] = useState<string>('');
+  const [listingEditError, setListingEditError] = useState<string | null>(null);
+  const [savingListingId, setSavingListingId] = useState<number | null>(null);
+  const [listingSaveConfirmationId, setListingSaveConfirmationId] = useState<number | null>(null);
+  const listingInputRef = useRef<HTMLInputElement>(null);
+  const listingSaveInFlightRef = useRef<number | null>(null);
+  const listingSaveConfirmationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recordSaleCardId, setRecordSaleCardId] = useState<number | null>(null);
   const [editDetailsCardId, setEditDetailsCardId] = useState<number | null>(null);
   const [editDetailsQuantity, setEditDetailsQuantity] = useState<string>('');
@@ -257,6 +263,19 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
     url: string;
     cardName: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (editingListingId === null) return;
+
+    listingInputRef.current?.focus();
+    listingInputRef.current?.select();
+  }, [editingListingId]);
+
+  useEffect(() => () => {
+    if (listingSaveConfirmationTimeoutRef.current !== null) {
+      clearTimeout(listingSaveConfirmationTimeoutRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (openActionMenuId === null) return;
@@ -506,28 +525,79 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
   };
 
   const handleListingEdit = (card: Card) => {
+    if (savingListingId !== null) return;
+
+    setListingEditError(null);
     setEditingListingId(card.id);
     const listingPrice = parsePriceValue(card.listingPrice);
     setListingEditValue(listingPrice !== null ? listingPrice.toFixed(2) : '');
   };
 
-  const handleListingSave = async (id: number) => {
-    const trimmed = listingEditValue.trim();
-    if (trimmed === '') return setEditingListingId(null);
-    const num = parseFloat(trimmed);
-    if (isNaN(num) || num < 0) return;
+  const handleListingCancel = () => {
+    if (savingListingId !== null) return;
+
     setEditingListingId(null);
-    await onUpdateCard(id, { listingPrice: num } as unknown as Partial<Card>);
+    setListingEditValue('');
+    setListingEditError(null);
+  };
+
+  const showListingSaveConfirmation = (id: number) => {
+    if (listingSaveConfirmationTimeoutRef.current !== null) {
+      clearTimeout(listingSaveConfirmationTimeoutRef.current);
+    }
+
+    setListingSaveConfirmationId(id);
+    listingSaveConfirmationTimeoutRef.current = setTimeout(() => {
+      setListingSaveConfirmationId((current) => (current === id ? null : current));
+      listingSaveConfirmationTimeoutRef.current = null;
+    }, 1800);
+  };
+
+  const handleListingSave = async (card: Card) => {
+    if (
+      savingListingId !== null ||
+      listingSaveInFlightRef.current !== null
+    ) {
+      return;
+    }
+
+    const trimmed = listingEditValue.trim();
+    const parsed = Number(trimmed);
+    if (trimmed === '' || !Number.isFinite(parsed) || parsed < 0) {
+      setListingEditError('Enter a non-negative dollar amount.');
+      return;
+    }
+
+    listingSaveInFlightRef.current = card.id;
+    setSavingListingId(card.id);
+    setListingEditError(null);
+    try {
+      await onUpdateCard(card.id, {
+        listingPrice: parsed,
+      } as unknown as Partial<Card>);
+      setEditingListingId(null);
+      setListingEditValue('');
+      showListingSaveConfirmation(card.id);
+    } catch (error) {
+      setListingEditError(
+        error instanceof Error ? error.message : 'Unable to save listing price.',
+      );
+    } finally {
+      listingSaveInFlightRef.current = null;
+      setSavingListingId(null);
+    }
   };
 
   const handleListingKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    id: number,
+    event: React.KeyboardEvent<HTMLInputElement>,
+    card: Card,
   ) => {
-    if (e.key === 'Enter') {
-      handleListingSave(id);
-    } else if (e.key === 'Escape') {
-      setEditingListingId(null);
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void handleListingSave(card);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      handleListingCancel();
     }
   };
 
@@ -768,40 +838,99 @@ export const CardTable = forwardRef<CardTableHandle, CardTableProps>(function Ca
   };
 
   const renderListingPrice = (card: Card) => {
+    const cardName = card.title || card.productName;
     const canEditListingPrice =
       card.status === 'listed' || card.status === 'needs_attention';
+    const isSaving = savingListingId === card.id;
+    const isShowingSaveConfirmation = listingSaveConfirmationId === card.id;
 
     if (!canEditListingPrice) {
       return formatPrice(card.listingPrice);
     }
 
     if (editingListingId === card.id) {
+      const errorId = `listing-price-error-${card.id}`;
       return (
-        <input
-          type="number"
-          className="listing-price-input"
-          aria-label={`Listing price for ${card.title || card.productName}`}
-          value={listingEditValue}
-          onChange={(event) => setListingEditValue(event.target.value)}
-          onKeyDown={(event) => handleListingKeyDown(event, card.id)}
-          onBlur={() => handleListingSave(card.id)}
-          min="0"
-          step="0.01"
-          placeholder="—"
-          autoFocus
-        />
+        <span className="listing-price-editor-wrap">
+          <span className="listing-price-editor">
+            <span className="listing-price-editor__prefix" aria-hidden="true">$
+            </span>
+            <input
+              ref={listingInputRef}
+              type="text"
+              inputMode="decimal"
+              className="listing-price-input"
+              aria-label={`Listing price for ${cardName}`}
+              aria-describedby={listingEditError ? errorId : undefined}
+              value={listingEditValue}
+              onChange={(event) => {
+                setListingEditValue(event.target.value);
+                if (listingEditError) setListingEditError(null);
+              }}
+              onKeyDown={(event) => handleListingKeyDown(event, card)}
+              placeholder="0.00"
+              disabled={isSaving}
+            />
+            <button
+              type="button"
+              className="listing-price-editor__action listing-price-editor__action--save"
+              aria-label={`Save listing price for ${cardName}`}
+              title="Save listing price"
+              onClick={() => void handleListingSave(card)}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <LoaderCircle className="inventory-loading-icon" size={15} aria-hidden="true" />
+              ) : (
+                <Check size={15} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
+              className="listing-price-editor__action listing-price-editor__action--cancel"
+              aria-label={`Cancel editing listing price for ${cardName}`}
+              title="Cancel editing listing price"
+              onClick={handleListingCancel}
+              disabled={isSaving}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </span>
+          {listingEditError && (
+            <span id={errorId} className="listing-price-editor__error" role="alert">
+              {listingEditError}
+            </span>
+          )}
+        </span>
       );
     }
 
+    const formattedPrice = formatPrice(card.listingPrice);
     return (
-      <button
-        type="button"
-        className="listing-price-display"
-        onClick={() => handleListingEdit(card)}
-        title="Click to edit listing price"
-      >
-        {formatPrice(card.listingPrice)}
-      </button>
+      <span className="listing-price-display-wrap">
+        <button
+          type="button"
+          className="listing-price-display"
+          onClick={() => handleListingEdit(card)}
+          title="Edit listing price"
+          aria-label={`Edit listing price for ${cardName}, currently ${
+            typeof formattedPrice === 'string' ? formattedPrice : 'unavailable'
+          }`}
+          disabled={savingListingId !== null}
+        >
+          <span>{formattedPrice}</span>
+          <Pencil
+            className="listing-price-display__icon"
+            size={13}
+            aria-hidden="true"
+          />
+        </button>
+        {isShowingSaveConfirmation && (
+          <span className="listing-price-save-confirmation" role="status">
+            <Check size={13} aria-hidden="true" /> Saved
+          </span>
+        )}
+      </span>
     );
   };
 

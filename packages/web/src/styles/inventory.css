@@ -135,7 +135,10 @@
   text-align: center;
 }
 
-.inventory-card-table .inventory-card-table__listing-column .listing-price-display,
+.inventory-card-table .inventory-card-table__listing-column .listing-price-display {
+  vertical-align: baseline;
+}
+
 .inventory-card-table .inventory-card-table__listing-column .listing-price-input,
 .inventory-card-table .inventory-card-table__actions-column .inventory-action-menu-container {
   vertical-align: middle;
@@ -221,23 +224,177 @@
   color: var(--inventory-accent-dark);
 }
 
+/* Listing prices remain calm until deliberately edited. */
+.inventory-table-container .listing-price-display-wrap,
+.inventory-table-container .listing-price-editor-wrap {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.inventory-table-container .listing-price-editor-wrap {
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
 .inventory-table-container .listing-price-display {
+  position: relative;
+  display: inline-block;
+  padding: 0;
+  border: 0;
   border-radius: 0;
-  color: var(--inventory-accent-dark);
-  font-weight: 600;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+  line-height: inherit;
+  text-decoration: none;
+  vertical-align: baseline;
 }
 
-.inventory-table-container .listing-price-display:hover {
-  background: color-mix(in srgb, var(--inventory-accent) 12%, transparent);
+.inventory-table-container .listing-price-display:hover:not(:disabled) {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--inventory-accent) 72%, currentColor);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
 }
 
-.inventory-table-container .listing-price-input {
-  width: 5rem;
+.inventory-table-container .listing-price-display:focus-visible:not(:disabled) {
+  outline: 1px solid color-mix(in srgb, var(--inventory-accent) 70%, var(--inventory-line));
+  outline-offset: 2px;
+  background: transparent;
+  color: inherit;
+}
+
+.inventory-table-container .listing-price-display:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+/* The Pencil is an overlay, so its visibility never changes table geometry. */
+.inventory-table-container .listing-price-display__icon {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 0.25rem);
+  width: 0.8125rem;
+  height: 0.8125rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) scale(0.8);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.inventory-table-container .listing-price-display:hover .listing-price-display__icon,
+.inventory-table-container .listing-price-display:focus-visible .listing-price-display__icon {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.inventory-table-container .listing-price-editor {
+  display: inline-grid;
+  width: min(100%, 8.5rem);
+  max-width: 100%;
+  grid-template-columns: auto minmax(0, 3.75rem) 1.75rem 1.75rem;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem;
   border: 1px solid var(--inventory-accent);
   border-radius: 0;
   background: var(--inventory-surface-raised);
-  color: var(--inventory-ink);
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--inventory-accent) 18%, transparent);
 }
+
+.inventory-table-container .listing-price-editor__prefix {
+  padding-left: 0.2rem;
+  color: var(--inventory-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.inventory-table-container .listing-price-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 1.65rem;
+  padding: 0.1rem 0.2rem;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--inventory-ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.inventory-table-container .listing-price-input:focus-visible {
+  background: color-mix(in srgb, var(--inventory-accent) 10%, transparent);
+}
+
+.inventory-table-container .listing-price-editor__action {
+  display: inline-flex;
+  width: 1.75rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--inventory-line-strong);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.inventory-table-container .listing-price-editor__action--save {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.inventory-table-container .listing-price-editor__action--cancel {
+  color: var(--inventory-muted);
+}
+
+.inventory-table-container .listing-price-editor__action:hover:not(:disabled),
+.inventory-table-container .listing-price-editor__action:focus-visible:not(:disabled) {
+  border-color: var(--inventory-accent);
+  background: color-mix(in srgb, var(--inventory-accent) 12%, transparent);
+  color: var(--inventory-accent-dark);
+}
+
+.inventory-table-container .listing-price-editor__action:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.inventory-table-container .listing-price-editor__error {
+  max-width: 10rem;
+  color: var(--inventory-danger);
+  font-size: 0.65rem;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.inventory-table-container .listing-price-save-confirmation {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.1rem 0.25rem;
+  border: 1px solid currentColor;
+  color: var(--color-success);
+  font-family: var(--font-heading, 'Barlow Condensed', system-ui, sans-serif);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 
 .inventory-table-container .action-menu-trigger,
 .inventory-mobile-card__expand {
@@ -426,6 +583,22 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   line-height: 1.25;
+}
+
+.inventory-mobile-card__prices .listing-price-display-wrap,
+.inventory-mobile-card__prices .listing-price-editor-wrap {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.inventory-mobile-card__prices .listing-price-editor {
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) 1.75rem 1.75rem;
+}
+
+.inventory-mobile-card__prices .listing-price-editor__error {
+  max-width: 100%;
+  text-align: left;
 }
 
 .inventory-mobile-card__details {
