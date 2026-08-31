@@ -440,12 +440,12 @@ describe('App view tabs', () => {
     expect(document.querySelector('.collection-section')?.firstElementChild).toHaveClass(
       'collection-workflow__header',
     );
-    expect(document.querySelector('.collection-stepper')).toBeTruthy();
+    expect(document.querySelector('.collection-stepper')).toBeNull();
     expect(screen.queryByLabelText(/import to selling inventory/i)).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
     expect(
-      screen.getByText(/never imports into selling inventory/i),
-    ).toBeTruthy();
+      screen.queryByText(/never imports into selling inventory/i),
+    ).toBeNull();
     expect(await screen.findByText('Collection Sell Candidate')).toBeTruthy();
     expect(apiMocks.getCollections).toHaveBeenCalled();
     expect(apiMocks.getCollectionSellability).toHaveBeenCalledWith(1);

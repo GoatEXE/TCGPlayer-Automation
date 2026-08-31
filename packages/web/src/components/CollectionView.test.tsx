@@ -364,7 +364,7 @@ describe('CollectionView', () => {
     });
   });
 
-  it('renders only the Owned Collection and keeps sellable cards highlighted and prioritized', async () => {
+  it('renders only the Owned Collection, omits redundant workflow instructions, and keeps sellable cards highlighted and prioritized', async () => {
     render(<CollectionView />);
 
     await waitFor(() => {
@@ -377,14 +377,36 @@ describe('CollectionView', () => {
     expect(screen.queryByRole('heading', { name: /to be sold/i })).toBeNull();
     const collectionSection = document.querySelector('.collection-section');
     expect(collectionSection?.firstElementChild).toHaveClass('collection-workflow__header');
-    expect(collectionSection?.querySelector('.collection-stepper')).toBeTruthy();
+    expect(collectionSection?.querySelector('.collection-stepper')).toBeNull();
+    expect(screen.queryByLabelText('Owned Collection workflow')).toBeNull();
     expect(collectionSection?.querySelector('.section-header')).toBeNull();
     expect(screen.getByText(/import to owned collection/i)).toBeTruthy();
-    expect(screen.getByText(/never imports into selling inventory/i)).toBeTruthy();
+    expect(screen.queryByText('Step 01 · Import')).toBeNull();
+    expect(screen.queryByText('Add a collection export')).toBeNull();
+    expect(screen.queryByText('Step 01 · Additive intake')).toBeNull();
+    expect(screen.queryByText('Step 02 · Review')).toBeNull();
+    expect(screen.queryByText('Review sellability')).toBeNull();
+    expect(screen.queryByText('Step 03 · Transfer')).toBeNull();
+    expect(screen.queryByText('Preview and move selected cards')).toBeNull();
+    expect(screen.queryByText(/the preview is automatic and additive/i)).toBeNull();
+    expect(screen.queryByText(/each imported csv quantity is added to a matching owned collection row/i)).toBeNull();
+    expect(screen.queryByText(/recommendations favor your keep target/i)).toBeNull();
+    expect(screen.queryByText(/the move decreases owned collection quantities/i)).toBeNull();
+    expect(screen.queryByText(/add csv quantities without changing selling inventory/i)).toBeNull();
+    expect(screen.queryByText(/search and inspect sellability recommendations/i)).toBeNull();
+    expect(screen.queryByText(/preview the selected move before committing it/i)).toBeNull();
 
     expect(await screen.findByLabelText(/sellability summary/i)).toHaveTextContent(
       'Sell Normal2',
     );
+
+    const transferPanel = screen.getByLabelText('Move to Selling Inventory');
+    const desktopTable = document.querySelector('.collection-table');
+    expect(desktopTable).not.toBeNull();
+    expect(
+      transferPanel.compareDocumentPosition(desktopTable!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     const rows = screen.getAllByRole('row').slice(1);
     expect(within(rows[0]).getByText('Sell Extra Card')).toBeTruthy();
@@ -406,6 +428,12 @@ describe('CollectionView', () => {
     expect(sellCard).not.toBeNull();
     expect(document.querySelector('.collection-section')).toHaveAttribute('data-layout', 'phone');
     expect(document.querySelector('.collection-table')).toBeNull();
+    const transferPanel = screen.getByLabelText('Move to Selling Inventory');
+    const phoneList = screen.getByLabelText('Collection cards');
+    expect(
+      transferPanel.compareDocumentPosition(phoneList) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(sellCard!).getByText('Normal')).toBeTruthy();
     expect(within(sellCard!).getByText('Foil')).toBeTruthy();
     expect(within(sellCard!).getByText('Sell')).toBeTruthy();
@@ -1029,7 +1057,6 @@ describe('CollectionView', () => {
     expect(screen.queryByRole('radiogroup', { name: /collection import mode/i })).toBeNull();
     expect(screen.queryByLabelText(/set quantities from csv/i)).toBeNull();
     expect(screen.queryByLabelText(/add to existing quantities/i)).toBeNull();
-    expect(screen.getByText(/each imported csv quantity is added to a matching owned collection row/i)).toBeTruthy();
 
     await user.upload(screen.getByLabelText(/owned collection csv file/i), file);
     expect(screen.queryByRole('button', { name: /preview import/i })).toBeNull();

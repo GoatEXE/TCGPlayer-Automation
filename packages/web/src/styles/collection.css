@@ -14,7 +14,7 @@
 }
 
 .collection-workflow__eyebrow,
-.collection-step__eyebrow,
+.collection-panel__eyebrow,
 .collection-mobile-card__eyebrow,
 .collection-quantity__label {
   margin: 0;
@@ -33,8 +33,7 @@
   line-height: 0.95;
 }
 
-.collection-workflow__description,
-.collection-step__description {
+.collection-workflow__description {
   max-width: 55rem;
   margin: 0;
   color: var(--color-text-muted);
@@ -42,68 +41,7 @@
   line-height: 1.45;
 }
 
-.collection-stepper {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  border: 1px solid var(--color-divider);
-  background: var(--color-divider);
-}
-
-.collection-stepper__item {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg);
-}
-
-.collection-stepper__number {
-  display: grid;
-  width: 1.7rem;
-  height: 1.7rem;
-  flex: none;
-  place-items: center;
-  border: 1px solid var(--color-accent);
-  color: var(--color-accent-700);
-  font-family: var(--font-heading);
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-.collection-stepper__copy {
-  display: grid;
-  gap: 0.1rem;
-  min-width: 0;
-}
-
-.collection-stepper__copy strong {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.collection-stepper__copy span {
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  line-height: 1.25;
-}
-
-.collection-step {
-  position: relative;
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.collection-step__header {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.collection-step__heading {
+.collection-panel__heading {
   margin: 0;
   font-size: 1.22rem;
   line-height: 1;
@@ -138,7 +76,6 @@
   line-height: 1;
 }
 
-.collection-section .collection-import-header p,
 .collection-section .collection-transfer-panel p {
   max-width: 48rem;
   margin: 0;
@@ -841,14 +778,6 @@
 @media (max-width: 759px) {
   .collection-section.collection-workflow {
     gap: var(--space-4);
-  }
-
-  .collection-stepper {
-    grid-template-columns: 1fr;
-  }
-
-  .collection-stepper__item {
-    padding: var(--space-3);
   }
 
   .collection-section .collection-import-card,
