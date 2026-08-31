@@ -824,47 +824,14 @@ export function CollectionView({
         </p>
       </header>
 
-      <div className="collection-stepper" aria-label="Owned Collection workflow">
-        <div className="collection-stepper__item">
-          <span className="collection-stepper__number">01</span>
-          <div className="collection-stepper__copy">
-            <strong>Import</strong>
-            <span>Add CSV quantities without changing selling inventory.</span>
-          </div>
-        </div>
-        <div className="collection-stepper__item">
-          <span className="collection-stepper__number">02</span>
-          <div className="collection-stepper__copy">
-            <strong>Review</strong>
-            <span>Search and inspect sellability recommendations.</span>
-          </div>
-        </div>
-        <div className="collection-stepper__item">
-          <span className="collection-stepper__number">03</span>
-          <div className="collection-stepper__copy">
-            <strong>Transfer</strong>
-            <span>Preview the selected move before committing it.</span>
-          </div>
-        </div>
-      </div>
-
       {ownedCollection && (
-        <div className="collection-step">
-          <div className="collection-step__header">
-            <p className="collection-step__eyebrow">Step 01 · Import</p>
-            <h3 className="collection-step__heading">Add a collection export</h3>
-            <p className="collection-step__description">
-              The preview is automatic and additive. Review it before making any collection change.
-            </p>
-          </div>
-          <CollectionImportUpload
-            collectionId={ownedCollection.id}
-            layout={layout}
-            onImportCommitted={async () => {
-              await loadSellability(ownedCollection.id);
-            }}
-          />
-        </div>
+        <CollectionImportUpload
+          collectionId={ownedCollection.id}
+          layout={layout}
+          onImportCommitted={async () => {
+            await loadSellability(ownedCollection.id);
+          }}
+        />
       )}
 
       {error && (
@@ -879,14 +846,7 @@ export function CollectionView({
       )}
 
       {sellability && (
-        <div className="collection-step">
-          <div className="collection-step__header">
-            <p className="collection-step__eyebrow">Step 02 · Review</p>
-            <h3 className="collection-step__heading">Review sellability</h3>
-            <p className="collection-step__description">
-              Recommendations favor your keep target. Token and rune rows stay excluded, while unknown card kinds remain visible for classification.
-            </p>
-          </div>
+        <>
           <div className="collection-summary-grid" aria-label="Sellability summary">
             <div className="collection-summary-card">
               <span>Sell Normal</span>
@@ -909,8 +869,8 @@ export function CollectionView({
           <BlueprintPanel className="collection-review-panel" aria-label="Collection review">
             <div className="collection-review-panel__header">
               <div>
-                <p className="collection-step__eyebrow">Owned cards</p>
-                <h3 className="collection-step__heading">Select recommended extras</h3>
+                <p className="collection-panel__eyebrow">Owned cards</p>
+                <h3 className="collection-panel__heading">Select recommended extras</h3>
               </div>
               <p className="collection-review-panel__status">
                 {sortedRows.length} card group{sortedRows.length === 1 ? '' : 's'} in view
@@ -927,6 +887,139 @@ export function CollectionView({
                 fieldClassName="collection-search"
               />
             </div>
+
+            <BlueprintPanel className="collection-transfer-panel" aria-label="Move to Selling Inventory">
+                <div className="collection-transfer-panel__intro">
+                  <h3>Move to Selling Inventory</h3>
+                  <p>
+                    Select recommended cards above, preview the exact internal inventory change, and then commit it deliberately.
+                  </p>
+                </div>
+                <div className="collection-transfer-actions">
+                  <span className="collection-transfer-actions__count">
+                    {transferSelectedQuantity} card(s) selected
+                  </span>
+                  <BlueprintButton
+                    variant="secondary"
+                    onClick={handleTransferPreview}
+                    disabled={transferSelectedQuantity === 0 || transferLoading}
+                    icon={<Search aria-hidden="true" strokeWidth={1.5} />}
+                  >
+                    {transferLoading ? 'Working…' : 'Preview Move'}
+                  </BlueprintButton>
+                  <BlueprintButton
+                    variant="primary"
+                    onClick={handleTransferCommit}
+                    disabled={
+                      transferSelectedQuantity === 0 ||
+                      transferLoading ||
+                      !transferPreview ||
+                      (transferPreview.summary.blockedItems ?? 0) > 0
+                    }
+                    icon={<MoveRight aria-hidden="true" strokeWidth={1.5} />}
+                  >
+                    Move to Selling Inventory
+                  </BlueprintButton>
+                </div>
+
+                {transferPreview && (
+                  <div className="collection-transfer-preview" aria-label="Transfer preview">
+                    <div className="collection-summary-grid collection-transfer-summary">
+                      <div className="collection-summary-card">
+                        <span>Transfer Qty</span>
+                        <strong>{transferPreview.summary.transferQuantity ?? 0}</strong>
+                      </div>
+                      <div className="collection-summary-card">
+                        <span>Create / Update</span>
+                        <strong>
+                          {transferPreview.summary.createRows ?? 0}/
+                          {transferPreview.summary.updateRows ?? 0}
+                        </strong>
+                      </div>
+                      <div className="collection-summary-card warning">
+                        <span>Blocked</span>
+                        <strong>{transferPreview.summary.blockedItems ?? 0}</strong>
+                      </div>
+                    </div>
+                    {transferPreview.summary.blockers.length > 0 && (
+                      <div className="collection-result-notice collection-result-notice--error">
+                        {formatTransferMessages(transferPreview.summary.blockers)}
+                      </div>
+                    )}
+                    {transferPreview.summary.warnings.length > 0 && (
+                      <div className="collection-result-notice collection-result-notice--error">
+                        {formatTransferMessages(transferPreview.summary.warnings)}
+                      </div>
+                    )}
+                    {layout === 'phone' ? (
+                      <div className="collection-mobile-preview-list" aria-label="Transfer preview rows">
+                        {(transferPreview.items ?? []).map((item) => (
+                          <article className="collection-mobile-preview-card" key={item.collectionItemId}>
+                            <div className="collection-mobile-preview-card__header">
+                              <strong>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</strong>
+                              <span className={`collection-import-status status-${item.status ?? 'matched'}`}>
+                                {item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}
+                              </span>
+                            </div>
+                            <p className="collection-mobile-preview-card__meta">
+                              Qty {item.quantity} · {item.inventoryCondition ?? item.finish}
+                            </p>
+                            <p>Action: {item.action}</p>
+                            {formatTransferMessages([
+                              ...(item.warnings ?? []),
+                              ...(item.blockers ?? []),
+                            ]) && (
+                              <p>
+                                {formatTransferMessages([
+                                  ...(item.warnings ?? []),
+                                  ...(item.blockers ?? []),
+                                ])}
+                              </p>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="table-container collection-transfer-table">
+                        <table className="card-table">
+                          <thead>
+                            <tr>
+                              <th>Card</th>
+                              <th>Qty</th>
+                              <th>Finish</th>
+                              <th>Inventory Status</th>
+                              <th>Action</th>
+                              <th>Warnings / Blockers</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(transferPreview.items ?? []).map((item) => (
+                              <tr key={item.collectionItemId}>
+                                <td>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</td>
+                                <td>{item.quantity}</td>
+                                <td>{item.inventoryCondition ?? item.finish}</td>
+                                <td>{item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}</td>
+                                <td>{item.action}</td>
+                                <td>
+                                  {formatTransferMessages([
+                                    ...(item.warnings ?? []),
+                                    ...(item.blockers ?? []),
+                                  ]) || '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {transferSuccess && (
+                  <div className="collection-result-notice collection-result-notice--success" role="status">
+                    {transferSuccess}
+                  </div>
+                )}
+            </BlueprintPanel>
 
             {loadingCollections || loadingSellability ? (
               <div className="table-loading">
@@ -950,151 +1043,7 @@ export function CollectionView({
               </>
             )}
           </BlueprintPanel>
-        </div>
-      )}
-
-      {sellability && (
-        <div className="collection-step">
-          <div className="collection-step__header">
-            <p className="collection-step__eyebrow">Step 03 · Transfer</p>
-            <h3 className="collection-step__heading">Preview and move selected cards</h3>
-            <p className="collection-step__description">
-              The move decreases Owned Collection quantities and creates separate Ready-to-List rows when needed. It does not post listings to TCGPlayer.
-            </p>
-          </div>
-          <BlueprintPanel className="collection-transfer-panel" aria-label="Move to Selling Inventory">
-            <div className="collection-transfer-panel__intro">
-              <h3>Move to Selling Inventory</h3>
-              <p>
-                Select recommended cards above, preview the exact internal inventory change, and then commit it deliberately.
-              </p>
-            </div>
-            <div className="collection-transfer-actions">
-              <span className="collection-transfer-actions__count">
-                {transferSelectedQuantity} card(s) selected
-              </span>
-              <BlueprintButton
-                variant="secondary"
-                onClick={handleTransferPreview}
-                disabled={transferSelectedQuantity === 0 || transferLoading}
-                icon={<Search aria-hidden="true" strokeWidth={1.5} />}
-              >
-                {transferLoading ? 'Working…' : 'Preview Move'}
-              </BlueprintButton>
-              <BlueprintButton
-                variant="primary"
-                onClick={handleTransferCommit}
-                disabled={
-                  transferSelectedQuantity === 0 ||
-                  transferLoading ||
-                  !transferPreview ||
-                  (transferPreview.summary.blockedItems ?? 0) > 0
-                }
-                icon={<MoveRight aria-hidden="true" strokeWidth={1.5} />}
-              >
-                Move to Selling Inventory
-              </BlueprintButton>
-            </div>
-
-            {transferPreview && (
-              <div className="collection-transfer-preview" aria-label="Transfer preview">
-                <div className="collection-summary-grid collection-transfer-summary">
-                  <div className="collection-summary-card">
-                    <span>Transfer Qty</span>
-                    <strong>{transferPreview.summary.transferQuantity ?? 0}</strong>
-                  </div>
-                  <div className="collection-summary-card">
-                    <span>Create / Update</span>
-                    <strong>
-                      {transferPreview.summary.createRows ?? 0}/
-                      {transferPreview.summary.updateRows ?? 0}
-                    </strong>
-                  </div>
-                  <div className="collection-summary-card warning">
-                    <span>Blocked</span>
-                    <strong>{transferPreview.summary.blockedItems ?? 0}</strong>
-                  </div>
-                </div>
-                {transferPreview.summary.blockers.length > 0 && (
-                  <div className="collection-result-notice collection-result-notice--error">
-                    {formatTransferMessages(transferPreview.summary.blockers)}
-                  </div>
-                )}
-                {transferPreview.summary.warnings.length > 0 && (
-                  <div className="collection-result-notice collection-result-notice--error">
-                    {formatTransferMessages(transferPreview.summary.warnings)}
-                  </div>
-                )}
-                {layout === 'phone' ? (
-                  <div className="collection-mobile-preview-list" aria-label="Transfer preview rows">
-                    {(transferPreview.items ?? []).map((item) => (
-                      <article className="collection-mobile-preview-card" key={item.collectionItemId}>
-                        <div className="collection-mobile-preview-card__header">
-                          <strong>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</strong>
-                          <span className={`collection-import-status status-${item.status ?? 'matched'}`}>
-                            {item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}
-                          </span>
-                        </div>
-                        <p className="collection-mobile-preview-card__meta">
-                          Qty {item.quantity} · {item.inventoryCondition ?? item.finish}
-                        </p>
-                        <p>Action: {item.action}</p>
-                        {formatTransferMessages([
-                          ...(item.warnings ?? []),
-                          ...(item.blockers ?? []),
-                        ]) && (
-                          <p>
-                            {formatTransferMessages([
-                              ...(item.warnings ?? []),
-                              ...(item.blockers ?? []),
-                            ])}
-                          </p>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="table-container collection-transfer-table">
-                    <table className="card-table">
-                      <thead>
-                        <tr>
-                          <th>Card</th>
-                          <th>Qty</th>
-                          <th>Finish</th>
-                          <th>Inventory Status</th>
-                          <th>Action</th>
-                          <th>Warnings / Blockers</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(transferPreview.items ?? []).map((item) => (
-                          <tr key={item.collectionItemId}>
-                            <td>{item.card?.productName ?? `Catalog #${item.catalogCardId}`}</td>
-                            <td>{item.quantity}</td>
-                            <td>{item.inventoryCondition ?? item.finish}</td>
-                            <td>{item.status === 'matched' ? 'Ready to List' : (item.status ?? '-')}</td>
-                            <td>{item.action}</td>
-                            <td>
-                              {formatTransferMessages([
-                                ...(item.warnings ?? []),
-                                ...(item.blockers ?? []),
-                              ]) || '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-            {transferSuccess && (
-              <div className="collection-result-notice collection-result-notice--success" role="status">
-                {transferSuccess}
-              </div>
-            )}
-          </BlueprintPanel>
-        </div>
+        </>
       )}
 
       {loadingCollections || loadingSellability ? null : ownedCollectionId === null ? (

@@ -152,13 +152,7 @@ export function CollectionImportUpload({
       aria-label="Import to Owned Collection"
     >
       <div className="collection-import-header">
-        <p className="collection-step__eyebrow">Step 01 · Additive intake</p>
         <h3>Import to Owned Collection</h3>
-        <p>
-          Each imported CSV quantity is added to a matching Owned Collection row.
-          If no matching row exists, it is created with that imported quantity.
-          This never imports into Selling Inventory.
-        </p>
       </div>
 
       <div
