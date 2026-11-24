@@ -163,6 +163,31 @@ proven.
    installed read-only preflight. Resolve all failures before the GitHub
    automatic-deployment cutover.
 
+## Manually restored host with live volumes and no release record
+
+A replacement host may already run the app from a reviewed source checkout with
+the production Compose project and named PostgreSQL/Redis volumes, but have no
+`current-release` record or restricted deploy account. Treat its first managed
+deployment as a controlled adoption, not as a rollback or a fresh database.
+
+1. Confirm the running source revision, local image revision label, Compose
+   project, named volumes, and `/ready`. Take an independent PostgreSQL dump and
+   preserve the external app and host configuration before changing the deploy
+   boundary. Do not remove the volumes or synthesize release metadata.
+2. Restore the `production` Environment reviewer rule. Install the dedicated
+   deploy key, pinned host key, current tailnet host name, and restricted host
+   boundary using the [fresh-host bootstrap](#3-bootstrap-once). Keep the
+   existing external `app.env` and `host.conf`; the dispatcher must be able to
+   read the non-secret host config. Bootstrap does not replace running services.
+3. Merge a reviewed change through protected `master` to produce a new CI push
+   run. Approve its one gated release. With no prior release record, the host
+   builds the exact new revision, starts the existing data services, takes a
+   `pre-adoption` database backup, runs the one-shot migration, replaces the app,
+   checks readiness, and only then writes `current-release`.
+4. Check the preserved database and app behavior, release metadata, backup,
+   and installed preflight. Keep the reviewer gate until those checks pass;
+   then follow the [one-time automatic-deployment cutover](CI-CD.md#one-time-automatic-deployment-cutover).
+
 ## Stable root-wrapper exception and maintenance
 
 Normal application code, Dockerfile, migrations, `docker-compose.yml`, and
