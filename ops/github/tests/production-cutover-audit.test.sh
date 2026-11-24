@@ -141,11 +141,11 @@ case "$endpoint" in
   repos/example/tcgplayer-automation/branches/master/protection)
     if [[ "${MOCK_MISSING_CHECK:-}" == 1 ]]; then
       cat <<'JSON'
-{"required_status_checks":{"contexts":["Node checks","Android checks","Host operations","Compose integration","Analyze (javascript-typescript)"]},"required_pull_request_reviews":{}}
+{"required_status_checks":{"contexts":["Node checks","Host operations","Compose integration"]},"required_pull_request_reviews":{}}
 JSON
     else
       cat <<'JSON'
-{"required_status_checks":{"contexts":["Node checks","Android checks","Host operations","Compose integration","Analyze (javascript-typescript)","Analyze (java-kotlin)"]},"required_pull_request_reviews":{}}
+{"required_status_checks":{"contexts":["Node checks","Host operations","Compose integration","Analyze (javascript-typescript)"]},"required_pull_request_reviews":{}}
 JSON
     fi
     ;;
@@ -233,7 +233,7 @@ expect_failure env \
   JQ_BIN="$JQ_BIN_FOR_TEST" \
   bash "$SCRIPT" --repo example/tcgplayer-automation --apply \
   --confirm REMOVE_PRODUCTION_REQUIRED_REVIEWERS
-assert_contains 'missing required check: Analyze (java-kotlin)' "$test_root/failure-output"
+assert_contains 'missing required check: Analyze (javascript-typescript)' "$test_root/failure-output"
 assert_not_contains 'PUT ' "$state_dir/calls.log"
 [[ ! -e "$state_dir/reviewers-removed" ]] || fail 'failed audit changed reviewer state'
 
