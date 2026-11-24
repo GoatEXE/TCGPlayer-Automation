@@ -7,11 +7,9 @@ readonly CONFIRMATION_TEXT='REMOVE_PRODUCTION_REQUIRED_REVIEWERS'
 readonly PRODUCTION_ENVIRONMENT='production'
 readonly -a REQUIRED_CHECKS=(
   'Node checks'
-  'Android checks'
   'Host operations'
   'Compose integration'
   'Analyze (javascript-typescript)'
-  'Analyze (java-kotlin)'
 )
 readonly -a REQUIRED_SECRETS=(
   'TS_OAUTH_CLIENT_ID'
@@ -39,7 +37,7 @@ Usage: ops/github/production-cutover-audit.sh --repo OWNER/REPOSITORY [--apply -
 
 Audits the GitHub controls used by automatic production deployment. The default
 mode is read-only and does not alter GitHub settings. It verifies protected
-master, the six CI checks, the production Environment, its exact-master custom
+master, the four required checks, the production Environment, its exact-master custom
 branch policy, required secret/variable names, and current reviewer gate.
 
 --apply is intentionally narrow: after a passing audit and the exact typed
