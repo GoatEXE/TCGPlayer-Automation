@@ -177,8 +177,9 @@ deployment as a controlled adoption, not as a rollback or a fresh database.
 2. Restore the `production` Environment reviewer rule. Install the dedicated
    deploy key, pinned host key, current tailnet host name, and restricted host
    boundary using the [fresh-host bootstrap](#3-bootstrap-once). Keep the
-   existing external `app.env` and `host.conf`; the dispatcher must be able to
-   read the non-secret host config. Bootstrap does not replace running services.
+   existing external `app.env` and `host.conf`. Keep `app.env` root-only, and
+   make the non-secret `host.conf` root-owned mode `0644` so the `deploy`
+   dispatcher can read it. Bootstrap does not replace running services.
 3. Merge a reviewed change through protected `master` to produce a new CI push
    run. Approve its one gated release. With no prior release record, the host
    builds the exact new revision, starts the existing data services, takes a
